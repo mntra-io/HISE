@@ -829,6 +829,7 @@ struct ScriptingApi::Engine::Wrapper
 	
 	API_VOID_METHOD_WRAPPER_1(Engine, setFrontendMacros)
 	API_VOID_METHOD_WRAPPER_2(Engine, setKeyColour);
+	API_VOID_METHOD_WRAPPER_3(Engine, showMessageBox);
 	API_VOID_METHOD_WRAPPER_2(Engine, showErrorMessage);
 	API_VOID_METHOD_WRAPPER_1(Engine, showMessage);
 	API_VOID_METHOD_WRAPPER_1(Engine, setLowestKeyToDisplay);
@@ -1008,6 +1009,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_2(getDspNetworkReference);
 	ADD_API_METHOD_0(createExpansionHandler);
 	ADD_API_METHOD_3(showYesNoWindow);
+	ADD_API_METHOD_3(showMessageBox);
 	ADD_API_METHOD_1(getSystemTime);
 }
 
@@ -1399,6 +1401,14 @@ var ScriptingApi::Engine::getSampleFilesFromDirectory(const String& relativePath
 	
 }
 
+void ScriptingApi::Engine::showMessageBox(String title, String markdownMessage, int type)
+{
+	MessageManager::callAsync([]()
+	{
+		PresetHandler::showMessageWindow(title, markdownMessage, (PresetHandler::IconType)type);
+	});
+}
+
 void ScriptingApi::Engine::showYesNoWindow(String title, String markdownMessage, var callback)
 {
 	//auto p = dynamic_cast<JavascriptProcessor*>(getScriptProcessor());
@@ -1409,30 +1419,8 @@ void ScriptingApi::Engine::showYesNoWindow(String title, String markdownMessage,
 		auto ok = PresetHandler::showYesNoWindow(title, markdownMessage);
 
 		std::array<var, 1> args = { var(ok) };
-
-		//Array<var> args = { var(ok) };
-
-
-
 		WeakCallbackHolder cb(p, callback, 1);
 		cb.call({ var(ok) });
-
-#if 0
-		dynamic_cast<ControlledObject*>(p)->getMainController()->getJavascriptThreadPool().addJob(JavascriptThreadPool::Task::HiPriorityCallbackExecution,
-			p, [ok, callback](JavascriptProcessor* p)
-		{
-			auto r = Result::ok();
-
-			var arg(ok);
-
-			p->getScriptEngine()->callExternalFunction(callback, var::NativeFunctionArgs({}, &arg, 1), &r);
-
-			if (!r.wasOk())
-				debugError(dynamic_cast<Processor*>(p), r.getErrorMessage());
-
-			return r;
-		});
-#endif
 	};
 
 	MessageManager::callAsync(f);
