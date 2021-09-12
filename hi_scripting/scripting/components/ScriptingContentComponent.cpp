@@ -755,7 +755,9 @@ void MarkdownPreviewPanel::initPanel()
 
 	getMainController()->setCurrentMarkdownPreview(preview);
 
-	if (isProjectDoc)
+	if (customContent.isNotEmpty())
+		preview->setNewText(customContent, File(), true);
+	else if (isProjectDoc)
 	{
 		holder->rebuildDatabase();
 		preview->renderer.gotoLink(MarkdownLink(holder->getDatabaseRootDirectory(), startURL));
