@@ -1109,7 +1109,7 @@ void JavascriptProcessor::saveScript(ValueTree &v) const
 		mergeCallbacksToScript(x);
 	}
 
-	v.addChild(allInterfaceData, -1, nullptr);
+	v.addChild(allInterfaceData.createCopy(), -1, nullptr);
 
 	v.setProperty("Script", x, nullptr);
 }

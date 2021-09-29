@@ -74,6 +74,11 @@ String DebugInformation::varArrayToString(const Array<var> &arrayToStringify)
 
 Component* DebugInformation::createPopupComponent(const MouseEvent& e, Component* componentToNotify)
 {
+	if (auto c = DebugInformationBase::createPopupComponent(e, componentToNotify))
+	{
+		return c;
+	}
+
 	var v = getVariantCopy();
 
 	if (v.isBuffer())
@@ -227,6 +232,7 @@ Component* DebugableObject::Helpers::showProcessorEditorPopup(const MouseEvent& 
 	{
 		ProcessorEditorContainer *pc = new ProcessorEditorContainer();
 		pc->setRootProcessorEditor(p);
+        pc->setName(p->getId());
 		return pc;
 	}
 	else

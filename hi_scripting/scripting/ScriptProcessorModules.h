@@ -689,7 +689,7 @@ public:
 	void postCompileCallback() override;
 
 	ProcessorEditorBody* createEditor(ProcessorEditor *parentEditor) override;
-
+    
 private:
 
 	class Sound;
@@ -771,6 +771,8 @@ public:
 	void prepareToPlay(double sampleRate, int samplesPerBlock) override;
 	void applyEffect(AudioSampleBuffer &b, int startSample, int numSamples) override;
 
+    
+    
 	float getAttribute(int index) const override 
 	{ 
 		return getCurrentNetworkParameterHandler(&contentParameterHandler)->getParameter(index);
@@ -1002,6 +1004,8 @@ public:
 	{
 		LockHelpers::freeToGo(getMainController());
 
+        
+        
 		jassert(finalised);
 
 		auto envList = ProcessorHelpers::getListOfAllProcessors<ScriptnodeVoiceKiller>(gainChain);
@@ -1016,6 +1020,9 @@ public:
 		gainChain->getHandler()->add(vk, nullptr);
 
 		setVoiceKillerToUse(vk);
+        
+        getSnippet(0)->replaceAllContent("const var dsp = Engine.createDspNetwork(\"dsp\");");
+        compileScript();
 	}
 
 	float getModValueForNode(int modIndex, int startSample) const

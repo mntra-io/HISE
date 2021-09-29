@@ -638,6 +638,11 @@ void MainController::setBufferToPlay(const AudioSampleBuffer& buffer)
 	}
 }
 
+int MainController::getPreviewBufferPosition() const
+{
+	return previewBufferIndex;
+}
+
 void MainController::setKeyboardCoulour(int keyNumber, Colour colour)
 {
 	keyboardState.setColourForSingleKey(keyNumber, colour);
@@ -961,9 +966,16 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 
 		if (numToPlay > 0)
 		{
-			FloatVectorOperations::copy(multiChannelBuffer.getWritePointer(0, 0), previewBuffer.getReadPointer(0, previewBufferIndex), numToPlay);
-			FloatVectorOperations::copy(multiChannelBuffer.getWritePointer(1, 0), previewBuffer.getReadPointer(1, previewBufferIndex), numToPlay);
-
+            int numChannels = previewBuffer.getNumChannels();
+            
+            for(int i = 0; i < multiChannelBuffer.getNumChannels(); i++)
+            {
+                if(isPositiveAndBelow(i, previewBuffer.getNumChannels()))
+                {
+                    FloatVectorOperations::copy(multiChannelBuffer.getWritePointer(i, 0), previewBuffer.getReadPointer(i, previewBufferIndex), numToPlay);
+                }
+            }
+            
 			previewBufferIndex += numToPlay;
 		}
 
@@ -1143,6 +1155,9 @@ void MainController::storePlayheadIntoDynamicObject(AudioPlayHead::CurrentPositi
 
 void MainController::prepareToPlay(double sampleRate_, int samplesPerBlock)
 {
+	auto srBefore = sampleRate;
+	auto bufferBefore = maxBufferSize.get();
+
     LOG_START("Preparing playback");
     
 	maxBufferSize = samplesPerBlock * currentOversampleFactor;
@@ -1202,6 +1217,16 @@ void MainController::prepareToPlay(double sampleRate_, int samplesPerBlock)
 
 	if (oversampler != nullptr)
 		oversampler->initProcessing(getOriginalBufferSize());
+
+	if (sampleRate != srBefore || maxBufferSize.get() != bufferBefore)
+	{
+		String s;
+		s << "New Buffer Specifications: ";
+		s << "Samplerate: " << sampleRate;
+		s << ", Buffersize: " << String(maxBufferSize.get());
+		getConsoleHandler().writeToConsole(s, 0, getMainSynthChain(), Colours::white.withAlpha(0.4f));
+	}
+
 }
 
 void MainController::setBpm(double newTempo)

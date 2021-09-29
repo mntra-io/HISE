@@ -242,6 +242,8 @@ public:
 
 		DspNetwork* getOrCreate(const ValueTree& v);
 
+        void unload();
+        
 		DspNetwork* getOrCreate(const String& id);
 		StringArray getIdList();
 		void saveNetworks(ValueTree& d) const;
@@ -322,6 +324,16 @@ public:
 			return n;
 		}
 
+		DspNetwork* getDebuggedNetwork() { return debuggedNetwork.get(); };
+		const DspNetwork* getDebuggedNetwork() const { return debuggedNetwork.get(); };
+
+		void toggleDebug()
+		{
+			SimpleReadWriteLock::ScopedWriteLock l(getNetworkLock());
+
+			std::swap(debuggedNetwork, activeNetwork);
+		}
+
 	protected:
 
 		ReferenceCountedArray<DspNetwork> embeddedNetworks;
@@ -332,6 +344,7 @@ public:
 
 		ExternalDataHolder* dataHolder = nullptr;
 
+		WeakReference<DspNetwork> debuggedNetwork;
 		WeakReference<DspNetwork> activeNetwork;
 
 		ReferenceCountedArray<DspNetwork> networks;
@@ -640,6 +653,11 @@ public:
 			reportScriptError("Parent of DSP Network is deleted");
 	}
 
+	bool isBeingDebugged() const
+	{
+		return parentHolder->getDebuggedNetwork() == this;
+	}
+
 	/** Deletes the node if it is not in a signal path. */
 	bool deleteIfUnused(String id);
 
@@ -661,7 +679,7 @@ public:
 
 	bool isRenderingFirstVoice() const noexcept { return !isPolyphonic() || getPolyHandler()->getVoiceIndex() == 0; }
 
-	bool isInitialised() const noexcept { return currentSpecs.blockSize > 0; };
+	bool isInitialised() const noexcept { return currentSpecs.blockSize > 0 && currentSpecs.numChannels > 0; };
 
 	bool isForwardingControlsToParameters() const
 	{
@@ -1126,9 +1144,6 @@ struct DspNetworkListeners
 
 				return !v[PropertyIds::Automated];
 			}
-
-			if (id == PropertyIds::NumChannels)
-				return false;
 
 			return true;
 		}

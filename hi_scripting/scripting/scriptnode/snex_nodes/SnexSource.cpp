@@ -144,9 +144,6 @@ void SnexSource::rebuildCallbacksAfterChannelChange(int numChannelsToProcess)
 {
 	if (wb != nullptr && parentNode->getCurrentChannelAmount() != numChannelsToProcess)
 	{
-		parentNode->setValueTreeProperty(PropertyIds::NumChannels, numChannelsToProcess);
-
-		
 		if (auto objPtr = wb->getLastResult().mainClassPtr)
 		{
 			if (lastResult.wasOk())
@@ -793,6 +790,9 @@ void SnexMenuBar::parameterChanged(int snexParameterId, double newValue)
 
 SnexMenuBar::~SnexMenuBar()
 {
+    if(source->getParentNode() == nullptr)
+        return;
+    
 	auto wb = static_cast<snex::ui::WorkbenchManager*>(source->getParentNode()->getScriptProcessor()->getMainController_()->getWorkbenchManager());
 	wb->removeListener(this);
 

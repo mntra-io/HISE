@@ -197,6 +197,9 @@ struct SnexEditorPanel : public Component,
 
 	void workbenchChanged(Ptr newWorkbench) override
 	{
+		if (newWorkbench != nullptr && newWorkbench->getCodeProvider()->providesCode())
+			return;
+
 		setWorkbenchData(newWorkbench);
 	}
 
@@ -212,6 +215,10 @@ struct SnexEditorPanel : public Component,
 			addAndMakeVisible(playground = new snex::jit::SnexPlayground(newWorkbench, false));
 			wb->addListener(this);
 		}
+        else
+        {
+            playground = nullptr;
+        }
 
 		resized();
 	}
