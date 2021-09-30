@@ -259,11 +259,14 @@ DspNetworkGraph::DspNetworkGraph(DspNetwork* n) :
 
 	rebuildListener.forwardCallbacksForChildEvents(true);
 
-	resizeListener.setCallback(dataReference, { PropertyIds::Folded, PropertyIds::ShowParameters },
+	resizeListener.setCallback(dataReference, { PropertyIds::Folded, PropertyIds::ShowParameters, PropertyIds::ShowClones, PropertyIds::DisplayedClones },
 		valuetree::AsyncMode::Asynchronously,
-		[this](ValueTree, Identifier)
+		[this](ValueTree, Identifier id)
 	{
-		this->resizeNodes();
+		if (id == PropertyIds::ShowClones || id == PropertyIds::DisplayedClones)
+			this->rebuildNodes();
+		else
+			this->resizeNodes();
 	});
 
 	setOpaque(true);
@@ -614,6 +617,31 @@ void DspNetworkGraph::paintOverChildren(Graphics& g)
 						Colour hc = s->isMouseOver(true) ? Colours::red : Colour(0xFFAAAAAA);
 
 						paintCable(g, start, end, cableColour, alpha, hc);
+
+						auto drawSiblingCables = s->node->isClone() && !sourceNode->isClone();
+
+						if (drawSiblingCables)
+						{
+							auto root = s->node->findParentNodeOfType<CloneNode>();
+
+							CloneNode::CloneIterator cit(*root, s->parameterToControl->data, true);
+
+							auto numClones = root->getParameter(0)->getValue();
+							int i = 0;
+
+							for (const auto& cv : cit)
+							{
+								for (const auto& cs : sliderList)
+								{
+									if (cs->parameterToControl->data == cv)
+									{
+										auto cend = getCircle(cs);
+										paintCable(g, start, cend, i++ < numClones ? cableColour : Colours::grey, alpha * 0.1f, hc);
+									}
+								}
+							}
+						}
+
 						break;
 					}
 				}
@@ -1265,7 +1293,7 @@ struct ScriptnodeDebugPopup: public Component,
 
 	~ScriptnodeDebugPopup()
 	{
-		dynamic_cast<BackendProcessor*>(getMainController())->workbenches.setCurrentWorkbench(prevWb, false);
+		dynamic_cast<BackendProcessor*>(getMainController())->workbenches.setCurrentWorkbench(prevWb, true);
 		prevWb = nullptr;
 		wb = nullptr;
 	}
@@ -1300,7 +1328,8 @@ bool DspNetworkGraph::Actions::toggleDebug(DspNetworkGraph& g)
 
 	if (auto dbg = g.network->getParentHolder()->getDebuggedNetwork())
 	{
-		auto w = GET_BACKEND_ROOT_WINDOW((&g))->getRootFloatingTile();
+        auto w = g.findParentComponentOfClass<FloatingTile>()->getRootFloatingTile();
+		
 
 		Array<ActionButton*> list;
 		fillChildComponentList(list, g.findParentComponentOfClass<WrapperWithMenuBar>());
@@ -1309,10 +1338,10 @@ bool DspNetworkGraph::Actions::toggleDebug(DspNetworkGraph& g)
 		{
 			if (b->getName() == "debug")
 			{
-				auto wb = new snex::ui::WorkbenchData();
-				
-				wb->setCompileHandler(new PopupCompileHandler(wb, dbg));
-				wb->setCodeProvider(new PopupCodeProvider(wb, dbg));
+                auto wb = new snex::ui::WorkbenchData();
+            
+                wb->setCompileHandler(new PopupCompileHandler(wb, dbg));
+                wb->setCodeProvider(new PopupCodeProvider(wb, dbg));
 
 				w->showComponentInRootPopup(new ScriptnodeDebugPopup(w->getMainController(), wb, dbg), b, { b->getLocalBounds().getCentreX(), b->getHeight() }, false);
 				return true;
@@ -1395,13 +1424,22 @@ bool DspNetworkGraph::Actions::foldSelection(DspNetworkGraph& g)
 
 bool DspNetworkGraph::Actions::foldUnselectedNodes(DspNetworkGraph& g)
 {
+    auto selection = g.network->getSelection();
+    
+    if(selection.isEmpty())
+    {
+        zoomFit(g);
+        return true;
+    }
+    
+    
 	auto parent = g.findParentComponentOfClass<ZoomableViewport>();
 
 	parent->makeSwapSnapshot(JUCE_LIVE_CONSTANT_OFF(1.005));
 
 	auto l = g.network->getListOfNodesWithType<NodeBase>(false);
 
-	auto selection = g.network->getSelection();
+	
 
 	auto isParentNode = [](NodeBase*n, NodeBase* possibleParent)
 	{
@@ -1675,7 +1713,7 @@ bool DspNetworkGraph::Actions::duplicateSelection(DspNetworkGraph& g)
 	for (auto n : g.network->getSelection())
 	{
 		auto tree = n->getValueTree();
-		insertIndex = jmax(insertIndex, tree.getParent().indexOf(tree));
+		insertIndex = jmax(insertIndex, tree.getParent().indexOf(tree) + 1);
 	}
 
 	for (auto n : g.network->getSelection())
@@ -1792,7 +1830,7 @@ bool DspNetworkGraph::Actions::eject(DspNetworkGraph& g)
         {
             ReferenceCountedObjectPtr<DspNetwork> pendingDelete;
             
-            pendingDelete = jsp->getActiveNetwork();
+            pendingDelete = jsp->getActiveOrDebuggedNetwork();
             
             jsp->unload();
             BackendPanelHelpers::ScriptingWorkspace::setGlobalProcessor(rootWindow, jsp);
@@ -2338,6 +2376,11 @@ void DspNetworkGraph::WrapperWithMenuBar::addButton(const String& name)
 
 			m.addItem((int)NodeComponent::MenuActions::WrapIntoSplit, "Wrap into split container");
 
+			m.addItem((int)NodeComponent::MenuActions::WrapIntoFix32, "Wrap into fix32 container");
+			m.addItem((int)NodeComponent::MenuActions::WrapIntoCloneChain, "Wrap into clone container");
+			m.addItem((int)NodeComponent::MenuActions::WrapIntoMidiChain, "Wrap into midichain container");
+			m.addItem((int)NodeComponent::MenuActions::WrapIntoNoMidiChain, "Wrap into nomidi container");
+			m.addItem((int)NodeComponent::MenuActions::WrapIntoSoftBypass, "Wrap into soft bypass container");
 			m.addItem((int)NodeComponent::MenuActions::WrapIntoOversample4, "Wrap into 4x oversample container");
 
 			m.addItem((int)NodeComponent::MenuActions::UnfreezeNode, "Explode DSP Network", s != nullptr && s->getEmbeddedNetwork() != nullptr);
@@ -2596,7 +2639,7 @@ KeyboardPopup::ImagePreviewCreator::ImagePreviewCreator(KeyboardPopup& kp_, cons
 				auto p = createdNode->getParameter(i);
 				auto nr = RangeHelpers::getDoubleRange(p->data);
 				auto v = nr.convertFrom0to1(Random::getSystemRandom().nextDouble());
-				p->setValueAndStoreAsync(v);
+				p->setValue(v);
 			}
 		}
 	}
@@ -2656,6 +2699,7 @@ void KeyboardPopup::ImagePreviewCreator::timerCallback()
 	kp.screenshot = createdComponent->createComponentSnapshot(createdComponent->getLocalBounds(), true, 1.0f / sr);
 	kp.repaint();
 
+    createdComponent = nullptr;
 	stopTimer();
 }
 

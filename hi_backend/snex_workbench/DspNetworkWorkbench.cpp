@@ -91,9 +91,9 @@ snex::ui::WorkbenchData::CompileResult DspNetworkCompileHandler::compile(const S
 			if (np != nullptr)
 			{
 
-				auto rootNode = np->getActiveNetwork()->getRootNode();
+				auto rootNode = np->getActiveOrDebuggedNetwork()->getRootNode();
 
-				np->getActiveNetwork()->setExternalDataHolder(&getParent()->getTestData());
+				np->getActiveOrDebuggedNetwork()->setExternalDataHolder(&getParent()->getTestData());
 
 				for (int i = 0; i < rootNode->getNumParameters(); i++)
 				{
@@ -104,7 +104,7 @@ snex::ui::WorkbenchData::CompileResult DspNetworkCompileHandler::compile(const S
 					auto f = [](void* obj, double value)
 					{
 						auto typed = static_cast<scriptnode::NodeBase::Parameter*>(obj);
-						typed->setValueAndStoreAsync(value);
+						typed->setValue(value);
 					};
 
 					d.info = scriptnode::parameter::pod(p->data);
@@ -159,7 +159,7 @@ void DspNetworkCompileHandler::processTestParameterEvent(int parameterIndex, dou
 	if (interpreter != nullptr)
 	{
 		if (auto p = interpreter->getRootNode()->getParameter(parameterIndex))
-			p->setValueAndStoreAsync(value);
+			p->setValue(value);
 	}
 
 	if (isPositiveAndBelow(parameterIndex, lastResult.parameters.size()))
@@ -235,7 +235,7 @@ void DspNetworkCompileHandler::postCompile(WorkbenchData::CompileResult& lastRes
 				jitNode = nullptr;
 
 				if (np != nullptr)
-					interpreter = np->getActiveNetwork();
+					interpreter = np->getActiveOrDebuggedNetwork();
 			}
 			else if (dnp->source == DspNetworkCodeProvider::SourceMode::DynamicLibrary)
 			{
@@ -282,7 +282,7 @@ void DspNetworkCodeProvider::initNetwork()
 	else
 	{
 		n = np->getOrCreate(getXmlFile().getFileNameWithoutExtension());
-		currentTree = np->getActiveNetwork()->getValueTree();
+		currentTree = np->getActiveOrDebuggedNetwork()->getValueTree();
 	}
 
 	auto asP = dynamic_cast<Processor*>(np.get());
@@ -311,8 +311,7 @@ String DspNetworkCodeProvider::createCppForNetwork() const
 
 		auto r = v.createCppCode();
 
-		if (r.r.wasOk())
-			return r.code;
+		return r.code;
 	}
 
 	return {};

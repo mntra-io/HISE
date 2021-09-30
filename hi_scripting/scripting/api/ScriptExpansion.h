@@ -362,10 +362,17 @@ public:
 
 	Result encodeExpansion() override;
 
+	ValueTree getEmbeddedNetwork(const String& id) override
+	{
+		return networks.getChildWithProperty("ID", id);
+	}
+
 	bool fullyLoaded = false;
 	ValueTree presetToLoad;
 	bool isProjectExport = false;
 	String currentKey;
+
+	ValueTree networks;
 };
 
 

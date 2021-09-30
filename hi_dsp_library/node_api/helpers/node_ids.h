@@ -74,6 +74,8 @@ DECLARE_ID(MaxValue);
 DECLARE_ID(UpperLimit);
 DECLARE_ID(SkewFactor);
 DECLARE_ID(ShowParameters);
+DECLARE_ID(ShowClones);
+DECLARE_ID(DisplayedClones);
 DECLARE_ID(Bypassed);
 DECLARE_ID(SoulPatch);
 DECLARE_ID(Debug);
@@ -82,6 +84,7 @@ DECLARE_ID(Value);
 DECLARE_ID(ID);
 DECLARE_ID(Index);
 DECLARE_ID(NodeId);
+DECLARE_ID(NumClones);
 DECLARE_ID(ParameterId);
 DECLARE_ID(Type);
 DECLARE_ID(Folded);
@@ -128,6 +131,7 @@ DECLARE_ID(HasModeTemplateArgument);
 DECLARE_ID(ModeNamespaces);
 DECLARE_ID(IsOptionalSnexNode);
 DECLARE_ID(TemplateArgumentIsPolyphonic);
+DECLARE_ID(IsCloneCableNode);
 DECLARE_ID(IsRoutingNode);
 DECLARE_ID(IsPublicMod);
 DECLARE_ID(UseUnnormalisedModulation);
@@ -225,6 +229,7 @@ struct Error
 		DeprecatedNode,
 		IllegalPolyphony,
 		IllegalBypassConnection,
+		CloneMismatch,
 		numErrorCodes
 	};
 
