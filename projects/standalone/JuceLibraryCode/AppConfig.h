@@ -77,7 +77,6 @@
 #define JUCE_MODULE_AVAILABLE_juce_gui_extra              1
 #define JUCE_MODULE_AVAILABLE_juce_opengl                 1
 #define JUCE_MODULE_AVAILABLE_juce_product_unlocking      1
-#define JUCE_MODULE_AVAILABLE_stk_wrapper                 1
 
 #define JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED 1
 
@@ -119,7 +118,7 @@
 #endif
 
 #ifndef    USE_IPP
- #define   USE_IPP 1
+ #define   USE_IPP 0
 #endif
 
 #ifndef    USE_VDSP_FFT
@@ -266,13 +265,6 @@
 
 #ifndef    HLAC_INCLUDE_TEST_SUITE
  //#define HLAC_INCLUDE_TEST_SUITE 0
-#endif
-
-//==============================================================================
-// hi_modules flags:
-
-#ifndef    HI_ENABLE_CUSTOM_NODE_LOCATION
- //#define HI_ENABLE_CUSTOM_NODE_LOCATION 0
 #endif
 
 //==============================================================================
@@ -486,7 +478,7 @@
 #endif
 
 #ifndef    JUCE_DSP_USE_SHARED_FFTW
- //#define JUCE_DSP_USE_SHARED_FFTW 0
+ #define   JUCE_DSP_USE_SHARED_FFTW 1
 #endif
 
 #ifndef    JUCE_DSP_USE_STATIC_FFTW
