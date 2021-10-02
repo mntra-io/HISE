@@ -482,6 +482,9 @@ void JavascriptPolyphonicEffect::prepareToPlay(double sampleRate, int samplesPer
 
 	if (auto n = getActiveNetwork())
 	{
+		auto numChannels = dynamic_cast<RoutableProcessor*>(getParentProcessor(true))->getMatrix().getNumSourceChannels();
+
+		n->setNumChannels(numChannels);
 		n->prepareToPlay(sampleRate, (double)samplesPerBlock);
 	}
 }
@@ -498,7 +501,7 @@ void JavascriptPolyphonicEffect::renderVoice(int voiceIndex, AudioSampleBuffer &
 		for (int i = 0; i < numChannels; i++)
 			channels[i] += startSample;
 
-		scriptnode::ProcessDataDyn d(channels, numChannels, numSamples);
+		scriptnode::ProcessDataDyn d(channels, numSamples, numChannels);
 
 		scriptnode::DspNetwork::VoiceSetter vs(*n, voiceIndex);
 		n->getRootNode()->process(d);
@@ -1596,7 +1599,7 @@ void JavascriptModulatorSynth::prepareToPlay(double newSampleRate, int samplesPe
 	ModulatorSynth::prepareToPlay(newSampleRate, samplesPerBlock);
 }
 
-void JavascriptModulatorSynth::preHiseEventCallback(const HiseEvent& m)
+void JavascriptModulatorSynth::preHiseEventCallback(HiseEvent& m)
 {
 	scriptChain1->handleHiseEvent(m);
 	scriptChain2->handleHiseEvent(m);
@@ -1819,7 +1822,7 @@ void JavascriptSynthesiser::postCompileCallback()
 	prepareToPlay(getSampleRate(), getLargestBlockSize());
 }
 
-void JavascriptSynthesiser::preHiseEventCallback(const HiseEvent &e)
+void JavascriptSynthesiser::preHiseEventCallback(HiseEvent &e)
 {
 	ModulatorSynth::preHiseEventCallback(e);
 

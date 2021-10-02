@@ -55,6 +55,37 @@ void AudioDisplayComponent::drawPlaybackBar(Graphics &g)
 	}
 }
 
+void AudioDisplayComponent::refreshSampleAreaBounds(SampleArea* areaToSkip/*=nullptr*/)
+{
+	bool somethingVisible = getTotalSampleAmount() != 0;
+
+	for (int i = 0; i < areas.size(); i++)
+	{
+		if (areas[i] == areaToSkip) continue;
+
+		//areas[i]->setVisible(somethingVisible);
+
+		Range<int> sampleRange = areas[i]->getSampleRange();
+
+		const int x = areas[i]->getXForSample(sampleRange.getStart(), false);
+		const int right = areas[i]->getXForSample(sampleRange.getEnd(), false);
+
+		areas[i]->leftEdge->setTooltip(String(sampleRange.getStart()));
+		areas[i]->rightEdge->setTooltip(String(sampleRange.getEnd()));
+
+		if (i == 0)
+		{
+			preview->setRange(x, right);
+		}
+
+		areas[i]->setBounds(x, 0, right - x, getHeight());
+	}
+
+
+
+	repaint();
+}
+
 void AudioDisplayComponent::paint(Graphics &g)
 {
 	//ProcessorEditorLookAndFeel::drawNoiseBackground(g, getLocalBounds(), Colours::darkgrey);
@@ -690,6 +721,8 @@ void HiseAudioThumbnail::LoadingThread::run()
 			parent->leftPeaks.swapWith(lRects);
 			parent->rightPeaks.swapWith(rRects);
 
+			
+
 			parent->isClear = false;
 
 			parent->refresh();
@@ -722,18 +755,21 @@ void HiseAudioThumbnail::LoadingThread::scalePathFromLevels(Path &p, RectangleLi
 	}
 	else
 	{
+#if 0
+        
 		auto h = bounds.getHeight();
 
 		float half = h / 2.0f;
 
-		auto trimmedTop = (1.0f - std::fabs(levels.getEnd())) * half;
-		auto trimmedBottom = (1.0f - std::fabs(levels.getStart())) * half;
+		auto trimmedTop = (1.0f - std::fabs(parent->applyDisplayGain(levels.getEnd()))) * half;
+		auto trimmedBottom = (1.0f - std::fabs(parent->applyDisplayGain(levels.getStart()))) * half;
 
 		if (!scaleVertically)
 		{
 			bounds.removeFromTop(trimmedTop);
 			bounds.removeFromBottom(trimmedBottom);
 		}
+#endif
 		
 		if(!std::isinf(bounds.getY()) && !std::isinf(bounds.getHeight()) &&
 		   !std::isnan(bounds.getY()) && !std::isnan(bounds.getHeight()))
@@ -746,108 +782,138 @@ void HiseAudioThumbnail::LoadingThread::scalePathFromLevels(Path &p, RectangleLi
 
 void HiseAudioThumbnail::LoadingThread::calculatePath(Path &p, float width, const float* l_, int numSamples, RectangleList<float>& rects)
 {
-	int stride = roundToInt((float)numSamples / width);
-	stride = jmax<int>(1, stride * 2);
+    auto rawStride = (float)numSamples / width;
+    
+	int stride = roundToInt(rawStride);
+    
+    auto downSamplingFactor = jlimit(1, 3, roundToInt(width / 1000));
+    
+	stride = jmax<int>(1, stride * downSamplingFactor);
 
+    
+    
 	if (numSamples != 0)
 	{
 		p.clear();
+        
+        p.startNewSubPath(0.0, -1.f);
+        p.startNewSubPath(0.0, 1.f);
+        
 		p.startNewSubPath(0.0f, 0.0f);
 		
-#if HISE_USE_SYMMETRIC_WAVEFORMS
+        bool useSymmetricWaveforms = stride > JUCE_LIVE_CONSTANT_OFF(60);
+        
+        if(useSymmetricWaveforms)
+        {
+            Array<Point<float>> values;
 
-		Array<Point<float>> values;
+            values.ensureStorageAllocated(numSamples / stride + 2);
 
-		values.ensureStorageAllocated(numSamples / stride + 2);
+            for (int i = 0; i < numSamples; i+= stride)
+            {
+                if (threadShouldExit())
+                    return;
 
-		for (int i = 0; i < numSamples; i+= stride)
-		{
-			if (threadShouldExit())
-				return;
+                const int numToCheck = jmin<int>(stride, numSamples - i);
+                auto minMax = FloatVectorOperations::findMinAndMax(l_ + i, numToCheck);
+                auto value = jmax(std::abs(minMax.getStart()), std::abs(minMax.getEnd()));
 
-			const int numToCheck = jmin<int>(stride, numSamples - i);
-			auto minMax = FloatVectorOperations::findMinAndMax(l_ + i, numToCheck);
-			auto value = jmax(std::abs(minMax.getStart()), std::abs(minMax.getEnd()));
+                value = jlimit<float>(0.0f, 1.0f, value);
+                value = parent->applyDisplayGain(value);
+                value *= 10.f;
+                values.add({ (float)i / stride, value });
+            };
 
-			value = jlimit<float>(0.0f, 1.0f, value);
-			value *= 10.f;
-			values.add({ (float)i / stride, value });
-		};
+            int numRemoved = 0;
 
-		int numRemoved = 0;
+            float distanceThreshold = JUCE_LIVE_CONSTANT(0.00f);
 
-		float distanceThreshold = JUCE_LIVE_CONSTANT_OFF(0.00f);
+            bool lastWasZero = false;
 
-		bool lastWasZero = false;
+            for (int i = 1; i < values.size()-1; i++)
+            {
+                auto prev = values[i - 1];
+                auto next = values[i + 1];
 
-		for (int i = 1; i < values.size()-1; i++)
-		{
-			auto prev = values[i - 1];
-			auto next = values[i + 1];
+                if (values[i].y <= distanceThreshold && prev.y == 0.0f && next.y == 0.0f)
+                {
+                    lastWasZero = true;
+                    numRemoved++;
+                    values.remove(i--);
+                    continue;
+                }
 
-			if (values[i].y <= distanceThreshold && prev.y == 0.0f && next.y == 0.0f)
-			{
-				lastWasZero = true;
-				numRemoved++;
-				values.remove(i--);
-				continue;
-			}
+                if (lastWasZero)
+                {
+                    Point<float> newZero(values[i].x, 0.0f);
+                    values.insert(i, newZero);
+                }
 
-			if (lastWasZero)
-			{
-				Point<float> newZero(values[i].x, 0.0f);
-				values.insert(i, newZero);
-			}
+                lastWasZero = false;
 
-			lastWasZero = false;
+                auto distance = (next.y + prev.y) / 2.0f;
 
-			auto distance = (next.y + prev.y) / 2.0f;
-
-			if (distance < distanceThreshold)
-			{
-				values.remove(i);
-				numRemoved++;
-			}
-		}
-
-
-		int numPoints = values.size();
-
-		for (int i = 0; i < numPoints; i++)
-			p.lineTo(values[i]);
-
-		for (int i = numPoints - 1; i >= 0; i--)
-			p.lineTo(values[i].withY(values[i].y * -1.0f));
+                if (distance < distanceThreshold)
+                {
+                    values.remove(i);
+                    numRemoved++;
+                }
+            }
 
 
-#else
+            int numPoints = values.size();
 
+            for (int i = 0; i < numPoints; i++)
+                p.lineTo(values[i]);
 
+            for (int i = numPoints - 1; i >= 0; i--)
+                p.lineTo(values[i].withY(values[i].y * -1.0f));
 
-		for (int i = stride; i < numSamples; i += stride)
-		{
-			if (threadShouldExit())
-				return;
+        }
+        else
+        {
+            
 
-			const int numToCheck = jmin<int>(stride, numSamples - i);
-			auto value = jmax<float>(0.0f, FloatVectorOperations::findMaximum(l_ + i, numToCheck));
-			value = jlimit<float>(-1.0f, 1.0f, value);
-			p.lineTo((float)i, -1.0f * value);
-		};
+            if(rawStride > 1.0f)
+            {
+                for (int i = stride; i < numSamples; i += stride)
+                {
+                    if (threadShouldExit())
+                        return;
 
-		for (int i = numSamples - 1; i >= 0; i -= stride)
-		{
-			if (threadShouldExit())
-				return;
+                    const int numToCheck = jmin<int>(stride, numSamples - i);
+                    auto value = jmax<float>(0.0f, FloatVectorOperations::findMaximum(l_ + i, numToCheck));
+                    value = parent->applyDisplayGain(value);
+                    p.lineTo((float)i, -1.0f * value);
+                };
+                
+                for (int i = numSamples - 1; i >= 0; i -= stride)
+                {
+                    if (threadShouldExit())
+                        return;
 
-			const int numToCheck = jmin<int>(stride, numSamples - i);
-			auto value = jmin<float>(0.0f, FloatVectorOperations::findMinimum(l_ + i, numToCheck));
-			value = jlimit<float>(-1.0f, 1.0f, value);
-			p.lineTo((float)i, -1.0f * value);
-		};
+                    const int numToCheck = jmin<int>(stride, numSamples - i);
+                    auto value = jmin<float>(0.0f, FloatVectorOperations::findMinimum(l_ + i, numToCheck));
+                    value = parent->applyDisplayGain(value);
+                    p.lineTo((float)i, -1.0f * value);
+                };
+            }
+            else
+            {
+                for (int i = 1; i < numSamples; i++)
+                {
+                    if (threadShouldExit())
+                        return;
 
-#endif
-
+                    auto value = l_[i];
+                    value = parent->applyDisplayGain(value);
+                    p.lineTo((float)i, -1.0f * value);
+                };
+                
+                p.lineTo((float)numSamples, 0.0f);
+            }
+        }
+        
 		p.closeSubPath();
 	}
 	else
@@ -905,6 +971,33 @@ void HiseAudioThumbnail::setBuffer(var bufferL, var bufferR /*= var()*/, bool sy
 
 
 
+void HiseAudioThumbnail::fillAudioSampleBuffer(AudioSampleBuffer& b)
+{
+	ScopedLock sl(lock);
+
+	if (currentReader != nullptr)
+	{
+		
+		b.setSize(currentReader->numChannels, currentReader->lengthInSamples);
+		currentReader->read(&b, 0, currentReader->lengthInSamples, 0, true, true);
+	}
+	else
+	{
+		auto numChannels = rBuffer.isBuffer() ? 2 : 1;
+		auto numSamples = lBuffer.isBuffer() ? lBuffer.getBuffer()->size : 0;
+
+		b.setSize(numChannels, numSamples);
+
+		if (auto lb = lBuffer.getBuffer())
+			FloatVectorOperations::copy(b.getWritePointer(0), lb->buffer.getReadPointer(0), numSamples);
+
+		if (auto rb = rBuffer.getBuffer())
+			FloatVectorOperations::copy(b.getWritePointer(1), rb->buffer.getReadPointer(0), numSamples);
+	}
+
+	
+}
+
 void HiseAudioThumbnail::paint(Graphics& g)
 {
 	if (isClear || rebuildOnUpdate)
@@ -951,7 +1044,7 @@ void HiseAudioThumbnail::LookAndFeelMethods::drawHiseThumbnailBackground(Graphic
 		outlineColour = outlineColour.withMultipliedAlpha(0.3f);
 	}
 
-	g.setColour(fillColour.withAlpha(0.05f));
+	g.setColour(fillColour.withAlpha(0.15f));
 
 	if (th.drawHorizontalLines)
 	{

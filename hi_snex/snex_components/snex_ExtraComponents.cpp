@@ -66,7 +66,6 @@ void Graph::InternalGraph::paint(Graphics& g)
     for(const auto& cd: channelData)
         empty &= cd.path.isEmpty();
     
-    
 	if (empty)
 	{
 		g.setColour(Colours::white.withAlpha(0.5f));
@@ -84,7 +83,7 @@ void Graph::InternalGraph::paint(Graphics& g)
 			if (getCurrentGraphType() == GraphType::FFT)
 			{
 				float freq = 10.0f;
-				auto sr = parent.getWorkbench()->getTestData().getPrepareSpecs().sampleRate;
+				auto sr = parent.getSampleRateFunction();
 
 				while (freq < sr)
 				{
@@ -121,13 +120,7 @@ void Graph::InternalGraph::paint(Graphics& g)
 
 	if (parent.markerButton->getToggleState() && getCurrentGraphType() != GraphType::FFT)
 	{
-		auto& td = parent.getWorkbench()->getTestData();
-
-		for (int i = 0; i < td.getNumTestEvents(true); i++)
-			drawTestEvent(g, true, i);
-
-		for (int i = 0; i < td.getNumTestEvents(false); i++)
-			drawTestEvent(g, false, i);
+		parent.drawMarkerFunction(g);
 	}
 
 	if (currentPosition > 0 && numSamples > 0)
@@ -200,49 +193,6 @@ void Graph::InternalGraph::paint(Graphics& g)
 	}
 }
 
-void Graph::InternalGraph::drawTestEvent(Graphics& g, bool isParameter, int index)
-{
-	int timestamp = 0;
-	String t;
-	Colour c;
-
-	auto& td = parent.getWorkbench()->getTestData();
-
-	if (td.testSourceData.getNumSamples() == 0)
-		return;
-
-	if (isParameter)
-	{
-		auto p = td.getParameterEvent(index);
-		timestamp = p.timeStamp;
-		t << "P" << String(p.parameterIndex) << ": " << Types::Helpers::getCppValueString(p.valueToUse);
-		c = Types::Helpers::getColourForType(Types::ID::Double);
-	}
-	else
-	{
-		auto e = td.getTestHiseEvent(index);
-		timestamp = e.getTimeStamp();
-		t << "E" << String(index) << ": " << e.getTypeAsString();
-		c = Types::Helpers::getColourForType(Types::ID::Integer);
-	}
-
-	auto ni = (float)timestamp / (float)td.testSourceData.getNumSamples();
-
-	auto xPos = roundToInt(ni * getWidth());
-
-	g.setColour(c.withAlpha(0.8f));
-	g.drawVerticalLine(xPos,0.0f, (float)getHeight());
-
-	auto f = GLOBAL_MONOSPACE_FONT();
-	g.setFont(f);
-	juce::Rectangle<int> ar(xPos, 0, roundToInt(f.getStringWidthFloat(t) + 3.0f), 20);
-
-	g.fillRect(ar);
-	g.setColour(Colours::black);
-	g.drawText(t, ar.toFloat(), Justification::centred);
-
-}
-
 void Graph::InternalGraph::setBuffer(const AudioSampleBuffer& b)
 {
 	if (b.getNumSamples() == 0)
@@ -287,19 +237,24 @@ void Graph::InternalGraph::calculatePath(Path& p, const AudioSampleBuffer& b, in
 {
 	numSamples = b.getNumSamples();
 	p.clear();
-
+	
 	if (numSamples == 0)
 		return;
+
+	bool bigMode = b.getNumSamples() > 20000;
 
 	if (b.getMagnitude(channel, 0, b.getNumSamples()) > 0.0f)
 	{
 		auto delta = (float)b.getNumSamples() / jmax(1.0f, (float)getWidth());
 
+		delta *= 16.0f;
+
 		int samplesPerPixel = jmax(1, (int)delta);
 
 		pixelsPerSample = 1.0f / (float)delta;
 
-		p.startNewSubPath(0.0f, getYPosition(0.0f));
+		if(!bigMode)
+			p.startNewSubPath(0.0f, getYPosition(0.0f));
 
 		for (int i = 0; i < b.getNumSamples(); i += samplesPerPixel)
 		{
@@ -316,7 +271,7 @@ void Graph::InternalGraph::calculatePath(Path& p, const AudioSampleBuffer& b, in
 
 			auto x = getXPosition((float)i / b.getNumSamples());
 
-			p.lineTo(x, getYPosition(s));
+            p.lineTo(x, getYPosition(s));
 		}
 
 		if (!isHiresMode())
@@ -342,7 +297,8 @@ void Graph::InternalGraph::resizePath()
     {
         auto lb = pb.removeFromTop(pathHeight).toFloat();
         lb.reduce(0.0f, 1.0f);
-        cd.path.scaleToFit(lb.getX(), lb.getY(), lb.getWidth(), lb.getHeight(), false);
+
+		cd.path.scaleToFit(lb.getX(), lb.getY(), lb.getWidth(), lb.getHeight(), false);
     }
     
 	repaint();
@@ -363,7 +319,7 @@ String Graph::InternalGraph::getTooltip()
 
 	float xNormalised = (float)currentPoint.getX() / (float)getWidth();
 	xNormalised = jlimit(0.0f, 1.0f, xNormalised);
-	auto sr = parent.getWorkbench()->getTestData().getPrepareSpecs().sampleRate;
+	auto sr = parent.getSampleRateFunction();
 
 	float yNormalised = (float)currentPoint.getY() / (float)getHeight();
 	yNormalised = 1.0f - jlimit(0.0f, 1.0f, yNormalised);
@@ -515,54 +471,65 @@ float Graph::InternalGraph::getYPosition(float level) const
 	return 0.0f;
 }
 
+void Graph::InternalGraph::RebuildThread::run()
+{
+    auto& lastBuffer = parent.lastBuffer;
+    
+    auto newImage = Image(Image::ARGB, lastBuffer.getNumSamples(), lastBuffer.getNumChannels() / 2, true);
+    
+    auto Spectrum2DSize = parent.findParentComponentOfClass<Graph>()->Spectrum2DSize / 2;
+
+    auto maxLevel = lastBuffer.getMagnitude(0, lastBuffer.getNumSamples());
+
+    if (maxLevel == 0.0f)
+        return;
+
+    for (int y = 0; y < Spectrum2DSize; y++)
+    {
+        auto skewedProportionY = parent.getYPosition((float)y / (float)Spectrum2DSize);
+
+        auto fftDataIndex = jlimit(0, Spectrum2DSize-1, (int)(skewedProportionY * (int)Spectrum2DSize));
+
+        for (int i = 0; i < lastBuffer.getNumSamples(); i++)
+        {
+            if(threadShouldExit())
+                return;
+            
+            auto s = lastBuffer.getSample(fftDataIndex, i);
+
+            //auto level = jmap(fftData[fftDataIndex], 0.0f, jmax(maxLevel.getEnd(), 1e-5f), 0.0f, 1.0f);
+            
+            s *= (1.0f / maxLevel);
+
+            auto alpha = jlimit(0.0f, 1.0f, s);
+
+            alpha = parent.getXPosition(alpha);
+
+            auto hueOffset = JUCE_LIVE_CONSTANT(0.5f);
+            auto hueGain = JUCE_LIVE_CONSTANT(0.8f);
+
+            auto hue = jlimit(0.0f, 1.0f, alpha * hueGain + hueOffset);
+
+            newImage.setPixelAt(i, y, Colour::fromHSV(hue, 1.0f, 1.0f, alpha));
+        }
+    }
+
+    std::swap(parent.spectroImage, newImage);
+    
+    MessageManager::callAsync([this]()
+    {
+        parent.repaint();
+    });
+}
+
 void Graph::InternalGraph::rebuildSpectrumRectangles()
 {
 	if (lastBuffer.getNumSamples() == 0)
 		return;
 
-	spectroImage = Image(Image::ARGB, lastBuffer.getNumSamples(), lastBuffer.getNumChannels(), true);
-
-	auto Spectrum2DSize = findParentComponentOfClass<Graph>()->Spectrum2DSize;
-
-
-	auto maxLevel = lastBuffer.getMagnitude(0, lastBuffer.getNumSamples());
-
-	if (maxLevel == 0.0f)
-		return;
-
-	for (int y = 0; y < Spectrum2DSize; y++)
-	{
-		auto skewedProportionY = getYPosition((float)y / (float)Spectrum2DSize);
-
-		auto fftDataIndex = jlimit(0, Spectrum2DSize-1, (int)(skewedProportionY * (int)Spectrum2DSize));
-
-		for (int i = 0; i < lastBuffer.getNumSamples(); i++)
-		{
-			auto s = lastBuffer.getSample(fftDataIndex, i);
-
-			//auto level = jmap(fftData[fftDataIndex], 0.0f, jmax(maxLevel.getEnd(), 1e-5f), 0.0f, 1.0f);
-			
-			s *= (1.0f / maxLevel);
-
-			auto alpha = jlimit(0.0f, 1.0f, s);
-
-			alpha = getXPosition(alpha);
-
-			auto hueOffset = JUCE_LIVE_CONSTANT_OFF(0.4f);
-			auto hueGain = JUCE_LIVE_CONSTANT_OFF(0.6f);
-
-			auto hue = jlimit(0.0f, 1.0f, alpha * hueGain + hueOffset);
-
-			spectroImage.setPixelAt(i, y, Colour::fromHSV(hue, 1.0f, 1.0f, alpha));
-		}
-	}
-
-#if 0
-	for (auto& sr : spectrumRectangles)
-		sr.areas.consolidate();
-#endif
-
-	repaint();
+    signalRebuild();
+    
+    this->repaint();
 }
 
 namespace GraphIcons
@@ -619,7 +586,7 @@ namespace GraphIcons
 
 }
 
-juce::Path Graph::Icons::createPath(const String& t) const
+juce::Path ComponentWithTopBar::Icons::createPath(const String& t) const
 {
 	auto url = MarkdownLink::Helpers::getSanitizedFilename(t);
 
@@ -673,19 +640,6 @@ void Graph::buttonClicked(Button* b)
 		refreshDisplayedBuffer();
 }
 
-void Graph::postPostCompile(WorkbenchData::Ptr wb)
-{
-	auto r = wb->getLastResult();
-
-	if (r.compiledOk())
-	{
-		cpuUsage = wb->getTestData().cpuUsage;
-		
-		refreshDisplayedBuffer();
-		repaint();
-	}
-}
-
 void Graph::paint(Graphics& g)
 {
 	auto total = getLocalBounds();
@@ -720,14 +674,36 @@ void Graph::paint(Graphics& g)
 	g.drawText(cu, getLocalBounds().toFloat().reduced(30.f, 3.f), Justification::topRight);
 }
 
+void Graph::paintOverChildren(Graphics& g)
+{
+	if (periodicUpdater != nullptr && currentGraphType != GraphType::FFT)
+	{
+		periodicUpdater->paintPosition(g, {});
+	}
+}
+
+bool Graph::getSamplePosition(double& samplePosition)
+{
+	samplePosition *= (double)internalGraph.getWidth();
+
+	auto d = viewport.getHorizontalScrollBar().getCurrentRange();
+
+	if (d.contains(samplePosition))
+	{
+		NormalisableRange<double> nr(d.getStart(), d.getEnd());
+		auto normalised = nr.convertTo0to1(samplePosition);
+		samplePosition = (double)getWidth() * normalised;
+		return true;
+	}
+
+	return false;
+}
+
 void Graph::refreshDisplayedBuffer()
 {
 	resized();
 
-	auto& td = getWorkbench()->getTestData();
-
-	auto shouldProcess = processButton->getToggleState();
-	const auto& bToUse = shouldProcess ? td.testOutputData : td.testSourceData;
+	auto& bToUse = getBufferFunction();
 
 	if (currentGraphType == GraphType::Signal)
 	{
@@ -737,35 +713,40 @@ void Graph::refreshDisplayedBuffer()
 	{
 		processFFT(bToUse);
 	}
+
+	repaint();
 }
 
 void Graph::processFFT(const AudioSampleBuffer& originalSource)
 {
-#if USE_IPP
-	auto& td = getWorkbench()->getTestData();
+	auto numSamplesToCheck = (double)originalSource.getNumSamples();
+
+	if (currentGraphType == GraphType::Spectrograph)
+		numSamplesToCheck = hmath::pow(numSamplesToCheck, JUCE_LIVE_CONSTANT_OFF(0.54));
+
+	auto order = jlimit(8, 13, (int)log2(nextPowerOfTwo(numSamplesToCheck)));
+
+    auto oversamplingFactor = JUCE_LIVE_CONSTANT_OFF(16);
+    
+	if (logScaleButton->getToggleState())
+		order = jmin(15, order + 2);
 
 	if (currentGraphType == GraphType::Spectrograph)
 	{
-
-		auto order = jlimit(8, 13, (int)log2(nextPowerOfTwo(hmath::sqrt((double)originalSource.getNumSamples()))));
-
-		if (logScaleButton->getToggleState())
-			order += 2;
+		auto fft = juce::dsp::FFT(order);
 
 		Spectrum2DSize = roundToInt(hmath::pow(2.0, (double)order));
 
-		auto numSamplesToFill = jmax(0, originalSource.getNumSamples() / Spectrum2DSize * 2 - 1);
+		auto numSamplesToFill = jmax(0, originalSource.getNumSamples() / Spectrum2DSize * oversamplingFactor - 1);
 
 		if (numSamplesToFill == 0)
 			return;
 
 		AudioSampleBuffer b(Spectrum2DSize, numSamplesToFill);
 
-		hise::IppFFT fft(hise::IppFFT::DataType::RealFloat, order + 2);
-
 		for (int i = 0; i < numSamplesToFill; i++)
 		{
-			auto offset = i * Spectrum2DSize / 2;
+			auto offset = (i * Spectrum2DSize) / oversamplingFactor;
 			AudioSampleBuffer sb(1, Spectrum2DSize * 2);
 			sb.clear();
 
@@ -775,14 +756,14 @@ void Graph::processFFT(const AudioSampleBuffer& originalSource)
 
 			Helpers::applyWindow(currentWindowType, sb);
 
-			fft.realFFTInplace(sb.getWritePointer(0), Spectrum2DSize * 2);
+			fft.performRealOnlyForwardTransform(sb.getWritePointer(0), false);
 
 			AudioSampleBuffer out(1, Spectrum2DSize);
 
-			IppFFT::Helpers::toFreqSpectrum(sb, out);
-			IppFFT::Helpers::scaleFrequencyOutput(out, false);
+			FFTHelpers::toFreqSpectrum(sb, out);
+            FFTHelpers::scaleFrequencyOutput(out, false);
 
-			for (int c = 0; c < Spectrum2DSize; c++)
+			for (int c = 0; c < b.getNumChannels(); c++)
 			{
 				b.setSample(c, i, out.getSample(0, c));
 			}
@@ -792,14 +773,10 @@ void Graph::processFFT(const AudioSampleBuffer& originalSource)
 	}
 	else
 	{
-		auto numToFFT = originalSource.getNumSamples();
-
-		numToFFT = td.testSignalLength;
+		auto numToFFT = jmin(originalSource.getNumSamples(), roundToInt(hmath::pow(2.0, (double)order)));
 
 		if (originalSource.getNumSamples() < numToFFT)
 			return;
-
-		auto order = (int)log2(numToFFT);
 
 		auto numOriginalSamples = numToFFT;
 
@@ -817,13 +794,18 @@ void Graph::processFFT(const AudioSampleBuffer& originalSource)
 
 		temp.setSize(temp.getNumChannels(), numOriginalSamples * 2, true, true);
 		fftSource.setSize(1, numOriginalSamples);
-		hise::IppFFT fft(hise::IppFFT::DataType::RealFloat, order + 2);
-		fft.realFFTInplace(temp.getWritePointer(0), numOriginalSamples * 2);
-		hise::IppFFT::Helpers::toFreqSpectrum(temp, fftSource);
-		hise::IppFFT::Helpers::scaleFrequencyOutput(fftSource, false);
+		
+		auto fft = juce::dsp::FFT(order);
+
+
+		fft.performRealOnlyForwardTransform(temp.getWritePointer(0), true);
+        FFTHelpers::toFreqSpectrum(temp, fftSource);
+        FFTHelpers::scaleFrequencyOutput(fftSource, false);
+
+		fftSource.setSize(fftSource.getNumChannels(), fftSource.getNumSamples() / 2, true, true, true);
+
 		internalGraph.setBuffer(fftSource);
 	}
-#endif
 }
 
 void ParameterList::rebuild()
@@ -1035,6 +1017,80 @@ void TestDataComponent::comboBoxChanged(ComboBox* cb)
 		td.currentTestSignalType = (WorkbenchData::TestData::TestSignalMode)cb->getSelectedItemIndex();
 
 	setTestBuffer(sendNotification);
+}
+
+TestGraph::TestGraph(WorkbenchData* d) :
+	TestDataComponentBase(d)
+{
+	addAndMakeVisible(graph);
+
+	graph.getBufferFunction = BIND_MEMBER_FUNCTION_0(TestGraph::getTestBuffer);
+
+	graph.getSampleRateFunction = [this]()
+	{
+		return getWorkbench()->getTestData().getPrepareSpecs().sampleRate;
+	};
+
+	graph.drawMarkerFunction = [this](Graphics& g)
+	{
+		auto& td = getWorkbench()->getTestData();
+
+		for (int i = 0; i < td.getNumTestEvents(true); i++)
+			drawTestEvent(g, true, i);
+
+		for (int i = 0; i < td.getNumTestEvents(false); i++)
+			drawTestEvent(g, false, i);
+	};
+}
+
+juce::AudioSampleBuffer& TestGraph::getTestBuffer()
+{
+	auto& td = getWorkbench()->getTestData();
+	auto shouldProcess = graph.processButton->getToggleState();
+	auto& bf = shouldProcess ? td.testOutputData : td.testSourceData;
+	return bf;
+}
+
+void TestGraph::drawTestEvent(Graphics& g, bool isParameter, int index)
+{
+	int timestamp = 0;
+	String t;
+	Colour c;
+
+	auto& td = getWorkbench()->getTestData();
+
+	if (td.testSourceData.getNumSamples() == 0)
+		return;
+
+	if (isParameter)
+	{
+		auto p = td.getParameterEvent(index);
+		timestamp = p.timeStamp;
+		t << "P" << String(p.parameterIndex) << ": " << Types::Helpers::getCppValueString(p.valueToUse);
+		c = Types::Helpers::getColourForType(Types::ID::Double);
+	}
+	else
+	{
+		auto e = td.getTestHiseEvent(index);
+		timestamp = e.getTimeStamp();
+		t << "E" << String(index) << ": " << e.getTypeAsString();
+		c = Types::Helpers::getColourForType(Types::ID::Integer);
+	}
+
+	auto ni = (float)timestamp / (float)td.testSourceData.getNumSamples();
+
+	auto xPos = roundToInt(ni * getWidth());
+
+	g.setColour(c.withAlpha(0.8f));
+	g.drawVerticalLine(xPos, 0.0f, (float)getHeight());
+
+	auto f = GLOBAL_MONOSPACE_FONT();
+	g.setFont(f);
+	juce::Rectangle<int> ar(xPos, 0, roundToInt(f.getStringWidthFloat(t) + 3.0f), 20);
+
+	g.fillRect(ar);
+	g.setColour(Colours::black);
+	g.drawText(t, ar.toFloat(), Justification::centred);
 }
 
 }

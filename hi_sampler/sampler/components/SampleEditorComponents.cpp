@@ -473,7 +473,7 @@ void SamplerSoundMap::refreshSelectedSoundsFromLasso()
 
 void SamplerSoundMap::drawSoundMap(Graphics &g)
 {
-    //g.fillAll(Colour(0xFF333333));
+    g.fillAll(Colour(0xff1d1d1d));
     
     const float noteWidth = (float)getWidth() / 128.0f;
     //const float velocityHeight = (float)getHeight() / 128.0f;
@@ -564,6 +564,25 @@ void SamplerSoundMap::paintOverChildren(Graphics &g)
 	{
 		const float noteWidth = (float)getWidth() / 128.0f;
 		const float velocityHeight = (float)getHeight() / 128.0f;
+
+		auto v = getSampler()->getMidiInputLockValue(SampleIds::LoVel);
+
+		if (v != -1)
+		{
+			float y = (float)(getHeight() - (v * velocityHeight));
+			
+			g.setColour(Colour(SIGNAL_COLOUR));
+			g.drawHorizontalLine(y, 0.0f, (float)getWidth());
+
+			Path p;
+			p.loadPathFromData(ColumnIcons::lockIcon, sizeof(ColumnIcons::lockIcon));
+			Rectangle<float> d(0.0f, y, 32, 32);
+			if (d.getBottom() > getHeight())
+				d = d.translated(0, -32);
+
+			PathFactory::scalePath(p, d.reduced(4.0f));
+			g.fillPath(p);
+		}
 
 		for (int i = 0; i < 127; i++)
 		{

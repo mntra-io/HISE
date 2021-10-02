@@ -45,6 +45,7 @@ class SampleEditor : public Component,
 	public SamplerSubEditor,
 	public ApplicationCommandTarget,
 	public AudioDisplayComponent::Listener,
+    public ComboBox::Listener,
 	public SafeChangeListener,
 	public SampleMap::Listener
 {
@@ -52,12 +53,6 @@ public:
 	//==============================================================================
 	SampleEditor(ModulatorSampler *s, SamplerBody *b);
 	~SampleEditor();
-
-	//==============================================================================
-	//[UserMethods]     -- You can add your own custom methods in this section.
-
-
-
 
 	void changeListenerCallback(SafeChangeBroadcaster *)
 	{
@@ -68,6 +63,8 @@ public:
 	{
 		updateWaveform();
 	}
+
+	bool isInWorkspace() const { return findParentComponentOfClass<ProcessorEditor>() == nullptr; }
 
 	void sampleMapWasChanged(PoolReference r) override
 	{
@@ -84,6 +81,8 @@ public:
 			currentWaveForm->setSoundToDisplay(nullptr);
 		}
 	}
+
+	AudioSampleBuffer& getGraphBuffer();
 
 	void rangeChanged(AudioDisplayComponent *c, int areaThatWasChanged) override
 	{
@@ -155,14 +154,12 @@ public:
 		EnableSampleStartArea,
 		EnableLoopArea,
 		EnablePlayArea,
-
 		SelectWithMidi,
 		NormalizeVolume,
 		LoopEnabled,
-
+		Analyser,
 		numCommands
 	};
-
 
 	ApplicationCommandTarget* getNextCommandTarget() override
 	{
@@ -180,6 +177,7 @@ public:
 								SelectWithMidi,
 								NormalizeVolume,
 								LoopEnabled,
+								Analyser
 								};
 
 		commands.addArray(id, numElementsInArray(id));
@@ -201,16 +199,19 @@ public:
 								break;
 		case EnableSampleStartArea:	result.setInfo("Enable SampleStart Dragging", "Enable Sample Start Modulation Area Dragging", "Areas", 0);
 									result.setActive(isSelected && (int)selection.getLast()->getSampleProperty(SampleIds::SampleStartMod) != 0);
+                                    result.setTicked(isSelected && !currentWaveForm->getSampleArea(SamplerSoundWaveform::AreaTypes::SampleStartArea)->isAreaEnabled());
 									break;
 		case EnableLoopArea:	result.setInfo("Enable SampleStart Dragging", "Enable Loop Area Dragging", "Areas", 0);
 								result.setActive(isSelected && selection.getLast()->getSampleProperty(SampleIds::LoopEnabled));
+                                result.setTicked(isSelected && !currentWaveForm->getSampleArea(SamplerSoundWaveform::AreaTypes::LoopArea)->isAreaEnabled());
 								break;
 		case EnablePlayArea:	result.setInfo("Enable Play Area Dragging", "Enable Playback Area Dragging", "Areas", 0);
 								result.setActive(isSelected);
+                                result.setTicked(isSelected && !currentWaveForm->getSampleArea(SamplerSoundWaveform::AreaTypes::PlayArea)->isAreaEnabled());
 								break;
 		case SelectWithMidi:	result.setInfo("Midi Select", "Autoselect the most recently triggered sound", "Tools", 0);
 								result.setActive(true);
-								result.setTicked(sampler->getEditorState(ModulatorSampler::MidiSelectActive));
+								result.setTicked(!sampler->getEditorState(ModulatorSampler::MidiSelectActive));
 								break;
 		case NormalizeVolume:	result.setInfo("Normalize Volume", "Normalize the sample volume to 0dB", "Properties", 0);
 								result.setActive(isSelected);
@@ -220,12 +221,18 @@ public:
 								result.setActive(isSelected);
 								result.setTicked(isSelected && (int)selection.getLast()->getSampleProperty(SampleIds::LoopEnabled));
 								break;
+		case Analyser:			result.setInfo("Show FFT analyser", "FFT Analyser", "Properties", 0);
+								result.setActive(isSelected);
+								result.setTicked(isSelected && viewport->isVisible());
+								break;
 		}
 	};
 
 	bool perform (const InvocationInfo &info) override;
 
 
+	void toggleAnalyser();
+	
 
 	void soundsSelected(const SampleSelection  &selectedSoundList) override
 	{
@@ -248,67 +255,37 @@ public:
 
 		if(selectedSoundList.size() != 0 && selectedSoundList.getLast() != nullptr) currentWaveForm->setSoundToDisplay(selectedSoundList.getLast());
 		else currentWaveForm->setSoundToDisplay(nullptr);
+
+        sampleSelector->clear(dontSendNotification);
+        multimicSelector->clear(dontSendNotification);
+        int sampleIndex = 1;
+        
+        for(auto s: selectedSoundList)
+        {
+            sampleSelector->addItem(s->getSampleProperty(SampleIds::FileName).toString().replace("{PROJECT_FOLDER}", ""), sampleIndex++);
+        }
+        
+        sampleSelector->setSelectedId(selectedSoundList.size(), dontSendNotification);
+        
+        auto micPositions = StringArray::fromTokens(sampler->getStringForMicPositions(), ";", "");
+        micPositions.removeEmptyStrings();
+        
+        int micIndex = 1;
+        
+        for(auto t: micPositions)
+        {
+            multimicSelector->addItem(t, micIndex++);
+        }
+        
+        multimicSelector->setTextWhenNothingSelected("No multimics");
+        multimicSelector->setTextWhenNoChoicesAvailable("No multimics");
+        
+		updateWaveform();
 	}
 
-	void paintOverChildren(Graphics &g)
-	{
-		if(selection.size() != 0)
-		{
-			g.setColour(Colours::black.withAlpha(0.4f));
+	void paintOverChildren(Graphics &g);
 
-			const bool useGain = selection.getLast()->getNormalizedPeak() != 1.0f;
-
-			String fileName = selection.getLast()->getPropertyAsString(SampleIds::FileName);
-
-			PoolReference ref(sampler->getMainController(), fileName, FileHandlerBase::Samples);
-
-			fileName = ref.getReferenceString();
-
-			const String autogain = useGain ? ("Autogain: " + String(Decibels::gainToDecibels(selection.getLast()->getNormalizedPeak()), 1) + " dB") : String();
-
-			int width = jmax<int>(GLOBAL_BOLD_FONT().getStringWidth(autogain), GLOBAL_BOLD_FONT().getStringWidth(fileName)) + 8;
-
-			Rectangle<int> area(viewport->getRight() - width-1, viewport->getY()+1, width, useGain ? 32 : 16);
-
-			g.fillRect(area);
-
-
-			g.setColour(Colours::white.withAlpha(0.7f));
-			g.setFont(GLOBAL_BOLD_FONT());
-
-			
-			g.drawText(fileName, area, Justification::topRight, false);
-
-			if(useGain)
-				g.drawText(autogain, area, Justification::bottomRight, false);
-
-			if (auto f = selection.getFirst())
-			{
-				if (f->isMissing())
-				{
-					g.setColour(Colours::black.withAlpha(0.4f));
-					
-
-					auto b = viewport->getBounds().toFloat();
-
-					g.fillRect(b);
-
-					g.setColour(Colours::white);
-					g.drawText(f->getReferenceToSound()->getFileName(true) + " is missing", b, Justification::centred);
-				}
-			}
-
-		}
-
-
-	}
-
-	void updateWaveform()
-	{
-		samplerEditorCommandManager->commandStatusChanged();
-
-		currentWaveForm->updateRanges();
-	}
+	void updateWaveform();
 
 	void zoom(bool zoomOut)
 	{
@@ -337,21 +314,72 @@ public:
 
 	};
 
+    void comboBoxChanged(ComboBox* cb) override
+    {
+        refreshDisplayFromComboBox();
+    }
+    
+    void refreshDisplayFromComboBox()
+    {
+        auto idx = sampleSelector->getSelectedItemIndex();
+        
+        if(auto s = selection[idx])
+        {
+            currentWaveForm->setSoundToDisplay(s);
+        }
+    }
+    
+    
     //[/UserMethods]
 
     void paint (Graphics& g);
     void resized();
 
-
+	void addButton(CommandID commandId, bool hasState, const String& name, const String& offName = String());
 
 private:
     //[UserVariables]   -- You can add your own custom variables in this section.
 	friend class SampleEditorToolbarFactory;
 
+	struct GraphHandler : public AsyncUpdater
+	{
+		GraphHandler(SampleEditor& parent_) :
+			parent(parent_)
+		{};
+
+		void handleAsyncUpdate()
+		{
+			parent.graph->refreshDisplayedBuffer();
+		}
+
+		void rebuildIfDirty()
+		{
+			auto cs = parent.currentWaveForm->getCurrentSound();
+			if (lastSound != cs)
+			{
+				lastSound = const_cast<ModulatorSamplerSound*>(cs);
+				triggerAsyncUpdate();
+			}
+		};
+
+		SampleEditor& parent;
+		AudioSampleBuffer graphBuffer;
+		ModulatorSamplerSound::WeakPtr lastSound;
+	} graphHandler;
+
+	
+
 	float zoomFactor;
 
 	ModulatorSampler *sampler;
 	SamplerBody	*body;
+
+	ScrollbarFader fader;
+	ScrollbarFader::Laf laf;
+
+	ScopedPointer<snex::ui::Graph> graph;
+
+	ScopedPointer<Component> viewContent;
 
 	ScopedPointer<SamplerSoundWaveform> currentWaveForm;
 
@@ -360,6 +388,8 @@ private:
 	ScopedPointer<SampleEditorToolbarFactory> toolbarFactory;
 
 	ScopedPointer<ApplicationCommandManager> samplerEditorCommandManager;
+
+	OwnedArray<HiseShapeButton> menuButtons;
 
     //[/UserVariables]
 
@@ -376,6 +406,11 @@ private:
     ScopedPointer<Toolbar> toolbar;
     ScopedPointer<ValueSettingComponent> panSetter;
 
+	ScopedPointer<Component> verticalZoomer;
+    ScopedPointer<ComboBox> sampleSelector;
+    ScopedPointer<ComboBox> multimicSelector;
+    
+    GlobalHiseLookAndFeel claf;
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SampleEditor)
