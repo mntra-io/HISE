@@ -969,7 +969,7 @@ Image Spectrum2D::createSpectrumImage(AudioSampleBuffer& lastBuffer)
             
             auto hueOffset = JUCE_LIVE_CONSTANT(0.5f);
             auto hueGain = JUCE_LIVE_CONSTANT(0.9f);
-            auto hue = jmax(0.0f, std::fmodf(alpha * hueGain + hueOffset, 1.0f));
+            auto hue = jmax(0.0f, std::fmod(alpha * hueGain + hueOffset, 1.0f));
 
             newImage.setPixelAt(i, y, Colour::fromHSV(hue, JUCE_LIVE_CONSTANT(0.6f), 1.0f, alpha));
         }
