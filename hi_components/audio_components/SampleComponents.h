@@ -366,6 +366,8 @@ public:
 
 	void mouseDown(const MouseEvent& e) override;
 
+	void mouseUp(const MouseEvent& e) override;
+
 	void mouseMove(const MouseEvent& e) override;
 
 	const ModulatorSamplerSound *getCurrentSound() const { return currentSound.get(); }
@@ -393,7 +395,7 @@ public:
 		else
 			currentClickArea = newArea;
 
-		setMouseCursor(currentClickArea == MultiChannelAudioBufferDisplay::numAreas ? MouseCursor::NormalCursor : MouseCursor::CrosshairCursor);
+		setMouseCursor(currentClickArea == AreaTypes::numAreas ? MouseCursor::NormalCursor : MouseCursor::CrosshairCursor);
 	}
 
 	float getCurrentSampleGain() const;
@@ -402,6 +404,8 @@ public:
 
 	AreaTypes currentClickArea = AreaTypes::numAreas;
 
+    bool zeroCrossing = true;
+    
 private:
 
 	AudioDisplayComponent::AreaTypes getAreaForModifiers(const MouseEvent& e) const;
@@ -416,6 +420,7 @@ private:
 	int numSamplesInCurrentSample;
 
 
+	int previewStart = -1;
 	double sampleStartPosition;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplerSoundWaveform)

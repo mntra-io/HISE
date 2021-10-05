@@ -117,8 +117,12 @@ public:
 
 	void fillAudioSampleBuffer(AudioSampleBuffer& b);
 
+	AudioSampleBuffer getBufferCopy(Range<int> sampleRange) const;
+
 	void paint(Graphics& g) override;
 
+    int getNextZero(int samplePos) const;
+    
 	void drawSection(Graphics &g, bool enabled);
 
     float getXPosition(float input) const override
@@ -229,6 +233,8 @@ private:
 	DisplayMode displayMode = DisplayMode::SymmetricArea;
 	AudioSampleBuffer downsampledValues;
 
+    bool useRectList = false;
+    
 	void createCurvePathForCurrentView(bool isLeft, Rectangle<int> area);
 
     float waveformAlpha = 1.0f;
@@ -297,7 +303,7 @@ private:
 
 	private:
 
-		
+        AudioSampleBuffer tempBuffer;
 
 		WeakReference<HiseAudioThumbnail> parent;
 
