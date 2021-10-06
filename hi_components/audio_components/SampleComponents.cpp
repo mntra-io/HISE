@@ -553,7 +553,7 @@ void SamplerSoundWaveform::setSoundToDisplay(const ModulatorSamplerSound *s, int
 
 void SamplerSoundWaveform::mouseDown(const MouseEvent& e)
 {
-	if (e.mods.isAltDown())
+	if (e.mods.isAltDown() || e.mods.isShiftDown())
 	{
 		auto mc = currentSound->getMainController();
 
@@ -626,8 +626,8 @@ void SamplerSoundWaveform::mouseMove(const MouseEvent& e)
 		auto n = (double)e.getPosition().getX() / (double)getWidth();
 
 		auto timeString = SamplerDisplayWithTimeline::getText(timeProperties, n);
-
-		if(e.mods.isAltDown())
+		
+		if (e.mods.isAltDown() || e.mods.isShiftDown())
 			setTooltip("Click to preview from " + timeString);
 
 		auto a = getAreaForModifiers(e);
