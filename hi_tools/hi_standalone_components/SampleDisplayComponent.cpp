@@ -908,6 +908,8 @@ void HiseAudioThumbnail::setBufferAndSampleRate(double newSampleRate, var buffer
 
 void HiseAudioThumbnail::setBuffer(var bufferL, var bufferR /*= var()*/, bool synchronously)
 {
+	ScopedLock sl(lock);
+
 	currentReader = nullptr;
 
 	const bool shouldBeNotEmpty = bufferL.isBuffer() && bufferL.getBuffer()->size != 0;
@@ -1508,7 +1510,7 @@ void MultiChannelAudioBufferDisplay::paint(Graphics &g)
 	bgColour = findColour(AudioDisplayComponent::ColourIds::bgColour);
 	g.fillAll(bgColour);
 
-	AudioDisplayComponent::paint(g);
+	//AudioDisplayComponent::paint(g);
 
 	if (over)
 	{
@@ -1537,7 +1539,7 @@ void MultiChannelAudioBufferDisplay::paintOverChildren(Graphics& g)
 		laf->drawTextOverlay(g, *preview, text, r.toFloat());
 	}
 
-	AudioDisplayComponent::paint(g);
+	AudioDisplayComponent::paintOverChildren(g);
 
 	String fileNameToShow = getCurrentlyLoadedFileName();
 
