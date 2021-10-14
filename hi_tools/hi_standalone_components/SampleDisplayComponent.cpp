@@ -79,9 +79,9 @@ void AudioDisplayComponent::refreshSampleAreaBounds(SampleArea* areaToSkip/*=nul
 		}
 
 		areas[i]->setBounds(x, 0, right - x, getHeight());
+
+		
 	}
-
-
 
 	repaint();
 }
@@ -211,10 +211,19 @@ void AudioDisplayComponent::SampleArea::mouseDrag(const MouseEvent &)
 	parentWaveform->refreshSampleAreaBounds(this);
 };
 
+void HiseAudioThumbnail::LookAndFeelMethods::drawThumbnailRange(Graphics& g, HiseAudioThumbnail& te, Rectangle<float> area, int areaIndex, Colour c, bool areaEnabled)
+{
+    UnblurryGraphics ug(g, te, true);
+    
+    g.setColour(c.withAlpha(areaEnabled ? 0.1f : 0.02f));
+    g.fillAll();
+
+    g.setColour(c.withAlpha(0.3f));
+    ug.draw1PxRect(area);
+}
+
 void AudioDisplayComponent::SampleArea::paint(Graphics &g)
 {
-	UnblurryGraphics ug(g, *this, true);
-	
 	if(area == AreaTypes::LoopCrossfadeArea)
 	{
 		Path fadeInPath;
@@ -224,33 +233,24 @@ void AudioDisplayComponent::SampleArea::paint(Graphics &g)
 		fadeInPath.lineTo((float)getWidth(), (float)getHeight());
 		fadeInPath.closeSubPath();
 
-		g.setColour(getAreaColour().withAlpha(areaEnabled ? 0.1f : 0.05f));
+		g.setColour(getAreaColour((AreaTypes)area).withAlpha(areaEnabled ? 0.1f : 0.05f));
 		g.fillPath(fadeInPath);
 
-		g.setColour(getAreaColour().withAlpha(0.3f));
+		g.setColour(getAreaColour((AreaTypes)area).withAlpha(0.3f));
 		PathStrokeType stroke(1.0f);
 		g.strokePath(fadeInPath, stroke);
 	}
-	else if (area == AreaTypes::PlayArea)
-	{
-		g.setColour(getAreaColour().withAlpha(areaEnabled ? 0.1f : 0.02f));
-		g.fillAll();
-
-		g.setColour(getAreaColour().withAlpha(0.3f));
-		ug.draw1PxRect(getLocalBounds().toFloat());
-	}
 	else
 	{
-		g.setColour(getAreaColour().withAlpha(areaEnabled ? 0.15f : 0.06f));
-		g.fillAll();
-
-		g.setColour(getAreaColour().withAlpha(0.3f));
-		ug.draw1PxRect(getLocalBounds().toFloat());
-
-		g.setColour(getAreaColour());
-
-		g.drawVerticalLine(0, 0.0, (float)getHeight());
-		g.drawVerticalLine(getWidth() - 1, 0.0, (float)getHeight());
+        auto p = findParentComponentOfClass<AudioDisplayComponent>();
+        if(auto laf = dynamic_cast<HiseAudioThumbnail::LookAndFeelMethods*>(&p->getThumbnail()->getLookAndFeel()))
+        {
+            auto a = getLocalBounds().toFloat();
+            
+            laf->drawThumbnailRange(g, *p->getThumbnail(), a, (int)area, getAreaColour((AreaTypes)area), areaEnabled);
+        }
+        else
+            jassertfalse;
 	}
 }
 
@@ -319,14 +319,14 @@ void AudioDisplayComponent::SampleArea::resized()
 
 }
 
-Colour AudioDisplayComponent::SampleArea::getAreaColour() const
+Colour AudioDisplayComponent::SampleArea::getAreaColour(AreaTypes area)
 {
 	switch(area)
 	{
 	case AreaTypes::PlayArea:			return Colours::white;
-	case AreaTypes::SampleStartArea:	return Colours::blue;
-	case AreaTypes::LoopArea:			return Colours::green;
-	case AreaTypes::LoopCrossfadeArea:	return Colours::yellow;
+	case AreaTypes::SampleStartArea:	return JUCE_LIVE_CONSTANT_OFF(Colour(0xff5e892f));
+	case AreaTypes::LoopArea:			return JUCE_LIVE_CONSTANT_OFF(Colour(0xff59a2b1));
+	case AreaTypes::LoopCrossfadeArea:	return JUCE_LIVE_CONSTANT_OFF(Colour(0xffcfc75c));
 	default:		jassertfalse;		return Colours::transparentBlack;
 	}
 }
@@ -351,7 +351,7 @@ void AudioDisplayComponent::SampleArea::EdgeLookAndFeel::drawStretchableLayoutRe
 	}
 	else
 	{
-		g.setColour(parentArea->getAreaColour().withAlpha(isMouseOver ? 0.2f : 0.0f));
+		g.setColour(parentArea->getAreaColour((AreaTypes)parentArea->area).withAlpha(isMouseOver ? 0.2f : 0.0f));
 		g.fillAll();
 	}
 };
@@ -420,9 +420,13 @@ void HiseAudioThumbnail::LoadingThread::run()
 			rb = var(r.get());
 		}
 
+		parent->sampleProcessor.sendMessage(sendNotificationSync, lb, rb);
+
 		if (parent.get() != nullptr)
 		{
 			ScopedLock sl(parent->lock);
+
+			
 
 			parent->lBuffer = lb;
 			parent->rBuffer = rb;
@@ -459,7 +463,7 @@ void HiseAudioThumbnail::LoadingThread::run()
 	Path lPath;
 	Path rPath;
 
-	RectangleList<float> lRects, rRects;
+	RectangleListType lRects, rRects;
 
 	auto sf = UnblurryGraphics::getScaleFactorForComponent(parent, false);
 	float width = (float)bounds.getWidth() * sf;
@@ -536,7 +540,7 @@ void HiseAudioThumbnail::LoadingThread::run()
 	}
 }
 
-void HiseAudioThumbnail::LoadingThread::scalePathFromLevels(Path &p, RectangleList<float>& rects, Rectangle<float> bounds, const float* data, const int numSamples, bool scaleVertically)
+void HiseAudioThumbnail::LoadingThread::scalePathFromLevels(Path &p, RectangleListType& rects, Rectangle<float> bounds, const float* data, const int numSamples, bool scaleVertically)
 {
 	if (!rects.isEmpty())
 	{
@@ -569,7 +573,7 @@ void HiseAudioThumbnail::LoadingThread::scalePathFromLevels(Path &p, RectangleLi
 	}
 }
 
-void HiseAudioThumbnail::LoadingThread::calculatePath(Path &p, float width, const float* l_, int numSamples, RectangleList<float>& rects, bool isLeft)
+void HiseAudioThumbnail::LoadingThread::calculatePath(Path &p, float width, const float* l_, int numSamples, RectangleListType& rects, bool isLeft)
 {
 	auto rawStride = (float)numSamples / width;
     
@@ -584,7 +588,7 @@ void HiseAudioThumbnail::LoadingThread::calculatePath(Path &p, float width, cons
 		p.clear();
 		stride = jmax(1, roundToInt(rawStride));
 
-        parent->useRectList = stride > JUCE_LIVE_CONSTANT(40);
+        parent->useRectList = stride > JUCE_LIVE_CONSTANT(20);
         
         if(parent->useRectList)
             stride /= 2;
@@ -603,8 +607,6 @@ void HiseAudioThumbnail::LoadingThread::calculatePath(Path &p, float width, cons
             auto range = FloatVectorOperations::findMinAndMax(l_ + i, numToCheck);
 
             float v = useMax ? range.getStart() : range.getEnd();
-
-            
 
             if (stride < 10)
             {
@@ -626,7 +628,8 @@ void HiseAudioThumbnail::LoadingThread::calculatePath(Path &p, float width, cons
             
             useMax = !useMax;
             
-            tempBuffer.setSample(isLeft ? 0 : 1, b1, v1);
+			if(isPositiveAndBelow(b1, tempBuffer.getNumSamples()))
+				tempBuffer.setSample(isLeft ? 0 : 1, b1, v1);
 		}
 
 		return;
@@ -835,7 +838,7 @@ void HiseAudioThumbnail::LookAndFeelMethods::drawHiseThumbnailPath(Graphics& g, 
 	}
 }
 
-void HiseAudioThumbnail::LookAndFeelMethods::drawHiseThumbnailRectList(Graphics& g, HiseAudioThumbnail& th, bool areaIsEnabled, const RectangleList<float>& rectList)
+void HiseAudioThumbnail::LookAndFeelMethods::drawHiseThumbnailRectList(Graphics& g, HiseAudioThumbnail& th, bool areaIsEnabled, const RectangleListType& rectList)
 {
     float wAlpha = th.waveformAlpha * th.waveformAlpha;
     
@@ -1031,9 +1034,11 @@ void HiseAudioThumbnail::paint(Graphics& g)
         drawSection(g, true);
 
         g.restoreState();
+		g.saveState();
         g.excludeClipRegion(bounds);
 
         drawSection(g, false);
+		g.restoreState();
     }
     else
     {
@@ -1054,13 +1059,60 @@ int HiseAudioThumbnail::getNextZero(int value) const
         
         auto sig = start > 0.0f;
         
+		int deltaUp = -1;
+		int deltaDown = -1;
+
         for(int i = value; i < b.getNumSamples(); i++)
         {
-            auto thisSig = b.getSample(0, i) > 0.0f;
+			auto thisSample = b.getSample(0, i);
+
+			if (thisSample == 0.0f)
+				continue;
+
+            auto thisSig = thisSample > 0.0f;
             
-            if(sig != thisSig)
-                return i;
+			if (sig != thisSig)
+			{
+				deltaUp = i;
+
+				if (std::abs(b.getSample(0, i - 1) < std::abs(b.getSample(0, i))))
+					deltaUp = i - 1;
+
+				break;
+			}
         }
+
+		for (int i = value; i >= 0; i--)
+		{
+			auto thisSample = b.getSample(0, i);
+
+			if (thisSample == 0.0f)
+				continue;
+
+			auto thisSig = thisSample > 0.0f;
+
+			if (sig != thisSig)
+			{
+				deltaDown = i;
+
+				if (std::abs(b.getSample(0, i + 1) < std::abs(b.getSample(0, i))))
+					deltaDown = i + 1;
+
+				break;
+			}
+		}
+
+		if (deltaDown == -1 && deltaUp == -1)
+			return value;
+		if (deltaDown == -1)
+			return deltaUp;
+		if (deltaUp == -1)
+			return deltaDown;
+
+		if (std::abs(deltaUp - value) > std::abs(deltaDown - value))
+			return deltaDown;
+		else
+			return deltaUp;
     }
     
     return value;
@@ -1280,13 +1332,15 @@ void HiseAudioThumbnail::createCurvePathForCurrentView(bool isLeft, Rectangle<in
         
         for (int i = start; i < end; i++)
         {
-            auto v = getBufferValue(i);
+            auto v = std::abs(getBufferValue(i));
             auto x = (float)va.getX() + (i - start) * pw;
             auto y = (float)area.getCentreY() - v *  (float)area.getHeight() * 0.5f;
-            auto w = pw * 1.5f;
+            auto w = roundToInt(pw * 1.5f);
             auto h = (float)area.getHeight() * v;
             
-            rToUse.addWithoutMerging({x, y, w, h});
+			RectangleListType::RectangleType r(x, y, w, h);
+
+            rToUse.addWithoutMerging(r);
         }
     }
 }

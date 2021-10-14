@@ -82,6 +82,11 @@ namespace hise { using namespace juce;
 #define HISE_CONTROL_RATE_DOWNSAMPLING_FACTOR HISE_EVENT_RASTER
 #endif
 
+/** If enabled, this will try to retain as much pitch modulation resolution as possible (it will still get downsampled to the control rate).
+*/
+#ifndef HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD
+#define HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD 0
+#endif
 
 #if (HISE_EVENT_RASTER != 1)
 #define HISE_USE_CONTROLRATE_DOWNSAMPLING 1

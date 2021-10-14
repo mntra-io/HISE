@@ -46,9 +46,10 @@ public:
 		public ButtonListener,
 		public TextEditor::Listener
 	{
-		MyFunkyFilenameComponent(FileNameValuePropertyComponent& p, File::TypesOfFileToFind fileType) :
+		MyFunkyFilenameComponent(FileNameValuePropertyComponent& p, File::TypesOfFileToFind fileType_) :
 			parent(p),
-			browseButton("Browse")
+			browseButton("Browse"),
+			fileType(fileType_)
 		{
 			addAndMakeVisible(&editor);
 			editor.addListener(this);
@@ -180,16 +181,6 @@ public:
 		public LookAndFeelMethods
 	{
         virtual ~HiseTableLookAndFeel() {};
-	};
-
-	struct FlatTableLookAndFeel : public LookAndFeel_V3,
-								  public LookAndFeelMethods
-	{
-        virtual ~FlatTableLookAndFeel() {};
-        
-		void drawTablePath(Graphics& g, TableEditor& te, Path& p, Rectangle<float> area, float lineThickness) override;
-		void drawTablePoint(Graphics& g, TableEditor& te, Rectangle<float> tablePoint, bool isEdge, bool isHover, bool isDragged) override;
-		void drawTableRuler(Graphics& g, TableEditor& te, Rectangle<float> area, float lineThickness, double rulerPosition) override;
 	};
 
 	/** This listener can be used to react on user interaction to display stuff.
@@ -354,12 +345,7 @@ public:
 
 	void setUseFlatDesign(bool shouldUseFlatDesign)
 	{
-		if (shouldUseFlatDesign)
-			setSpecialLookAndFeel(new FlatTableLookAndFeel(), true);
-		else
-			setSpecialLookAndFeel(new HiseTableLookAndFeel(), true);
-
-		setLookAndFeel(getSpecialLookAndFeel<LookAndFeel>());
+        useFlatDesign = shouldUseFlatDesign;
 		
 		repaint();
 	}
@@ -505,11 +491,6 @@ public:
 
 	String getPopupString(float x, float y);
 	std::function<String(float, float)> popupFunction;
-
-	void setTableLookAndFeel(LookAndFeelMethods* lm, bool isExternalLaf)
-	{
-		setSpecialLookAndFeel(dynamic_cast<LookAndFeel*>(lm), !isExternalLaf);
-	}
 
 	float getLastIndex() const { return jlimit(0.0f, 1.0f, lastIndex); }
 
@@ -902,7 +883,7 @@ private:
 
 	ScopedPointer<TouchOverlay> touchOverlay;
 
-	//bool flatDesign = false;
+	bool useFlatDesign = false;
 
 	float lineThickness = 2.0f;
 

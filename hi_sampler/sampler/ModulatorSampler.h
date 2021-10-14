@@ -216,6 +216,7 @@ public:
 		Purged, 
 		Reversed,
         UseStaticMatrix,
+		LowPassEnvelopeOrder,
 		numModulatorSamplerParameters
 	};
 
@@ -414,6 +415,8 @@ public:
 
 	bool saveSampleMapAsMonolith (Component* mainEditor) const;
 
+	bool shouldUseRoundRobinLogic() const { return useRoundRobinCycleLogic; }
+
 	/** Disables the automatic cycling and allows custom setting of the used round robin group. */
 	void setUseRoundRobinLogic(bool shouldUseRoundRobinLogic) noexcept { useRoundRobinCycleLogic = shouldUseRoundRobinLogic; };
 	/** Sets the current index to the group. */
@@ -458,7 +461,7 @@ public:
 		double currentSampleStartPos;
 		float crossfadeTableValue;
 		int currentGroup = 1;
-		int currentlyDisplayedGroup = 0;
+		int currentlyDisplayedGroup = -1;
 
 		uint8 currentNotes[128];
 	};
@@ -640,6 +643,7 @@ public:
     
     bool isUsingStaticMatrix() const noexcept { return useStaticMatrix; };
 
+	void setDisplayedGroup(int index);
 	
 	void setSortByGroup(bool shouldSortByGroup);
 
@@ -661,6 +665,10 @@ public:
 	bool shouldAbortIteration() const noexcept { return false; }
 
 	bool& getIterationFlag() { return abortIteration; };
+
+	CascadedEnvelopeLowPass* getEnvelopeFilter() { return envelopeFilter.get(); }
+
+	void setEnableEnvelopeFilter();
 
 private:
 
@@ -787,8 +795,6 @@ private:
 	int preloadSize;
 	int bufferSize;
 
-	hise::LockFreeUpdater midiSelectionUpdater;
-
 	bool useStaticMatrix = false;
 
 	int64 memoryUsage;
@@ -798,6 +804,7 @@ private:
 	hlac::HiseSampleBuffer temporaryVoiceBuffer;
 
 	bool delayUpdate = false;
+	int lowPassOrder = 0;
 
 	float groupGainValues[8];
 	float currentCrossfadeValue;
@@ -810,6 +817,8 @@ private:
 	ModulatorChain* crossFadeChain = nullptr;
 	ScopedPointer<AudioThumbnailCache> soundCache;
 	
+	ScopedPointer<CascadedEnvelopeLowPass> envelopeFilter;
+
 #if USE_BACKEND || HI_ENABLE_EXPANSION_EDITING
 	ScopedPointer<SampleEditHandler> sampleEditHandler;
 #endif
