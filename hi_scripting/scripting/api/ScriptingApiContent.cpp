@@ -40,9 +40,13 @@
 
 
 
-
-#define ADD_TO_TYPE_SELECTOR(x) (ScriptComponentPropertyTypeSelector::addToTypeSelector(ScriptComponentPropertyTypeSelector::x, propertyIds.getLast()))
-#define ADD_AS_SLIDER_TYPE(min, max, interval) (ScriptComponentPropertyTypeSelector::addToTypeSelector(ScriptComponentPropertyTypeSelector::SliderSelector, propertyIds.getLast(), min, max, interval))
+#if USE_BACKEND
+#define ADD_TO_TYPE_SELECTOR(x) (selectorTypes->addToTypeSelector(ScriptComponentPropertyTypeSelector::x, propertyIds.getLast()))
+#define ADD_AS_SLIDER_TYPE(min, max, interval) (selectorTypes->addToTypeSelector(ScriptComponentPropertyTypeSelector::SliderSelector, propertyIds.getLast(), min, max, interval))
+#else
+#define ADD_TO_TYPE_SELECTOR(x)
+#define ADD_AS_SLIDER_TYPE(min, max, interval)
+#endif
 
 
 
@@ -145,7 +149,7 @@ ScriptingApi::Content::ScriptComponent::ScriptComponent(ProcessorWithScriptingCo
 	customControlCallback(var())
 {
 
-
+	
 
 	jassert(propertyTree.isValid());
 
@@ -3595,6 +3599,8 @@ ScriptingApi::Content::ScriptedViewport::ScriptedViewport(ProcessorWithScripting
 	propertyIds.add("scrollBarThickness");		ADD_AS_SLIDER_TYPE(0, 40, 1);
 	propertyIds.add("autoHide");				ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 	propertyIds.add(Identifier("useList"));		ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+	propertyIds.add(Identifier("viewPositionX")); ADD_AS_SLIDER_TYPE(0, 1, 0.01);
+	propertyIds.add(Identifier("viewPositionY")); ADD_AS_SLIDER_TYPE(0, 1, 0.01);
 	propertyIds.add(Identifier("items"));		ADD_TO_TYPE_SELECTOR(SelectorTypes::MultilineSelector);
 	ADD_SCRIPT_PROPERTY(i01, "fontName");		ADD_TO_TYPE_SELECTOR(SelectorTypes::ChoiceSelector);
 	ADD_NUMBER_PROPERTY(i02, "fontSize");		ADD_AS_SLIDER_TYPE(1, 200, 1);
@@ -3605,6 +3611,8 @@ ScriptingApi::Content::ScriptedViewport::ScriptedViewport(ProcessorWithScripting
 	setDefaultValue(ScriptComponent::Properties::y, y);
 	setDefaultValue(ScriptComponent::Properties::width, 200);
 	setDefaultValue(ScriptComponent::Properties::height, 100);
+	setDefaultValue(viewPositionX, 0.0);
+	setDefaultValue(viewPositionY, 0.0);
 	setDefaultValue(scrollbarThickness, 16.0);
 	setDefaultValue(autoHide, true);
 	setDefaultValue(useList, false);
@@ -3632,6 +3640,17 @@ void ScriptingApi::Content::ScriptedViewport::setScriptObjectPropertyWithChangeM
 		//}
 	}
 
+	if (id == getIdFor(viewPositionX))
+	{
+		auto y = (double)getScriptObjectProperty(getIdFor(viewPositionY));
+		positionBroadcaster.sendMessage(sendNotificationAsync, (double)newValue, y);
+	}
+
+	if (id == getIdFor(viewPositionY))
+	{
+		auto x = (double)getScriptObjectProperty(getIdFor(viewPositionX));
+		positionBroadcaster.sendMessage(sendNotificationAsync, x, (double)newValue);
+	}
 
 	ScriptComponent::setScriptObjectPropertyWithChangeMessage(id, newValue, notifyEditor);
 }
@@ -5465,6 +5484,61 @@ var ScriptingApi::Content::Helpers::getCleanedComponentValue(const var& data, bo
 		float d = (float)data;
 		FloatSanitizers::sanitizeFloatNumber(d);
 		return var(d);
+	}
+}
+
+hise::ScriptComponentPropertyTypeSelector::SelectorTypes ScriptComponentPropertyTypeSelector::getTypeForId(const Identifier &id) const
+{
+	if (toggleProperties.contains(id)) return ToggleSelector;
+	else if (sliderProperties.contains(id)) return SliderSelector;
+	else if (colourProperties.contains(id)) return ColourPickerSelector;
+	else if (choiceProperties.contains(id)) return ChoiceSelector;
+	else if (multilineProperties.contains(id)) return MultilineSelector;
+	else if (fileProperties.contains(id)) return FileSelector;
+	else if (codeProperties.contains(id)) return CodeSelector;
+	else return TextSelector;
+}
+
+void ScriptComponentPropertyTypeSelector::addToTypeSelector(SelectorTypes type, Identifier id, double min /*= 0.0*/, double max /*= 1.0*/, double interval /*= 0.01*/)
+{
+	switch (type)
+	{
+	case ScriptComponentPropertyTypeSelector::ToggleSelector:
+		toggleProperties.addIfNotAlreadyThere(id);
+		break;
+	case ScriptComponentPropertyTypeSelector::ColourPickerSelector:
+		colourProperties.addIfNotAlreadyThere(id);
+		break;
+	case ScriptComponentPropertyTypeSelector::SliderSelector:
+	{
+		sliderProperties.addIfNotAlreadyThere(id);
+		int index = sliderProperties.indexOf(id);
+		SliderRange range;
+
+		range.min = min;
+		range.max = max;
+		range.interval = interval;
+
+		sliderRanges.set(id.toString(), range);
+		break;
+	}
+	case ScriptComponentPropertyTypeSelector::ChoiceSelector:
+		choiceProperties.addIfNotAlreadyThere(id);
+		break;
+	case ScriptComponentPropertyTypeSelector::MultilineSelector:
+		multilineProperties.addIfNotAlreadyThere(id);
+		break;
+	case ScriptComponentPropertyTypeSelector::FileSelector:
+		fileProperties.addIfNotAlreadyThere(id);
+		break;
+	case ScriptComponentPropertyTypeSelector::TextSelector:
+		break;
+	case ScriptComponentPropertyTypeSelector::CodeSelector:
+		codeProperties.addIfNotAlreadyThere(id);
+	case ScriptComponentPropertyTypeSelector::numSelectorTypes:
+		break;
+	default:
+		break;
 	}
 }
 

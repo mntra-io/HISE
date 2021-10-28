@@ -42,17 +42,6 @@ namespace hise { using namespace juce;
 
 #define GET_OBJECT_COLOUR(id) (ScriptingApi::Content::Helpers::getCleanedObjectColour(GET_SCRIPT_PROPERTY(id)))
 
-
-Array<Identifier> ScriptComponentPropertyTypeSelector::toggleProperties = Array<Identifier>();
-Array<Identifier> ScriptComponentPropertyTypeSelector::sliderProperties = Array<Identifier>();
-Array<Identifier> ScriptComponentPropertyTypeSelector::colourProperties = Array<Identifier>();
-Array<Identifier> ScriptComponentPropertyTypeSelector::choiceProperties = Array<Identifier>();
-Array<Identifier> ScriptComponentPropertyTypeSelector::multilineProperties = Array<Identifier>();
-Array<Identifier> ScriptComponentPropertyTypeSelector::fileProperties = Array<Identifier>();
-Array<Identifier> ScriptComponentPropertyTypeSelector::codeProperties = Array<Identifier>();
-Array<ScriptComponentPropertyTypeSelector::SliderRange> ScriptComponentPropertyTypeSelector::sliderRanges = Array<ScriptComponentPropertyTypeSelector::SliderRange>();
-
-
 ScriptCreatedComponentWrapper::~ScriptCreatedComponentWrapper()
 {
 	Desktop::getInstance().removeFocusChangeListener(this);
@@ -1356,16 +1345,14 @@ public:
 ScriptCreatedComponentWrappers::ViewportWrapper::ViewportWrapper(ScriptContentComponent* content, ScriptingApi::Content::ScriptedViewport* viewport, int index):
 	ScriptCreatedComponentWrapper(content, index)
 {
-	
-
 	shouldUseList = (bool)viewport->getScriptObjectProperty(ScriptingApi::Content::ScriptedViewport::Properties::useList);
+
+	Viewport* vp = nullptr;
 
 	if (!shouldUseList)
 	{
-		Viewport* vp = new Viewport();
-
+		vp = new Viewport();
 		vp->setName(viewport->name.toString());
-
 		vp->setViewedComponent(new DummyComponent(), true);
 
 		auto mc = viewport->getScriptProcessor()->getMainController_();
@@ -1394,12 +1381,18 @@ ScriptCreatedComponentWrappers::ViewportWrapper::ViewportWrapper(ScriptContentCo
 		if (HiseDeviceSimulator::isMobileDevice())
 			table->setRowSelectedOnMouseDown(false);
 
-
 		table->getViewport()->setScrollOnDragEnabled(true);
+
+		vp = table->getViewport();
 
 		component = table;
 	}
 	
+	viewport->positionBroadcaster.addListener(*this, [vp](ViewportWrapper& v, double x, double y)
+	{
+		vp->setViewPositionProportionately(x, y);
+	});
+
 	initAllProperties();
 	updateValue(viewport->value);
 }
