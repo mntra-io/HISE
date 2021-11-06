@@ -86,7 +86,7 @@ void SampleEditHandler::moveSamples(SamplerSoundMap::Neighbour direction)
 	{
 		for (int i = 0; i < selectedSamplerSounds.getNumSelected(); i++)
 		{
-			ModulatorSamplerSound *sound = selectedSamplerSounds.getSelectedItem(i);
+			auto sound = selectedSamplerSounds.getSelectedItem(i);
 
 			if (direction == SamplerSoundMap::Right)
 			{
@@ -108,7 +108,7 @@ void SampleEditHandler::moveSamples(SamplerSoundMap::Neighbour direction)
 	{
 		for (int i = 0; i < selectedSamplerSounds.getNumSelected(); i++)
 		{
-			ModulatorSamplerSound *sound = selectedSamplerSounds.getSelectedItem(i);
+			auto sound = selectedSamplerSounds.getSelectedItem(i);
 
 			changeProperty(sound, SampleIds::HiVel, direction == SamplerSoundMap::Up ? 1 : -1);
 			changeProperty(sound, SampleIds::LoVel, direction == SamplerSoundMap::Up ? 1 : -1);
@@ -204,6 +204,11 @@ bool SampleEditHandler::keyPressed(const KeyPress& k, Component* originatingComp
 	if (k == KeyPress('z', ModifierKeys::commandModifier | ModifierKeys::shiftModifier, 'z'))
 	{
 		return getSampler()->getUndoManager()->redo();
+	}
+	if (k == KeyPress::F9Key)
+	{
+		SampleEditingActions::toggleFirstScriptButton(this);
+		return true;
 	}
 
 	if (k.getKeyCode() == KeyPress::escapeKey)
@@ -310,7 +315,7 @@ bool SampleEditHandler::newKeysPressed(const uint8 *currentNotes)
 	return false;
 }
 
-void SampleEditHandler::changeProperty(ModulatorSamplerSound *s, const Identifier& p, int delta)
+void SampleEditHandler::changeProperty(ModulatorSamplerSound::Ptr s, const Identifier& p, int delta)
 {
 	const int v = s->getSampleProperty(p);
 
@@ -330,6 +335,26 @@ juce::File SampleEditHandler::getCurrentSampleMapDirectory() const
 	return handler->getSubDirectory(ProjectHandler::SubDirectories::SampleMaps);
 }
 
+
+void SampleEditHandler::SampleEditingActions::toggleFirstScriptButton(SampleEditHandler* handler)
+{
+	if (auto jsp = ProcessorHelpers::getFirstProcessorWithType<JavascriptMidiProcessor>(handler->sampler))
+	{
+		auto v = jsp->getAttribute(0);
+
+		if (v == 0.0f)
+		{
+			jsp->setAttribute(0, 1.0f, sendNotificationAsync);
+
+			Timer::callAfterDelay(500, [jsp]()
+				{
+					jsp->setAttribute(0, 0.0f, sendNotificationAsync);
+				});
+
+			return;
+		}
+	}
+}
 
 void SampleEditHandler::SampleEditingActions::createMultimicSampleMap(SampleEditHandler* handler)
 {
@@ -463,14 +488,17 @@ void SampleEditHandler::SampleEditingActions::encodeAllMonoliths(Component * com
 
 
 
-void SampleEditHandler::SampleEditingActions::selectNeighbourSample(SampleEditHandler* handler, SamplerSoundMap::Neighbour direction, ModifierKeys mods)
+hise::ModulatorSamplerSound* SampleEditHandler::SampleEditingActions::getNeighbourSample(SampleEditHandler* handler, SamplerSoundMap::Neighbour direction)
 {
+	if (direction == SamplerSoundMap::Neighbour::numNeighbours)
+		direction = handler->currentDirection;
+
 	if (handler->getNumSelected() > 0)
 	{
 		auto sound = *handler->begin();
 
 		if (sound == nullptr)
-			return;
+			return nullptr;
 
 		Array<int> lowKeys;
 		Array<int> hiKeys;
@@ -495,7 +523,7 @@ void SampleEditHandler::SampleEditingActions::selectNeighbourSample(SampleEditHa
 
 		ModulatorSampler::SoundIterator iter(handler->getSampler());
 
-		while(auto s = iter.getNextSound())
+		while (auto s = iter.getNextSound())
 		{
 			const int thisLowKey = s->getSampleProperty(SampleIds::LoKey);
 			const int thisLowVelo = s->getSampleProperty(SampleIds::LoVel);
@@ -525,12 +553,23 @@ void SampleEditHandler::SampleEditingActions::selectNeighbourSample(SampleEditHa
 
 			if (selectThisComponent)
 			{
-				handler->getSelectionReference().addToSelectionBasedOnModifiers(s.get(), mods);
-				handler->setMainSelectionToLast();
+				return s;
 			}
 		}
 	}
 
+	return nullptr;
+}
+
+void SampleEditHandler::SampleEditingActions::selectNeighbourSample(SampleEditHandler* handler, SamplerSoundMap::Neighbour direction, ModifierKeys mods)
+{
+	handler->currentDirection = direction;
+
+	if (auto s = getNeighbourSample(handler, direction))
+	{
+		handler->getSelectionReference().addToSelectionBasedOnModifiers(s, mods);
+		handler->setMainSelectionToLast();
+	}
 }
 
 SampleEditHandler::PrivateSelectionUpdater::PrivateSelectionUpdater(SampleEditHandler& parent_, MainController* mc) :

@@ -231,7 +231,7 @@ struct TestDataComponentBase : public WorkbenchComponent,
 	public WorkbenchData::TestData::TestListener
 {
 	TestDataComponentBase(WorkbenchData::Ptr data) :
-		WorkbenchComponent(data)
+		WorkbenchComponent(data.get())
 	{
 		data->addListener(this);
 		data->getTestData().addListener(this);
@@ -327,6 +327,11 @@ struct Graph: public Component,
 		float getYPosition(float level) const override;
 
 		float getXPosition(float normalisedIndex) const override;
+
+		Spectrum2D::Parameters::Ptr getParameters() const override
+		{
+			return new Spectrum2D::Parameters();
+		}
 
 		void rebuildSpectrumRectangles();
 

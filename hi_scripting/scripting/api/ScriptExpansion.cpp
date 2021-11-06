@@ -95,159 +95,7 @@ bool ScriptUserPresetHandler::isOldVersion(const String& version)
 	return svs.isUpdate();
 }
 
-struct JSONConversionHelpers
-{
-	static var valueTreeToJSON(const ValueTree& v)
-	{
-		DynamicObject::Ptr p = new DynamicObject();
 
-		for (int i = 0; i < v.getNumProperties(); i++)
-		{
-			auto id = v.getPropertyName(i);
-			p->setProperty(id, v[id]);
-		}
-
-		bool hasChildrenWithSameName = v.getNumChildren() > 0;
-		auto firstType = v.getChild(0).getType();
-
-		for (auto c : v)
-		{
-			if (c.getType() != firstType)
-			{
-				hasChildrenWithSameName = false;
-				break;
-			}
-		}
-
-		Array<var> childList;
-		
-		
-		
-		for (auto c : v)
-		{
-			if (c.getNumChildren() == 0 && c.getNumProperties() == 0)
-			{
-				p->setProperty(c.getType(), new DynamicObject());
-				continue;
-			}
-
-			auto jsonChild = valueTreeToJSON(c);
-
-			if (hasChildrenWithSameName)
-				childList.add(jsonChild);
-			else
-				p->setProperty(c.getType(), jsonChild);
-		}
-
-		if (hasChildrenWithSameName)
-		{
-			p->setProperty("ChildId", firstType.toString());
-			p->setProperty("Children", var(childList));
-		}
-
-		return var(p);
-	}
-
-	static ValueTree jsonToValueTree(var data, const Identifier& typeId, bool isParentData=true)
-	{
-		if (isParentData)
-		{
-			data = data.getProperty(typeId, {});
-			jassert(data.isObject());
-			DBG(JSON::toString(data));
-		}
-
-		
-
-		ValueTree v(typeId);
-
-		if (data.hasProperty("ChildId"))
-		{
-			Identifier childId(data.getProperty("ChildId", "").toString());
-
-			for (auto& nv : data.getDynamicObject()->getProperties())
-			{
-				if (nv.name.toString() == "ChildId")
-					continue;
-
-				if (nv.name.toString() == "Children")
-					continue;
-
-				v.setProperty(nv.name, nv.value, nullptr);
-			}
-
-			auto lv = data.getProperty("Children", var());
-			if (auto l = lv.getArray())
-			{
-				for (auto& c : *l)
-				{
-					v.addChild(jsonToValueTree(c, childId, false), -1, nullptr);
-				}
-			}
-		}
-		else
-		{
-			if (auto dyn = data.getDynamicObject())
-			{
-				for (const auto& nv : dyn->getProperties())
-				{
-					if (nv.value.isObject())
-					{
-						v.addChild(jsonToValueTree(nv.value, nv.name, false), -1, nullptr);
-					}
-					else if (nv.value.isArray())
-					{
-						// must not happen
-						jassertfalse;
-					}
-					else
-					{
-						v.setProperty(nv.name, nv.value, nullptr);
-					}
-				}
-			}
-		}
-
-		if(isParentData)
-			DBG(v.createXml()->createDocument(""));
-
-		return v;
-	}
-
-	static var convertBase64Data(const String& d, const ValueTree& cTree)
-	{
-		if (d.isEmpty())
-			return var();
-
-		auto typeId = Identifier(cTree["type"].toString());
-
-		if (typeId == ScriptingApi::Content::ScriptTable::getStaticObjectName())
-			return Table::base64ToDataVar(d);
-		if (typeId == ScriptingApi::Content::ScriptSliderPack::getStaticObjectName())
-			return SliderPackData::base64ToDataVar(d);
-		if (typeId == ScriptingApi::Content::ScriptAudioWaveform::getStaticObjectName())
-			return var(d);
-
-		return var();
-	}
-
-	static String convertDataToBase64(const var& d, const ValueTree& cTree)
-	{
-		if (!d.isArray())
-			return "";
-
-		auto typeId = Identifier(cTree["type"].toString());
-
-		if (typeId == ScriptingApi::Content::ScriptTable::getStaticObjectName())
-			return Table::dataVarToBase64(d);
-		if (typeId == ScriptingApi::Content::ScriptSliderPack::getStaticObjectName())
-			return SliderPackData::dataVarToBase64(d);
-		if (typeId == ScriptingApi::Content::ScriptAudioWaveform::getStaticObjectName())
-			return d.toString();
-		
-		return "";
-	}
-};
 
 var ScriptUserPresetHandler::convertToJson(const ValueTree& d)
 {
@@ -285,7 +133,7 @@ var ScriptUserPresetHandler::convertToJson(const ValueTree& d)
 				cd->setProperty(id, value);
 			}
 
-			dataArray.add(var(cd));
+			dataArray.add(var(cd.get()));
 		}
 
 		p->setProperty("Content", var(dataArray));
@@ -296,7 +144,7 @@ var ScriptUserPresetHandler::convertToJson(const ValueTree& d)
 
 	}
 
-	return var(p);
+	return var(p.get());
 }
 
 
@@ -346,9 +194,9 @@ juce::ValueTree ScriptUserPresetHandler::applyJSON(const ValueTree& original, Dy
 	copy.removeChild(copy.getChildWithName("MidiAutomation"), nullptr);
 	copy.removeChild(copy.getChildWithName("MPEData"), nullptr);
 
-	copy.addChild(JSONConversionHelpers::jsonToValueTree(var(obj), "Modules"), -1, nullptr);
-	copy.addChild(JSONConversionHelpers::jsonToValueTree(var(obj), "MidiAutomation"), -1, nullptr);
-	copy.addChild(JSONConversionHelpers::jsonToValueTree(var(obj), "MPEData"), -1, nullptr);
+	copy.addChild(JSONConversionHelpers::jsonToValueTree(var(obj.get()), "Modules"), -1, nullptr);
+	copy.addChild(JSONConversionHelpers::jsonToValueTree(var(obj.get()), "MidiAutomation"), -1, nullptr);
+	copy.addChild(JSONConversionHelpers::jsonToValueTree(var(obj.get()), "MPEData"), -1, nullptr);
 	return copy;
 }
 
@@ -754,7 +602,7 @@ void ScriptExpansionHandler::InstallState::timerCallback()
 
 var ScriptExpansionHandler::InstallState::getObject()
 {
-	DynamicObject::Ptr newObj = new DynamicObject();
+	auto newObj = new DynamicObject();
 	newObj->setProperty("Status", status);
 	newObj->setProperty("Progress", getProgress());
 	newObj->setProperty("SourceFile", new ScriptingObjects::ScriptFile(parent.getScriptProcessor(), sourceFile));

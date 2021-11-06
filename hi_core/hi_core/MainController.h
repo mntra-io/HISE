@@ -249,6 +249,8 @@ public:
 
 		double& getPreloadProgress();
 
+		double getPreloadProgressConst() const;
+
 		const CriticalSection& getSampleLock() const noexcept { return sampleLock; }
 
 		void cancelAllJobs();
@@ -1723,7 +1725,7 @@ private:
 
 	struct CustomTypeFace
 	{
-		CustomTypeFace(Typeface* tf, Identifier id_) :
+		CustomTypeFace(ReferenceCountedObjectPtr<juce::Typeface> tf, Identifier id_) :
 			typeface(tf),
 			id(id_)
 		{};

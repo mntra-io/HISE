@@ -424,8 +424,9 @@ struct SamplerLaf : public HiseAudioThumbnail::LookAndFeelMethods,
 void SamplerSoundWaveform::setIsSamplerWorkspacePreview()
 {
     inWorkspace = true;
+	onInterface = false;
     setOpaque(true);
-    setMouseCursor(MouseCursor::DraggingHandCursor);
+    setMouseCursor(MouseCursor::NormalCursor);
     getThumbnail()->setBufferedToImage(false);
     getThumbnail()->setDrawHorizontalLines(true);
     getThumbnail()->setDisplayMode(HiseAudioThumbnail::DisplayMode::DownsampledCurve);
@@ -517,9 +518,24 @@ void SamplerSoundWaveform::updateRange(AreaTypes a, bool refreshBounds)
 	}
 	case hise::AudioDisplayComponent::LoopCrossfadeArea:
 	{
-		const int64 start = (int64)currentSound->getSampleProperty(SampleIds::LoopStart) - (int64)currentSound->getSampleProperty(SampleIds::LoopXFade);
+		int start = 0;
+		int end = 0;
 
-		area->setSampleRange(Range<int>((int)start, currentSound->getSampleProperty(SampleIds::LoopStart)));
+		auto rev = currentSound->getReferenceToSound(0)->isReversed();
+		area->setReversed(rev);
+
+		if (rev)
+		{
+			start = (int)currentSound->getSampleProperty(SampleIds::LoopEnd);
+			end = (int)currentSound->getSampleProperty(SampleIds::LoopEnd) + (int)currentSound->getSampleProperty(SampleIds::LoopXFade);;
+		}
+		else
+		{
+			start = (int)currentSound->getSampleProperty(SampleIds::LoopStart) - (int)currentSound->getSampleProperty(SampleIds::LoopXFade);
+			end = currentSound->getSampleProperty(SampleIds::LoopStart);
+		}
+
+		area->setSampleRange(Range<int>(start, end));
 		break;
 	}
 	case hise::AudioDisplayComponent::numAreas:
@@ -657,7 +673,9 @@ void SamplerSoundWaveform::resized()
 	if (onInterface)
 	{
 		for (auto a : areas)
-			a->setVisible(false);
+		{
+			a->setVisible(a->isAreaEnabled());
+		}
 	}
 }
 
@@ -674,11 +692,6 @@ void SamplerSoundWaveform::setSoundToDisplay(const ModulatorSamplerSound *s, int
 		if (auto afr = currentSound->createAudioReader(multiMicIndex))
 		{
 			numSamplesInCurrentSample = (int)afr->lengthInSamples;
-
-			if (onInterface && currentSound != nullptr)
-			{
-				numSamplesInCurrentSample = currentSound->getReferenceToSound()->getSampleLength();
-			}
 
 			refresh(dontSendNotification);
 			preview->setReader(afr, numSamplesInCurrentSample);
@@ -710,6 +723,9 @@ void SamplerSoundWaveform::setSoundToDisplay(const ModulatorSamplerSound *s, int
 
 void SamplerSoundWaveform::mouseDown(const MouseEvent& e)
 {
+	if (onInterface)
+		return;
+
 #if USE_BACKEND
 	if (e.mods.isAnyModifierKeyDown())
 	{
@@ -763,6 +779,9 @@ void SamplerSoundWaveform::mouseDown(const MouseEvent& e)
 
 void SamplerSoundWaveform::mouseUp(const MouseEvent& e)
 {
+	if (onInterface)
+		return;
+
 #if USE_BACKEND
 	if(e.mods.isAnyModifierKeyDown())
 		const_cast<ModulatorSampler*>(sampler)->getSampleEditHandler()->togglePreview();
@@ -771,6 +790,9 @@ void SamplerSoundWaveform::mouseUp(const MouseEvent& e)
 
 void SamplerSoundWaveform::mouseMove(const MouseEvent& e)
 {
+	if (onInterface)
+		return;
+
 	if (currentSound != nullptr)
 	{
 		auto n = (double)e.getPosition().getX() / (double)getWidth();
@@ -842,7 +864,7 @@ void SamplerSoundWaveform::mouseMove(const MouseEvent& e)
 		{
 			xPos = -1;
 			setTooltip(timeString);
-			setMouseCursor(MouseCursor::DraggingHandCursor);
+			setMouseCursor(MouseCursor::NormalCursor);
 		}
 			
 	}

@@ -85,6 +85,7 @@ public:
 
 	struct SampleEditingActions
 	{
+		static void toggleFirstScriptButton(SampleEditHandler* handler);
 		static void deleteSelectedSounds(SampleEditHandler *body);
 		static void duplicateSelectedSounds(SampleEditHandler *body);
 		static void removeDuplicateSounds(SampleEditHandler *body);
@@ -114,6 +115,8 @@ public:
 
 		static void writeSamplesWithAiffData(ModulatorSampler* sampler);
 
+
+		static ModulatorSamplerSound* getNeighbourSample(SampleEditHandler* handler, SamplerSoundMap::Neighbour direction);
 
 		static void selectNeighbourSample(SampleEditHandler* handler, SamplerSoundMap::Neighbour direction, ModifierKeys mods);
 	};
@@ -179,6 +182,8 @@ public:
 
 private:
 
+	SamplerSoundMap::Neighbour currentDirection = SamplerSoundMap::Right;
+
 	SamplePreviewer previewer;
 
 	static void updateMainSound(SampleEditHandler& s, ModulatorSamplerSound::Ptr sound, int micIndex);
@@ -206,7 +211,7 @@ private:
 
 	bool newKeysPressed(const uint8 *currentNotes);
 
-	void changeProperty(ModulatorSamplerSound *s, const Identifier& p, int delta);;
+	void changeProperty(ModulatorSamplerSound::Ptr s, const Identifier& p, int delta);;
 
 public:
 	File getCurrentSampleMapDirectory() const;

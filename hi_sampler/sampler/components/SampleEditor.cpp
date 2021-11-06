@@ -715,7 +715,8 @@ SampleEditor::SampleEditor (ModulatorSampler *s, SamplerBody *b):
 	addButton(SampleMapCommands::EnableSampleStartArea, true);
 	addButton(SampleMapCommands::EnableLoopArea, true);
 	envelopeButton = dynamic_cast<HiseShapeButton*>(addButton(SampleMapCommands::ShowEnvelopePopup, false));
-	
+	scriptButton = addButton(SampleMapCommands::ShowScriptPopup, false);
+	addButton(SampleMapCommands::ToggleFirstScriptButton, true);
 
     addButton(SampleMapCommands::ZeroCrossing, false);
     improveButton = addButton(SampleMapCommands::ImproveLoopPoints, false);
@@ -785,7 +786,7 @@ SampleEditor::SampleEditor (ModulatorSampler *s, SamplerBody *b):
 		if(newSound != nullptr)
 			newSound->addEnvelopeProcessor(*currentWaveForm->getThumbnail());
 
-		tl.setEnvelope(tl.envelope, newSound, tl.envelope != Modulation::Mode::numModes);
+		tl.setEnvelope(tl.envelope, newSound.get(), tl.envelope != Modulation::Mode::numModes);
 	});
 
     handler->toolBroadcaster.broadcaster.addListener(*currentWaveForm, [](SamplerSoundWaveform& wf, SamplerTools::Mode m)
@@ -805,13 +806,13 @@ SampleEditor::SampleEditor (ModulatorSampler *s, SamplerBody *b):
         switch(m)
         {
             case SamplerTools::Mode::GainEnvelope:
-                d.setEnvelope(Modulation::Mode::GainMode, handler->getMainSelection(), true);
+                d.setEnvelope(Modulation::Mode::GainMode, handler->getMainSelection().get(), true);
                 break;
             case SamplerTools::Mode::PitchEnvelope:
-                d.setEnvelope(Modulation::Mode::PitchMode, handler->getMainSelection(), true);
+                d.setEnvelope(Modulation::Mode::PitchMode, handler->getMainSelection().get(), true);
                 break;
             case SamplerTools::Mode::FilterEnvelope:
-                d.setEnvelope(Modulation::Mode::PanMode, handler->getMainSelection(), true);
+                d.setEnvelope(Modulation::Mode::PanMode, handler->getMainSelection().get(), true);
                 break;
             default:
                 d.setEnvelope(Modulation::Mode::numModes, nullptr, true);
@@ -849,6 +850,8 @@ String SampleEditor::getNameForCommand(SampleMapCommands c, bool on)
 		case SampleMapCommands::ApplyToMainOnly: return on ? "main-only" : "";
 		case SampleMapCommands::PreviewCurrentSound: return on ? "preview" : "";
 		case SampleMapCommands::ShowEnvelopePopup: return on ? "envelope" : "";
+		case SampleMapCommands::ShowScriptPopup: return on ? "script-popup" : "";
+		case SampleMapCommands::ToggleFirstScriptButton: return on ? "toggle-first" : "";
         default: return "";
     }
 }
@@ -883,6 +886,8 @@ String SampleEditor::getTooltipForCommand(SampleMapCommands c)
 		case SampleMapCommands::ApplyToMainOnly:		return "Enable single selection cycling with tab key";
 		case SampleMapCommands::ImproveLoopPoints:		return "Open the Loop Finder Popup";
 		case SampleMapCommands::ShowEnvelopePopup:		return "Show the gain / pitch / filter envelope";
+		case SampleMapCommands::ShowScriptPopup:		return "Show the interface of the first script processor";
+		case SampleMapCommands::ToggleFirstScriptButton: return "Toggle the first button of the first script processor (F9)";
             
         default: return "";
     }
@@ -910,6 +915,16 @@ bool SampleEditor::getState(SampleMapCommands c) const
         case SampleMapCommands::ZeroCrossing:   return currentWaveForm->zeroCrossing;
 		case SampleMapCommands::ImproveLoopPoints: return false;
 		case SampleMapCommands::ShowEnvelopePopup: return false;
+		case SampleMapCommands::ShowScriptPopup:   return false;
+		case SampleMapCommands::ToggleFirstScriptButton:
+		{
+			if (auto jsp = ProcessorHelpers::getFirstProcessorWithType<JavascriptMidiProcessor>(sampler->getChildProcessor(ModulatorSynth::MidiProcessor)))
+			{
+				return jsp->getAttribute(0) > 0.5f;
+			}
+
+			return false;
+		}
         default: return false;
     }
 }
@@ -1092,10 +1107,10 @@ struct LoopImproveWindow: public Component,
 		copyTo(re, 1, endRange);
 
 		Array<var> channels;
-		channels.add(var(ls));
-		channels.add(var(rs));
-		channels.add(var(le));
-		channels.add(var(re));
+		channels.add(var(ls.get()));
+		channels.add(var(rs.get()));
+		channels.add(var(le.get()));
+		channels.add(var(re.get()));
 
 		return channels;
 	}
@@ -1587,7 +1602,7 @@ void SampleEditor::perform(SampleMapCommands c)
 	}
     case SampleMapCommands::Analyser:
     {
-        auto n = new Spectrum2D::Parameters::Editor(currentWaveForm->getThumbnail()->getSpectrumParameters());
+        auto n = new Spectrum2D::Parameters::Editor(currentWaveForm->getThumbnail()->getParameters());
         findParentComponentOfClass<FloatingTile>()->getRootFloatingTile()->showComponentAsDetachedPopup(n, analyseButton, {8, 16});
         return;
     }
@@ -1605,6 +1620,28 @@ void SampleEditor::perform(SampleMapCommands c)
 	{
 		auto n = new EnvelopePopup(sampler, tl, currentWaveForm);
 		findParentComponentOfClass<FloatingTile>()->getRootFloatingTile()->showComponentInRootPopup(n, envelopeButton, { 8, 16 });
+		return;
+	}
+	case SampleMapCommands::ShowScriptPopup:
+	{
+		if (auto jsp = ProcessorHelpers::getFirstProcessorWithType<JavascriptMidiProcessor>(sampler))
+		{
+			auto n = new ScriptContentComponent(jsp);
+			auto c = jsp->getContent();
+			n->setSize(c->getContentWidth(), c->getContentHeight());
+			n->setName(jsp->getId());
+			findParentComponentOfClass<FloatingTile>()->getRootFloatingTile()->showComponentInRootPopup(n, scriptButton, { 8, 16 });
+		}
+		else
+		{
+			PresetHandler::showMessageWindow("No script processor", "You haven't added a script processor to this sampler", PresetHandler::IconType::Error);
+		}
+
+		return;
+	}
+	case SampleMapCommands::ToggleFirstScriptButton:
+	{
+		SampleEditHandler::SampleEditingActions::toggleFirstScriptButton(handler);
 		return;
 	}
     case SampleMapCommands::ExternalEditor:
@@ -1978,7 +2015,7 @@ void SampleEditor::saveEditorSettings()
 	obj->setProperty("ClickArea", (int)currentWaveForm->currentClickArea);
 	obj->setProperty("Envelope", (int)dynamic_cast<SamplerDisplayWithTimeline*>(viewContent.get())->envelope);
 
-	auto sp = currentWaveForm->getThumbnail()->getSpectrumParameters();
+	auto sp = currentWaveForm->getThumbnail()->getParameters();
 	sp->saveToJSON(d);
 
 	getPropertyFile().replaceWithText(JSON::toString(d));
@@ -1991,14 +2028,14 @@ void SampleEditor::loadEditorSettings()
 
 	if (auto obj = v.getDynamicObject())
 	{
-		auto sp = currentWaveForm->getThumbnail()->getSpectrumParameters();
+		auto sp = currentWaveForm->getThumbnail()->getParameters();
 		sp->loadFromJSON(v);
 		spectrumSlider.setValue(v.getProperty("SpectrumSlider", 0.0));
 
 		currentWaveForm->zeroCrossing = v.getProperty("ZeroCrossing", true);
 		currentWaveForm->setClickArea((AudioDisplayComponent::AreaTypes)(int)v.getProperty("ClickArea", (int)AudioDisplayComponent::AreaTypes::numAreas), false);
 
-		dynamic_cast<SamplerDisplayWithTimeline*>(viewContent.get())->setEnvelope((Modulation::Mode)(int)v.getProperty("Envelope", (int)Modulation::Mode::numModes), handler->getMainSelection(), true);
+		dynamic_cast<SamplerDisplayWithTimeline*>(viewContent.get())->setEnvelope((Modulation::Mode)(int)v.getProperty("Envelope", (int)Modulation::Mode::numModes), handler->getMainSelection().get(), true);
 	}
 }
 
@@ -2033,7 +2070,7 @@ void SampleEditor::mainSelectionChanged(SampleEditor& editor, ModulatorSamplerSo
 	editor.sampleSelector->setSelectedItemIndex(sampleIndex, dontSendNotification);
 	editor.multimicSelector->setSelectedItemIndex(micIndex, dontSendNotification);
 	
-	editor.currentWaveForm->setSoundToDisplay(sound, micIndex);
+	editor.currentWaveForm->setSoundToDisplay(sound.get(), micIndex);
 
 	ScopedPointer<AudioFormatReader> afr;
 

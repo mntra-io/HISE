@@ -128,6 +128,8 @@ public:
         ZeroCrossing,
 		ShowEnvelopePopup,
 		ImproveLoopPoints,
+		ShowScriptPopup,
+		ToggleFirstScriptButton,
         numCommands
     };
     
@@ -192,7 +194,7 @@ public:
 
 		if(currentSound != nullptr && selection.getLast() == currentSound)
 		{
-			ModulatorSamplerSound *soundToChange = selection.getLast();
+			auto soundToChange = selection.getLast();
 
 			AudioDisplayComponent::SampleArea *area = c->getSampleArea(areaThatWasChanged);
 
@@ -329,6 +331,7 @@ private:
 	Component* analyseButton;
 	Component* externalButton;
 	Component* improveButton;
+	Component* scriptButton;
 
 	LookAndFeel_V4 slaf;
 

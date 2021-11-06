@@ -220,7 +220,7 @@ public:
 
     void drawSampleRectangle(Graphics &g, Rectangle<int> area);
 
-	const ModulatorSamplerSound *getSound() const noexcept { return sound; };
+	const ModulatorSamplerSound *getSound() const noexcept { return sound.get(); };
 
 	ModulatorSamplerSound *getSound() noexcept { return sound.get(); };
 
@@ -299,7 +299,8 @@ class SamplerSoundMap: public Component,
 					   public LassoSource<ModulatorSamplerSound::Ptr>,
 					   public SettableTooltipClient,
 					   public MainController::SampleManager::PreloadListener,
-					   public SampleMap::Listener
+					   public SampleMap::Listener,
+					   public PooledUIUpdater::SimpleTimer
 {
 public:
 	
@@ -309,7 +310,8 @@ public:
 		Left, ///<
 		Right, ///<
 		Up, ///<
-		Down ///<
+		Down, ///<
+		numNeighbours
 	};
 
 	enum DragLimiters
@@ -324,6 +326,11 @@ public:
 
 	~SamplerSoundMap();;
 
+	void timerCallback() override
+	{
+		if(pCounter++ % 10 == 0)
+			repaint();
+	}
 	
 	static void keyChanged(SamplerSoundMap& map, int noteNumber, int velocity);
 
@@ -365,11 +372,10 @@ public:
     
 	void sampleAmountChanged() override
 	{
-		updateSampleComponents();
-
 		auto old = currentSoloGroup;
 		currentSoloGroup.clear();
 		soloGroup(old);
+		updateSampleComponents();
 	}
 
 	static void selectionChanged(SamplerSoundMap& map, int numSelected);
@@ -444,6 +450,8 @@ public:
 
 private:
 
+	int pCounter = 0;
+
 	BigInteger currentSoloGroup;
 
 	ModulatorSamplerSound::WeakPtr selectedSound;
@@ -455,7 +463,7 @@ private:
 	/** A POD object containing data for a dragged sound. */
 	struct DragData
 	{
-		ModulatorSamplerSound *sound;
+		ModulatorSamplerSound::Ptr sound;
 		StreamingHelpers::BasicMappingData data;
 	};
 
@@ -600,7 +608,7 @@ private:
 			  isStringProperty(propertyToSort_ == SampleIds::FileName)
         {}
 
-		int compareElements (const ModulatorSamplerSound* first, const ModulatorSamplerSound* second) const
+		int compareElements (ModulatorSamplerSound::Ptr first, ModulatorSamplerSound::Ptr second) const
         {
 			if (first == nullptr || second == nullptr)
 				return direction;
