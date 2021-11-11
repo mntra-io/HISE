@@ -5537,8 +5537,8 @@ juce::Image ScriptingObjects::ScriptedLookAndFeel::Laf::createIcon(PresetHandler
 
 	if (auto l = get())
 	{
-		auto obj = new DynamicObject();
-		
+		//auto obj = new DynamicObject();
+		DynamicObject::Ptr obj = new DynamicObject();
 		String s;
 
 		switch (type)
