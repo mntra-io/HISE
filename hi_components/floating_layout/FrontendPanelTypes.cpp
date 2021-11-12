@@ -458,7 +458,7 @@ void PerformanceLabelPanel::timerCallback()
 {
 	auto mc = getMainController();
 
-	const int cpuUsage = (int)mc->getCpuUsage();
+	const float cpuUsage = mc->getCpuUsage() / 10;
 	const int voiceAmount = mc->getNumActiveVoices();
 
 
@@ -478,7 +478,7 @@ void PerformanceLabelPanel::timerCallback()
 	//activityLed->setOn(midiFlag);
 
 	String stats = "CPU: ";
-	stats << String(cpuUsage) << "%, RAM: " << String(ramUsage, 1) << "MB, Voices: " << String(voiceAmount);
+	stats << String(cpuUsage, 1) << "%, RAM: " << String(ramUsage, 1) << "MB, Voices: " << String(voiceAmount);
 	statisticLabel->setText(stats, dontSendNotification);
 }
 
