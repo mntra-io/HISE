@@ -425,5 +425,6 @@ private:
 
 
 
+
 } // namespace hise
 #endif  // SCRIPTINGBASEOBJECTS_H_INCLUDED

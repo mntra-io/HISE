@@ -90,7 +90,9 @@ StringArray ScriptingObjects::ScriptShader::FileParser::getLines()
 String ScriptingObjects::ScriptShader::FileParser::createLinePointer(int i) const
 {
 	String l;
+#if USE_BACKEND
 	l << "#line " << String(i) <<  " \"" << fileNameWithoutExtension << "\"";
+#endif
 	return l;
 }
 
@@ -132,7 +134,11 @@ String ScriptingObjects::ScriptShader::FileParser::loadFileContent()
 
 	return f.loadFileAsString();
 #else
-	return getMainController()->getExternalScriptFromCollection(fileNameWithoutExtension + ".glsl");
+
+	if (!fileNameWithoutExtension.endsWith(".glsl"))
+		fileNameWithoutExtension << ".glsl";
+
+	return getMainController()->getExternalScriptFromCollection(fileNameWithoutExtension);
 #endif
 }
 
@@ -495,7 +501,7 @@ String ScriptingObjects::ScriptShader::getHeader()
 	s << "\n#define fragCoord _gl_fc()\n";
 	s << "#define fragColor gl_FragColor\n";
 
-#if JUCE_WINDOWS
+#if JUCE_WINDOWS && USE_BACKEND
 	// The #line directive does not work on macOS apparently...
 	s << "#line 0 \"" << shaderName << "\" \n";
 #endif
@@ -558,6 +564,46 @@ var ScriptingObjects::ScriptShader::getOpenGLStatistics()
 void ScriptingObjects::ScriptShader::setEnableCachedBuffer(bool shouldEnableBuffer)
 {
 	enableCache = shouldEnableBuffer;
+}
+
+
+
+int ScriptingObjects::ScriptShader::blockWhileWaiting()
+{
+	if (screenshotPending)
+	{
+		DBG("BLOCK UNTIL REPAINTED");
+
+		auto start = Time::getMillisecondCounter();
+
+		int delta = 0;
+
+		while (screenshotPending)
+		{
+			auto now = Time::getMillisecondCounter();
+
+			delta = now - start;
+
+			if (delta > 2000)
+				break;
+
+			Thread::getCurrentThread()->wait(200);
+		}
+
+		return delta;
+	}
+
+	return 0;
+}
+
+void ScriptingObjects::ScriptShader::prepareScreenshot()
+{
+	if (compiledOk() && enableCache)
+	{
+		screenshotPending = true;
+	}
+	else
+		screenshotPending = false;
 }
 
 void ScriptingObjects::ScriptShader::makeStatistics()
@@ -1229,41 +1275,42 @@ void ScriptingObjects::GraphicsObject::fillEllipse(var area)
 
 void ScriptingObjects::GraphicsObject::drawImage(String imageName, var area, int /*xOffset*/, int yOffset)
 {
+	Image img;
+
 	if (auto sc = dynamic_cast<ScriptingApi::Content::ScriptPanel*>(parent))
 	{
-		const Image img = sc->getLoadedImage(imageName);
-
-		if (img.isValid())
-		{
-			Rectangle<float> r = getRectangleFromVar(area);
-
-			if (r.getWidth() != 0)
-			{
-				const double scaleFactor = (double)img.getWidth() / (double)r.getWidth();
-
-				drawActionHandler.addDrawAction(new ScriptedDrawActions::drawImage(img, r, (float)scaleFactor, yOffset));
-			}
-		}
-		else
-		{
-			drawActionHandler.addDrawAction(new ScriptedDrawActions::setColour(Colours::grey));
-			drawActionHandler.addDrawAction(new ScriptedDrawActions::fillRect(getRectangleFromVar(area)));
-
-			drawActionHandler.addDrawAction(new ScriptedDrawActions::setColour(Colours::black));
-			drawActionHandler.addDrawAction(new ScriptedDrawActions::drawRect(getRectangleFromVar(area), 1.0f));
-			drawActionHandler.addDrawAction(new ScriptedDrawActions::setFont(GLOBAL_BOLD_FONT()));
-			drawActionHandler.addDrawAction(new ScriptedDrawActions::drawText("XXX", getRectangleFromVar(area), Justification::centred));
-
-			debugError(dynamic_cast<Processor*>(getScriptProcessor()), "Image " + imageName + " not found");
-		}
-
-
+		img = sc->getLoadedImage(imageName);
+	}
+	else if (auto laf = dynamic_cast<ScriptingObjects::ScriptedLookAndFeel*>(parent))
+	{
+		img = laf->getLoadedImage(imageName);
 	}
 	else
 	{
 		reportScriptError("drawImage is only allowed in a panel's paint routine");
 	}
 
+	if (img.isValid())
+	{
+		Rectangle<float> r = getRectangleFromVar(area);
+
+		if (r.getWidth() != 0)
+		{
+			const double scaleFactor = (double)img.getWidth() / (double)r.getWidth();
+			drawActionHandler.addDrawAction(new ScriptedDrawActions::drawImage(img, r, (float)scaleFactor, yOffset));
+		}
+	}
+	else
+	{
+		drawActionHandler.addDrawAction(new ScriptedDrawActions::setColour(Colours::grey));
+		drawActionHandler.addDrawAction(new ScriptedDrawActions::fillRect(getRectangleFromVar(area)));
+		drawActionHandler.addDrawAction(new ScriptedDrawActions::setColour(Colours::black));
+		drawActionHandler.addDrawAction(new ScriptedDrawActions::drawRect(getRectangleFromVar(area), 1.0f));
+		drawActionHandler.addDrawAction(new ScriptedDrawActions::setFont(GLOBAL_BOLD_FONT()));
+		drawActionHandler.addDrawAction(new ScriptedDrawActions::drawText("XXX", getRectangleFromVar(area), Justification::centred));
+
+		debugError(dynamic_cast<Processor*>(getScriptProcessor()), "Image " + imageName + " not found");
+	}
 }
 
 void ScriptingObjects::GraphicsObject::drawDropShadow(var area, var colour, int radius)
@@ -1430,6 +1477,37 @@ Rectangle<int> ScriptingObjects::GraphicsObject::getIntRectangleFromVar(const va
 	return f;
 }
 
+
+
+
+void ScriptingObjects::ScriptedLookAndFeel::loadImage(String imageName, String prettyName)
+{
+	// It's a bit ugly to just copy that code from the script panel...
+	PoolReference ref(getProcessor()->getMainController(), imageName, ProjectHandler::SubDirectories::Images);
+
+	for (auto& img : loadedImages)
+	{
+		if (img.prettyName == prettyName)
+		{
+			if (img.image.getRef() != ref)
+			{
+				HiseJavascriptEngine::TimeoutExtender xt(dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine());
+				img.image = getProcessor()->getMainController()->getExpansionHandler().loadImageReference(ref);
+			}
+
+			return;
+		}
+	}
+
+	HiseJavascriptEngine::TimeoutExtender xt(dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine());
+
+	if (auto newImage = getProcessor()->getMainController()->getExpansionHandler().loadImageReference(ref))
+		loadedImages.add({ newImage, prettyName });
+	else
+	{
+		debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), "Image " + imageName + " not found. ");
+	}
+}
 
 
 

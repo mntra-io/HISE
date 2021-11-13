@@ -1245,6 +1245,8 @@ namespace ScriptingObjects
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptUnorderedStack);
 	};
 	
+    
+
 	/** A scripting objects that wraps an existing Modulator.
 	*/
 	class ScriptingModulator : public ConstScriptingObject,

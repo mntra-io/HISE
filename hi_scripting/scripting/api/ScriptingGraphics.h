@@ -34,9 +34,46 @@
 
 namespace hise { using namespace juce;
 
+struct ScreenshotListener
+{
+	struct CachedImageBuffer : public ReferenceCountedObject
+	{
+		using Ptr = ReferenceCountedObjectPtr<CachedImageBuffer>;
+
+		CachedImageBuffer(Rectangle<int> sb) :
+			data(Image::RGB, sb.getWidth(), sb.getHeight(), true)
+		{
+
+		}
+
+		~CachedImageBuffer()
+		{
+			int x = 0;
+		}
+
+		Image data;
+	};
+
+	virtual ~ScreenshotListener() {};
+
+	virtual void makeScreenshot(const File& targetFile, Rectangle<float> area) {};
+
+	/** This will be called on the scripting thread and can be used by listeners to prepare the screenshot. */
+	virtual void prepareScreenshot() {};
+
+	virtual int blockWhileWaiting() { return 0; };
+
+	virtual void visualGuidesChanged() {};
+
+private:
+
+	JUCE_DECLARE_WEAK_REFERENCEABLE(ScreenshotListener);
+};
+
 namespace ScriptingObjects
 {
-	class ScriptShader : public ConstScriptingObject
+	class ScriptShader : public ConstScriptingObject,
+						 public ScreenshotListener
 	{
 	public:
 
@@ -110,6 +147,10 @@ namespace ScriptingObjects
 
 		// ===========================================================================
 
+		int blockWhileWaiting() override;
+
+		void prepareScreenshot() override;
+
 		void makeStatistics();
 
 		void setEnableLineNumbers(bool shouldUseLineNumbers)
@@ -137,8 +178,35 @@ namespace ScriptingObjects
 			scaleFactor = sf;
 		}
 
+		bool shouldWriteToBuffer() const
+		{
+			return enableCache || screenshotPending;
+		}
+
+		void renderWasFinished(ScreenshotListener::CachedImageBuffer::Ptr newData)
+		{
+			if (screenshotPending)
+			{
+				DBG("REPAINT DONE");
+				screenshotPending = false;
+				lastScreenshot = newData;
+			}
+			else
+				lastScreenshot = nullptr;
+		}
+
+		ScreenshotListener::CachedImageBuffer::Ptr getScreenshotBuffer()
+		{
+			if (isRenderingScreenshot())
+				return lastScreenshot;
+
+			return nullptr;
+		}
+
 		struct Wrapper;
 
+
+		ScreenshotListener::CachedImageBuffer::Ptr lastScreenshot;
 		float scaleFactor = 1.0f;
 		String shaderCode;
 		NamedValueSet uniformData;
@@ -177,6 +245,7 @@ namespace ScriptingObjects
 
 	private:
 
+		bool screenshotPending = false;
 		static bool renderingScreenShot;
 
 		String compiledCode;
@@ -432,7 +501,8 @@ namespace ScriptingObjects
 			public ControlledObject,
 			public RingBufferComponentBase::LookAndFeelMethods,
 			public AhdsrGraph::LookAndFeelMethods,
-			public MidiFileDragAndDropper::LookAndFeelMethods
+			public MidiFileDragAndDropper::LookAndFeelMethods,
+			public CustomKeyboardLookAndFeelBase
 		{
 			Laf(MainController* mc) :
 				ControlledObject(mc)
@@ -514,6 +584,10 @@ namespace ScriptingObjects
             void drawHiseThumbnailRectList(Graphics& g, HiseAudioThumbnail& th, bool areaIsEnabled, const HiseAudioThumbnail::RectangleListType& rectList) override;
             void drawTextOverlay(Graphics& g, HiseAudioThumbnail& th, const String& text, Rectangle<float> area) override;
             
+			void drawKeyboardBackground(Graphics &g, Component* c, int width, int height) override;
+			void drawWhiteNote(CustomKeyboardState* state, Component* c, int midiNoteNumber, Graphics &g, int x, int y, int w, int h, bool isDown, bool isOver, const Colour &lineColour, const Colour &textColour) override;
+			void drawBlackNote(CustomKeyboardState* state, Component* c, int midiNoteNumber, Graphics &g, int x, int y, int w, int h, bool isDown, bool isOver, const Colour &noteFillColour) override;
+
 			Image createIcon(PresetHandler::IconType type) override;
 
 			bool functionDefined(const String& s);
@@ -533,11 +607,18 @@ namespace ScriptingObjects
 
 		Identifier getObjectName() const override { return "ScriptLookAndFeel"; }
 
+		// ========================================================================================
+
 		/** Registers a function that will be used for the custom look and feel. */
 		void registerFunction(var functionName, var function);
 
 		/** Set a global font. */
 		void setGlobalFont(const String& fontName, float fontSize);
+
+		/** Loads an image that can be used by the look and feel functions. */
+		void loadImage(String imageFile, String prettyName);
+
+		// ========================================================================================
 
 		bool callWithGraphics(Graphics& g_, const Identifier& functionname, var argsObject);
 
@@ -587,6 +668,27 @@ namespace ScriptingObjects
 		ReferenceCountedObjectPtr<GraphicsObject> g;
 
 		var functions;
+
+		Image getLoadedImage(const String& prettyName)
+		{
+			for (auto& img : loadedImages)
+			{
+				if (img.prettyName == prettyName)
+				{
+					return img.image ? *img.image.getData() : Image();
+				}
+			}
+
+			return Image();
+		}
+
+		struct NamedImage
+		{
+			PooledImage image;
+			String prettyName;
+		};
+
+		Array<NamedImage> loadedImages;
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptedLookAndFeel);
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ScriptedLookAndFeel);

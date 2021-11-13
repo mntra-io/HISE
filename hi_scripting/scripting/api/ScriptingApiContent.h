@@ -1475,6 +1475,7 @@ public:
 			Offset,
 			Scale,
 			AllowCallbacks,
+			BlendMode,
 			PopupMenuItems,
 			PopupOnRightClick,
 			numProperties
@@ -1515,7 +1516,13 @@ public:
 
 	private:
 
+		void updateBlendMode();
+
+		Image blendImage;
+
 		PooledImage image;
+
+		gin::BlendMode blendMode = gin::BlendMode::Normal;
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ScriptImage);
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptImage);
@@ -2051,18 +2058,7 @@ public:
 	};
 
 
-	struct ScreenshotListener
-	{
-        virtual ~ScreenshotListener() {};
-        
-		virtual void makeScreenshot(const File& targetFile, Rectangle<float> area) = 0;
-
-		virtual void visualGuidesChanged() = 0;
-
-	private:
-
-		JUCE_DECLARE_WEAK_REFERENCEABLE(ScreenshotListener);
-	};
+	using ScreenshotListener = ScreenshotListener;
 
 	struct VisualGuide
 	{
@@ -2249,9 +2245,14 @@ public:
 		return contentPropertyData;
 	}
 
-	void setScreenshotListener(ScreenshotListener* l)
+	void addScreenshotListener(ScreenshotListener* l)
 	{
-		screenshotListener = l;
+		screenshotListeners.addIfNotAlreadyThere(l);
+	}
+
+	void removeScreenshotListener(ScreenshotListener* l)
+	{
+		screenshotListeners.removeAllInstancesOf(l);
 	}
 
 	var getValuePopupProperties() const { return valuePopupData; };
@@ -2438,7 +2439,7 @@ private:
 		}
 	};
 
-	WeakReference<ScreenshotListener> screenshotListener;
+	Array<WeakReference<ScreenshotListener>> screenshotListeners;
 
 	static void initNumberProperties();
 

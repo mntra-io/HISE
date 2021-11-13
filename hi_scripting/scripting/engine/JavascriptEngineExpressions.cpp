@@ -90,7 +90,13 @@ struct HiseJavascriptEngine::RootObject::ArraySubscript : public Expression
 		{
 			cacheIndex(instance, s);
 
-			return instance->getAssignedValue(cachedIndex);
+			if(cachedIndex != -1)
+				return instance->getAssignedValue(cachedIndex);
+			else
+			{
+				auto idx = index->getResult(s);
+				return instance->getAssignedValue(idx);
+			}
 		}
 		else if (const Array<var>* array = result.getArray())
 			return (*array)[static_cast<int> (index->getResult(s))];
@@ -202,19 +208,40 @@ struct HiseJavascriptEngine::RootObject::DotOperator : public Expression
 				return o->getConstantValue(constantIndex);
 			}
 		}
+        
+        if(auto lb = dynamic_cast<fixobj::ObjectReference*>(p.getObject()))
+        {
+            if(auto member = (*lb)[child])
+                return (var)*member;
+            else
+                location.throwError("can't find property " + child.toString());
+        }
 
 		return var::undefined();
 	}
 
 	void assign(const Scope& s, const var& newValue) const override
 	{
-		if (DynamicObject* o = parent->getResult(s).getDynamicObject())
+        auto v = parent->getResult(s);
+        
+		if (DynamicObject* o = v.getDynamicObject())
 		{
 			WARN_IF_AUDIO_THREAD(!o->hasProperty(child), ScriptAudioThreadGuard::ObjectResizing);
 
 			o->setProperty(child, newValue);
 		}
-		else
+		else if (auto mo = dynamic_cast<fixobj::ObjectReference::MemberReference*>(v.getObject()))
+        {
+            *mo = newValue;
+        }
+        else if(auto lb = dynamic_cast<fixobj::ObjectReference*>(v.getObject()))
+        {
+            if(auto member = (*lb)[child])
+                *member = newValue;
+            else
+                location.throwError("Can't find property " + child.toString());
+        }
+        else
 			Expression::assign(s, newValue);
 	}
 

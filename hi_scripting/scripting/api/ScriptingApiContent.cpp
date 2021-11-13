@@ -2633,6 +2633,7 @@ ScriptComponent(base, imageName)
 	ADD_SCRIPT_PROPERTY(i01, "fileName");			ADD_TO_TYPE_SELECTOR(SelectorTypes::FileSelector);
 	ADD_NUMBER_PROPERTY(i02, "offset");
 	ADD_NUMBER_PROPERTY(i03, "scale");
+	ADD_SCRIPT_PROPERTY(i07, "blendMode");			ADD_TO_TYPE_SELECTOR(SelectorTypes::ChoiceSelector);
 	ADD_SCRIPT_PROPERTY(i04, "allowCallbacks");		ADD_TO_TYPE_SELECTOR(SelectorTypes::ChoiceSelector);
 	ADD_SCRIPT_PROPERTY(i05, "popupMenuItems");		ADD_TO_TYPE_SELECTOR(SelectorTypes::MultilineSelector);
 	ADD_SCRIPT_PROPERTY(i06, "popupOnRightClick");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
@@ -2644,6 +2645,7 @@ ScriptComponent(base, imageName)
 	setDefaultValue(ScriptComponent::Properties::width, 50);
 	setDefaultValue(ScriptComponent::Properties::height, 50);
 	setDefaultValue(ScriptComponent::Properties::saveInPreset, false);
+	setDefaultValue(BlendMode, "Normal");
 	setDefaultValue(Alpha, 1.0f);
 	setDefaultValue(FileName, String());
 	setDefaultValue(Offset, 0);
@@ -2682,7 +2684,36 @@ StringArray ScriptingApi::Content::ScriptImage::getOptionsFor(const Identifier &
 	{
 		return MouseCallbackComponent::getCallbackLevels();
 	}
-
+	else if (id == getIdFor(BlendMode))
+	{
+		return {
+			"Normal",
+			"Lighten",
+			"Darken",
+			"Multiply",
+			"Average",
+			"Add",
+			"Subtract",
+			"Difference",
+			"Negation",
+			"Screen",
+			"Exclusion",
+			"Overlay",
+			"SoftLight",
+			"HardLight",
+			"ColorDodge",
+			"ColorBurn",
+			"LinearDodge",
+			"LinearBurn",
+			"LinearLight",
+			"VividLight",
+			"PinLight",
+			"HardMix",
+			"Reflect",
+			"Glow",
+			"Phoenix"
+		};
+	}
 
 	return ScriptComponent::getOptionsFor(id);
 }
@@ -2700,6 +2731,13 @@ void ScriptingApi::Content::ScriptImage::setScriptObjectPropertyWithChangeMessag
 		setImageFile(newValue, true);
 	}
 
+	if (id == getIdFor(BlendMode))
+	{
+		auto idx = getOptionsFor(id).indexOf(newValue.toString());
+		blendMode = (gin::BlendMode)idx;
+		updateBlendMode();
+	}
+	
 	ScriptComponent::setScriptObjectPropertyWithChangeMessage(id, newValue, notifyEditor);
 }
 
@@ -2720,6 +2758,8 @@ void ScriptingApi::Content::ScriptImage::setImageFile(const String &absoluteFile
 	image.clear();
 	image = getProcessor()->getMainController()->getExpansionHandler().loadImageReference(ref);
 
+	updateBlendMode();
+
 	setScriptObjectProperty(FileName, absoluteFileName, sendNotification);
 };
 
@@ -2732,10 +2772,14 @@ ScriptCreatedComponentWrapper * ScriptingApi::Content::ScriptImage::createCompon
 
 const Image ScriptingApi::Content::ScriptImage::getImage() const
 {
-	return image ? *image.getData() :
-		PoolHelpers::getEmptyImage(getScriptObjectProperty(ScriptComponent::Properties::width),
+	if (blendMode != gin::Normal)
+	{
+		return blendImage.isValid() ? blendImage : PoolHelpers::getEmptyImage(getScriptObjectProperty(ScriptComponent::Properties::width),
 			getScriptObjectProperty(ScriptComponent::Properties::height));
+	}
 
+	return image ? *image.getData() : PoolHelpers::getEmptyImage(getScriptObjectProperty(ScriptComponent::Properties::width),
+		getScriptObjectProperty(ScriptComponent::Properties::height));
 }
 
 StringArray ScriptingApi::Content::ScriptImage::getItemList() const
@@ -2767,6 +2811,20 @@ void ScriptingApi::Content::ScriptImage::handleDefaultDeactivatedProperties()
 	deactivatedProperties.addIfNotAlreadyThere(getIdFor(ScriptComponent::Properties::textColour));
 	deactivatedProperties.addIfNotAlreadyThere(getIdFor(ScriptComponent::Properties::macroControl));
 	deactivatedProperties.addIfNotAlreadyThere(getIdFor(linkedTo));
+}
+
+void ScriptingApi::Content::ScriptImage::updateBlendMode()
+{
+	if (blendMode == gin::Normal)
+		return;
+
+	if (image)
+	{
+		auto original = image->data;
+		
+		blendImage = Image(Image::ARGB, original.getWidth(), original.getHeight(), true);
+		gin::applyBlend(blendImage, original, blendMode);
+	}
 }
 
 struct ScriptingApi::Content::ScriptPanel::Wrapper
@@ -4813,6 +4871,9 @@ var ScriptingApi::Content::createShader(const String& fileName)
 {
 	auto f = new ScriptingObjects::ScriptShader(getScriptProcessor());
 
+	
+	addScreenshotListener(f);
+
 #if HISE_SUPPORT_GLSL_LINE_NUMBERS
 	f->setEnableLineNumbers(true);
 #endif
@@ -4826,7 +4887,7 @@ var ScriptingApi::Content::createShader(const String& fileName)
 
 void ScriptingApi::Content::createScreenshot(var area, var directory, String name)
 {
-	if (screenshotListener != nullptr)
+	if (!screenshotListeners.isEmpty())
 	{
 		if (auto sf = dynamic_cast<ScriptingObjects::ScriptFile*>(directory.getObject()))
 		{
@@ -4856,7 +4917,27 @@ void ScriptingApi::Content::createScreenshot(var area, var directory, String nam
 						reportScriptError(r.getErrorMessage());
 				}
 
-				screenshotListener->makeScreenshot(target, a);
+				// Send a message to all listeners
+				for (auto sc : screenshotListeners)
+				{
+					if (sc != nullptr)
+						sc->prepareScreenshot();
+				}
+
+				int timeWaitedMs = 0;
+
+				// Now block until everything is ready
+				for (auto sc : screenshotListeners)
+				{
+					if (sc != nullptr)
+						timeWaitedMs += sc->blockWhileWaiting();
+				}
+
+				for (auto sc : screenshotListeners)
+				{
+					if (sc != nullptr)
+						sc->makeScreenshot(target, a);
+				}
 			}
 		}
 	}
@@ -4896,8 +4977,11 @@ void ScriptingApi::Content::addVisualGuide(var guideData, var colour)
 	else
 		guides.clear();
 
-	if (screenshotListener != nullptr)
-		screenshotListener->visualGuidesChanged();
+	for (auto sc : screenshotListeners)
+	{
+		if(sc != nullptr)
+			sc->visualGuidesChanged();
+	}
 }
 
 String ScriptingApi::Content::getCurrentTooltip()
