@@ -54,7 +54,7 @@ ScriptContentComponent::ScriptContentComponent(ProcessorWithScriptingContent *p_
 	p(dynamic_cast<Processor*>(p_))
 {
 	processor->getScriptingContent()->addRebuildListener(this);
-	processor->getScriptingContent()->setScreenshotListener(this);
+	processor->getScriptingContent()->addScreenshotListener(this);
 
     setNewContent(processor->getScriptingContent());
 
@@ -78,6 +78,7 @@ ScriptContentComponent::~ScriptContentComponent()
 		}
 
 		contentData->removeRebuildListener(this);
+		contentData->addScreenshotListener(this);
 	}
 
 	if (p.get() != nullptr)
@@ -404,6 +405,8 @@ void ScriptContentComponent::makeScreenshot(const File& target, Rectangle<float>
 
 			auto sf = UnblurryGraphics::getScaleFactorForComponent(safeThis.get());
 
+			safeThis->repaint();
+
 			auto img = safeThis->createComponentSnapshot(area.toNearestInt(), true, sf);
 
 			juce::PNGImageFormat png;
@@ -435,6 +438,12 @@ void ScriptContentComponent::visualGuidesChanged()
 	};
 
 	MessageManager::callAsync(f);
+}
+
+void ScriptContentComponent::prepareScreenshot()
+{
+	MessageManagerLock mm;
+	repaint();
 }
 
 void ScriptContentComponent::contentWasRebuilt()
@@ -543,17 +552,8 @@ void ScriptContentComponent::processorDeleted(Processor* /*deletedProcessor*/)
 
 void ScriptContentComponent::paint(Graphics &g)
 {
-#if USE_BACKEND
-	if (dynamic_cast<ScriptingEditor*>(getParentComponent()) != nullptr)
-	{
-		g.fillAll(Colours::white.withAlpha(0.05f));
-		g.setGradientFill(ColourGradient(Colours::black.withAlpha(0.1f), 0.0f, 0.0f,
-			Colours::transparentBlack, 0.0f, 6.0f, false));
-		g.fillRect(0.0f, 0.0f, (float)getWidth(), 6.0f);
-	}
-#else
-	ignoreUnused(g);
-#endif
+	if(findParentComponentOfClass<FloatingTilePopup>() == nullptr)
+		g.fillAll(JUCE_LIVE_CONSTANT_OFF(Colour(0xff252525)));
 }
 
 void ScriptContentComponent::paintOverChildren(Graphics& g)
@@ -758,7 +758,9 @@ void MarkdownPreviewPanel::initPanel()
 
 	getMainController()->setCurrentMarkdownPreview(preview);
 
-	if (isProjectDoc)
+	if (customContent.isNotEmpty())
+		preview->setNewText(customContent, File(), true);
+	else if (isProjectDoc)
 	{
 		holder->rebuildDatabase();
 		preview->renderer.gotoLink(MarkdownLink(holder->getDatabaseRootDirectory(), startURL));

@@ -316,6 +316,8 @@ class MainTopBar : public FloatingTileContent,
 				   public ButtonListener,
 				   public FloatingTile::PopupListener,
 				   public juce::ApplicationCommandManagerListener,
+				   public MainController::SampleManager::PreloadListener,
+				   public PooledUIUpdater::SimpleTimer,
 				   public ComponentWithHelp
 {
 public:
@@ -327,6 +329,8 @@ public:
 		PluginPreview,
 		Settings,
 		PresetBrowser,
+        CustomPopup,
+        Keyboard,
 		numPopupTypes
 	};
 
@@ -336,12 +340,29 @@ public:
 
 	int getFixedHeight() const override
 	{
-		return 60;
+		return 40;
 	}
 
 	String getMarkdownHelpUrl() const override
 	{
 		return "/ui-components/floating-tiles/hise/maintopbar";
+	}
+
+	void timerCallback() override
+	{
+		auto newProgress = getMainController()->getSampleManager().getPreloadProgressConst();
+		auto m = getMainController()->getSampleManager().getPreloadMessage();
+		auto state = preloadState;
+
+		if (newProgress != preloadProgress ||
+			m != preloadMessage ||
+			state != preloadState)
+		{
+			preloadState = state;
+			preloadMessage = m;
+			preloadProgress = newProgress;
+			repaint();
+		}
 	}
 
 	bool showTitleInPresentationMode() const override
@@ -350,6 +371,19 @@ public:
 	}
 
 	void popupChanged(Component* newComponent) override;
+
+	void preloadStateChanged(bool isPreloading) override
+	{
+		preloadState = isPreloading;
+
+		if (isPreloading)
+			start();
+		else
+		{
+			timerCallback();
+			stop();
+		}
+	}
 
 	void paint(Graphics& g) override;
 
@@ -372,12 +406,6 @@ public:
 	{
 		switch (info.commandID)
 		{
-		case BackendCommandTarget::WorkspaceMain:
-			mainWorkSpaceButton->setToggleStateAndUpdateIcon(true);
-			scriptingWorkSpaceButton->setToggleStateAndUpdateIcon(false);
-			samplerWorkSpaceButton->setToggleStateAndUpdateIcon(false);
-			customWorkSpaceButton->setToggleStateAndUpdateIcon(false);
-			break;
 		case BackendCommandTarget::WorkspaceScript: 
 			mainWorkSpaceButton->setToggleStateAndUpdateIcon(false);
 			scriptingWorkSpaceButton->setToggleStateAndUpdateIcon(true);
@@ -407,12 +435,15 @@ public:
 
 private:
 
+	bool preloadState = false;
+	double preloadProgress = 0.0;
+	String preloadMessage;
+
 	Rectangle<int> frontendArea;
 	Rectangle<int> workspaceArea;
 
 	ScopedPointer<TooltipBar> tooltipBar;
-	ScopedPointer<VoiceCpuBpmComponent> voiceCpuBpmComponent;
-
+	
 	ScopedPointer<ImageButton> hiseButton;
 
 	ScopedPointer<ShapeButton> backButton;
@@ -425,12 +456,15 @@ private:
 	ScopedPointer<HiseShapeButton> macroButton;
 	ScopedPointer<ShapeButton> pluginPreviewButton;
 	ScopedPointer<ShapeButton> presetBrowserButton;
+    ScopedPointer<ShapeButton> customPopupButton;
+    ScopedPointer<ShapeButton> keyboardPopupButton;
 
 	ScopedPointer<HiseShapeButton> mainWorkSpaceButton;
 	ScopedPointer<HiseShapeButton> scriptingWorkSpaceButton;
 	ScopedPointer<HiseShapeButton> samplerWorkSpaceButton;
 	ScopedPointer<HiseShapeButton> customWorkSpaceButton;
 
+    ScopedPointer<Drawable> hiseIcon;
 };
 
 
