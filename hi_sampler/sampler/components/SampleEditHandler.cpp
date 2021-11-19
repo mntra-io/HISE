@@ -133,8 +133,7 @@ void SampleEditHandler::resizeSamples(SamplerSoundMap::Neighbour direction)
 void SampleEditHandler::handleMidiSelection(SampleEditHandler& handler, int noteNumber, int velocity)
 {
 	auto sampler = handler.sampler;
-	auto& x = sampler->getSamplerDisplayValues();
-
+	
 	if (velocity > 0 && sampler->getEditorState(ModulatorSampler::MidiSelectActive))
 	{
 		handler.selectedSamplerSounds.deselectAll();
@@ -266,6 +265,11 @@ bool SampleEditHandler::keyPressed(const KeyPress& k, Component* originatingComp
 		}
 		else
 			SampleEditingActions::selectNeighbourSample(this, SamplerSoundMap::Down, k.getModifiers());
+		return true;
+	}
+	if (k == KeyPress::deleteKey)
+	{
+		SampleEditingActions::deleteSelectedSounds(this);
 		return true;
 	}
 	if (k == KeyPress::tabKey)

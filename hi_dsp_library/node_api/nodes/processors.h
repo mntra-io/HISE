@@ -532,7 +532,7 @@ struct oversample_base
 	{
 		ScopedPointer<Oversampler> newOverSampler;
 
-        if(ps.voiceIndex != nullptr)
+        if(ps.voiceIndex != nullptr && ps.voiceIndex->isEnabled())
         {
             scriptnode::Error e;
             e.error = Error::IllegalPolyphony;
@@ -669,6 +669,9 @@ template <class T> class default_data
 };
 
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
+
 
 /** A wrapper that extends the wrap::init class with the possibility of handling external data.
 
@@ -744,7 +747,7 @@ template <class T, class DataHandler = default_data<T>> struct data : public wra
 	JUCE_DECLARE_WEAK_REFERENCEABLE(data);
 };
 
-
+#pragma clang diagnostic pop
 
 /** A wrapper node that will render its child node to a external data object. */
 template <class T> class offline : public scriptnode::data::base
