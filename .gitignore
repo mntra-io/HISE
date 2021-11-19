@@ -47,6 +47,7 @@ tools/auto_build/Output/
 tools/streaming_api/html/
 tools/auto_build/install_script.iss
 projects/standalone/JuceLibraryCode/
+projects/standalone/JuceLibraryCode/AppConfig.h
 extras/basic_expansion_project/Binaries/
 extras/mpe_demo/Binaries/
 extras/demo_project/PooledResources/
