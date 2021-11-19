@@ -204,7 +204,7 @@
                 smallIcon="bfBEgJ" bigIcon="bfBEgJ" extraCompilerFlags="-Wno-reorder -Wno-inconsistent-missing-override&#10;-fpermissive"
                 linuxExtraPkgConfig="x11 xinerama xext" extraLinkerFlags="-no-pie&#10;-fuse-ld=gold&#10;-Wl,--threads&#10;-Wl,--thread-count=10">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="HISE Standalone Debug"/>
+        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="HISE Standalone"/>
         <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="HISE Standalone"
                        linkTimeOptimisation="1"/>
         <CONFIGURATION name="TravisCI" isDebug="1" optimisation="1" targetName="HISE Standalone"
