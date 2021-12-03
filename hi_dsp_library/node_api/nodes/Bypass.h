@@ -49,6 +49,9 @@ public:
 
 	SN_SELF_AWARE_WRAPPER(smoothed, T);
 
+	constexpr OPTIONAL_BOOL_CLASS_FUNCTION(isProcessingHiseEvent);
+	constexpr OPTIONAL_BOOL_CLASS_FUNCTION(isPolyphonic);
+
 	template <typename ProcessDataType> void process(ProcessDataType& data)
 	{
 		if (shouldSmoothBypass())
@@ -65,7 +68,7 @@ public:
 			this->obj.process(data);
 	}
 
-	constexpr OPTIONAL_BOOL_CLASS_FUNCTION(isProcessingHiseEvent);
+	
 
 	void processFrame(snex::Types::dyn<float>& data) noexcept
 	{
@@ -235,6 +238,7 @@ public:
 	SN_SELF_AWARE_WRAPPER(simple, T);
 
 	constexpr OPTIONAL_BOOL_CLASS_FUNCTION(isProcessingHiseEvent);
+	constexpr OPTIONAL_BOOL_CLASS_FUNCTION(isPolyphonic);
 
 	template <typename ProcessDataType> void process(ProcessDataType& data) noexcept
 	{

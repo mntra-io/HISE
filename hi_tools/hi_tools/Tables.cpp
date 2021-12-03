@@ -44,12 +44,15 @@ Table::~Table()
 {
 }
 
-void Table::setGraphPoints(const Array<GraphPoint> &newGraphPoints, int numPoints)
+void Table::setGraphPoints(const Array<GraphPoint> &newGraphPoints, int numPoints, bool refreshLookupTable)
 {
 	graphPoints.clear();
 	graphPoints.addArray(newGraphPoints, 0, numPoints);
 
-	internalUpdater.sendContentChangeMessage(sendNotificationAsync, -1);
+	if (refreshLookupTable)
+		fillLookUpTable();
+
+	internalUpdater.sendContentChangeMessage(sendNotificationSync, -1);
 };
 
 String Table::exportData() const
@@ -198,7 +201,8 @@ void Table::fillExternalLookupTable(float* d, int numValues)
 	Path renderPath;
 	createPath(renderPath, false, false);
 	
-	PathFlatteningIterator it(renderPath);
+	// Allow a error of -60dB for the curve flattening
+	PathFlatteningIterator it(renderPath, AffineTransform(), 0.001f);
 
 	for (int i = 0; i < numValues; i++)
 	{
@@ -215,7 +219,6 @@ void Table::fillExternalLookupTable(float* d, int numValues)
 				isLast = true;
 				break;
 			}
-				
 
 			r = Range<float>(it.x1, it.x2);
 		}
@@ -234,7 +237,9 @@ void Table::fillExternalLookupTable(float* d, int numValues)
 	};
 }
 
+#if 0
 float *MidiTable::getWritePointer() {return data;};
+#endif
 
 float *SampleLookupTable::getWritePointer() {return data;};
 

@@ -178,6 +178,7 @@ public:
 		MenuToolsDeleteMissingSamples,
 		MenuToolsGetMissingSampleList,
 		MenuToolsCheckAllSampleMaps,
+		MenuToolsApplySampleMapProperties,
 		MenuToolsImportArchivedSamples,
 		MenuToolsCollectExternalFiles,
 		MenuToolsCheckUnusedImages,
@@ -310,6 +311,8 @@ public:
 		static void createNewProject(BackendRootWindow *bpe);
 		static void loadProject(BackendRootWindow *bpe);
 
+		static void applySampleMapProperties(BackendRootWindow* bpe);
+
 		static void loadFirstXmlAfterProjectSwitch(BackendRootWindow * bpe);
 
 		static void closeProject(BackendRootWindow *bpe);
@@ -360,7 +363,7 @@ public:
 		static void unloadAllAudioFiles(BackendRootWindow * bpe);
 		static void createUIDataFromDesktop(BackendRootWindow * bpe);
 
-		static String createWindowsInstallerTemplate(MainController* mc, bool includeAAX, bool include32, bool include64, bool includeRLottie);
+		static String createWindowsInstallerTemplate(MainController* mc, bool includeAAX, bool include32, bool include64);
 		static void convertSampleMapToWavetableBanks(BackendRootWindow* bpe);
 		static void exportCompileFilesInPool(BackendRootWindow* bpe);
 		static void checkDeviceSanity(BackendRootWindow * bpe);

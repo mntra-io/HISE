@@ -406,7 +406,7 @@ juce::var ui::WorkbenchData::TestData::toJSON() const
 	return var(obj.get());
 }
 
-bool ui::WorkbenchData::TestData::fromJSON(const var& jsonData)
+bool ui::WorkbenchData::TestData::fromJSON(const var& jsonData, NotificationType runTests)
 {
 	if (auto obj = jsonData.getDynamicObject())
 	{
@@ -473,9 +473,12 @@ bool ui::WorkbenchData::TestData::fromJSON(const var& jsonData)
 					parameterEvents.add(ParameterEvent(pe));
 			}
 
-			sendMessageToListeners(true);
-			rebuildTestSignal(sendNotification);
-
+			if (runTests != dontSendNotification)
+			{
+				sendMessageToListeners(true);
+				rebuildTestSignal(sendNotification);
+			}
+			
 			return true;
 		}
 	}
@@ -686,7 +689,7 @@ void ui::WorkbenchData::TestData::processTestData(WorkbenchData::Ptr data)
 					numThisTime -= numBeforeParam;
 				}
 
-				if (thisParameterIndex != -1)
+				if (thisParameterIndex != -1 & p.timeStamp != 0)
 					tester->processTestParameterEvent(p.parameterIndex, p.valueToUse);
 
 				auto numBeforeEvent = e.getTimeStamp() - samplePos;

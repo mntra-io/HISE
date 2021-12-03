@@ -428,10 +428,10 @@ struct ExternalData
 
 	static DataType getDataTypeForClass(ComplexDataUIBase* d);
 
-	template <typename TableType=hise::SampleLookupTable> static ComplexDataUIBase* create(DataType t)
+	static ComplexDataUIBase* create(DataType t)
 	{
 		if (t == DataType::Table)
-			return new TableType();
+			return new SampleLookupTable();
 		if (t == DataType::SliderPack)
 			return new SliderPackData();
 		if (t == DataType::AudioFile)
@@ -553,6 +553,12 @@ struct ExternalDataHolder
 	virtual FilterDataObject* getFilterData(int index) = 0;
 	virtual SimpleRingBuffer* getDisplayBuffer(int index) = 0;
 
+    virtual void linkTo(ExternalData::DataType type, ExternalDataHolder& src, int srcIndex, int dstIndex)
+    {
+        // this data holder doesn't support linking
+        jassertfalse;
+    }
+    
 	ComplexDataUIBase* getComplexBaseType(ExternalData::DataType t, int index);
 
 	/** Override this method and remove the object in question. Return true if successful. */

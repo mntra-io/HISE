@@ -141,7 +141,7 @@ public:
 	};
 
 	/** Sets the GraphPoints. If you need to refresh the internal table, you also have to call fillLookUpTable(). */
-	void setGraphPoints(const Array<GraphPoint> &newGraphPoints, int numPoints);
+	void setGraphPoints(const Array<GraphPoint> &newGraphPoints, int numPoints, bool refreshLookupTable);
 
 	/** Exports the data as base64 encoded String. This is not a ValueTree (so RestorableObject is no base class from Table),
 	*	because it needs to be embedded in an XML attribute
@@ -207,13 +207,10 @@ public:
 
 		if (!delayUpdates)
 		{
-			internalUpdater.sendContentChangeMessage(sendNotificationAsync, pointIndex);
 			fillLookUpTable();
+			internalUpdater.sendContentChangeMessage(sendNotificationSync, pointIndex);
 		}
-		
 	}
-
-	
 
 	void reset()
 	{
@@ -360,6 +357,7 @@ private:
 };
 
 
+#if 0
 /** A Table subclass that can be used for any 7bit data.
 */
 class MidiTable: public Table
@@ -395,6 +393,7 @@ private:
 	float data[128];
 
 };
+#endif
 
 #define SAMPLE_LOOKUP_TABLE_SIZE 512
 
@@ -455,9 +454,12 @@ public:
 	*/
 	float getInterpolatedValue(double sampleIndex, NotificationType notifyEditor) const
 	{
-		if (notifyEditor != dontSendNotification)
-			internalUpdater.sendDisplayChangeMessage(sampleIndex / (double)SAMPLE_LOOKUP_TABLE_SIZE, notifyEditor);
+        if (notifyEditor != dontSendNotification)
+			internalUpdater.sendDisplayChangeMessage(sampleIndex, notifyEditor);
 
+        
+        sampleIndex *= (double)SAMPLE_LOOKUP_TABLE_SIZE;
+        
 		const double indexInTable = coefficient * sampleIndex;
 
 		if(indexInTable >= (double)(SAMPLE_LOOKUP_TABLE_SIZE - 1)) return getLastValue();

@@ -213,6 +213,7 @@ class SnexSource;
 /** A network of multiple DSP objects that are connected using a graph. */
 class DspNetwork : public ConstScriptingObject,
 				   public Timer,
+				   public AssignableObject,
 				   public ControlledObject,
 				   public NodeBase::Holder
 {
@@ -608,6 +609,27 @@ public:
 	StringArray getListOfUnusedNodeIds() const;
 	StringArray getFactoryList() const;
 
+	void assign(const int, var newValue) override { reportScriptError("Can't assign to this expression"); };
+
+	var getAssignedValue(int index) const override
+	{
+		return var(nodes[index].get());
+	}
+
+	int getCachedIndex(const var &indexExpression) const override
+	{
+		if (indexExpression.isString())
+		{
+			for (int i = 0; i < nodes.size(); i++)
+			{
+				if (nodes[i]->getId() == indexExpression.toString())
+					return i;
+			}
+		}
+
+		return (int)indexExpression;
+	}
+
 	NodeBase::Holder* getCurrentHolder() const;
 
 	void registerOwnedFactory(NodeFactory* ownedFactory);
@@ -674,10 +696,21 @@ public:
 	/** Creates and returns a node with the given path (`factory.node`). If a node with the id already exists, it returns this node. */
 	var create(String path, String id);
 
+	/** Creates a node, names it automatically and adds it at the end of the given parent. */
+	var createAndAdd(String path, String id, var parent);
+
+	/** Creates multiple nodes from the given JSON object. */
+	var createFromJSON(var jsonData, var parent);
+
 	/** Returns a reference to the node with the given id. */
 	var get(var id) const;
 
-	/** Any scripting API call has to be checked using this method. */
+	/** Removes all nodes. */
+	void clear(bool removeNodesFromSignalChain, bool removeUnusedNodes);
+
+	/** Undo the last action. */
+	bool undo();
+
 	void checkValid() const
 	{
 		if (parentHolder == nullptr)
@@ -688,6 +721,9 @@ public:
 	{
 		return parentHolder->getDebuggedNetwork() == this;
 	}
+
+	/** Creates a test object for this network. */
+	var createTest(var testData);
 
 	/** Deletes the node if it is not in a signal path. */
 	bool deleteIfUnused(String id);
@@ -758,13 +794,13 @@ public:
 		int getNumParameters() const final override { return root->getNumParameters(); }
 		Identifier getParameterId(int index) const final override
 		{
-			return Identifier(root->getParameter(index)->getId());
+			return Identifier(root->getParameterFromIndex(index)->getId());
 		}
 
 		float getParameter(int index) const final override
 		{
 			if(isPositiveAndBelow(index, getNumParameters()))
-				return (float)root->getParameter(index)->getValue();
+				return (float)root->getParameterFromIndex(index)->getValue();
 
 			return 0.0f;
 		}
@@ -772,7 +808,7 @@ public:
 		void setParameter(int index, float newValue) final override
 		{
 			if(isPositiveAndBelow(index, getNumParameters()))
-				root->getParameter(index)->setValue((double)newValue);
+				root->getParameterFromIndex(index)->setValueAsync((double)newValue);
 		}
 
 		NodeBase::Ptr root;
@@ -807,12 +843,12 @@ public:
 
 	void changeNodeId(ValueTree& c, const String& oldId, const String& newId, UndoManager* um);
 
-	UndoManager* getUndoManager()
+	UndoManager* getUndoManager(bool returnIfPending=false)
 	{ 
 		if (!enableUndo)
 			return nullptr;
 
-		if (um.isPerformingUndoRedo())
+		if (!returnIfPending && um.isPerformingUndoRedo())
 			return nullptr;
 		else
 			return &um;
@@ -1161,7 +1197,115 @@ struct HostHelpers
 	}
 };
 
+
 #if USE_BACKEND
+using namespace snex;
+using namespace snex::ui;
+
+/* A test
+
+	- fix multi channel
+	- add exception check
+	- implement external data stuff
+	- extend timeout
+	- implement parameters
+*/
+
+
+struct ScriptnodeCompileHandlerBase : public snex::ui::WorkbenchData::CompileHandler
+{
+	ScriptnodeCompileHandlerBase(WorkbenchData* d, DspNetwork* network_);
+
+	WorkbenchData::CompileResult compile(const String& codeToCompile) override;
+
+	void processTestParameterEvent(int parameterIndex, double value) override;
+
+	void prepareTest(PrepareSpecs ps, const Array<ParameterEvent>& initialParameters);
+
+	void initExternalData(ExternalDataHolder* h) override;
+
+	void postCompile(ui::WorkbenchData::CompileResult& lastResult) override;
+
+	Result runTest(ui::WorkbenchData::CompileResult& lastResult) override;
+
+
+
+	void processTest(ProcessDataDyn& data);
+
+	bool shouldProcessEventsManually() const;
+
+	void processHiseEvent(HiseEvent& e);;
+
+	virtual PrepareSpecs getPrepareSpecs() const = 0;
+
+	WeakReference<DspNetwork> network;
+};
+
+/** A test object for a DSP Network. */
+struct ScriptNetworkTest : public hise::ConstScriptingObject
+{
+	struct CProvider : public WorkbenchData::CodeProvider
+	{
+		CProvider(WorkbenchData::Ptr wb, DspNetwork* n) :
+			WorkbenchData::CodeProvider(wb.get()),
+			id(n->getId())
+		{};
+
+		String loadCode() const override { return {}; }
+		bool providesCode() const override { return false; }
+		bool saveCode(const String& ) override { return true; }
+		Identifier getInstanceId() const override { return id; }
+		Identifier id;
+	};
+
+	struct CHandler : public ScriptnodeCompileHandlerBase
+	{
+		CHandler(WorkbenchData::Ptr wb, DspNetwork* n);
+
+		PrepareSpecs getPrepareSpecs() const override { return ps; }
+
+		PrepareSpecs ps;
+	};
+
+	struct Wrapper
+	{
+		API_METHOD_WRAPPER_0(ScriptNetworkTest, runTest);
+		API_VOID_METHOD_WRAPPER_2(ScriptNetworkTest, setTestProperty);
+		API_VOID_METHOD_WRAPPER_3(ScriptNetworkTest, setProcessSpecs);
+		API_METHOD_WRAPPER_3(ScriptNetworkTest, expectEquals);
+        API_METHOD_WRAPPER_0(ScriptNetworkTest, dumpNetworkAsXml);
+	};
+
+	ScriptNetworkTest(DspNetwork* n, var testData);;
+
+	Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("NetworkTest"); }
+
+	// ================================================================================= API Methods
+
+	/** runs the test and returns the buffer. */
+	var runTest();
+
+	/** Sets a test property. */
+	void setTestProperty(String id, var value);
+
+	/** Set the processing specifications for the test run. */
+	void setProcessSpecs(int numChannels, double sampleRate, int blockSize);
+
+	/** Compares the two data types and returns a error message if they don't match. */
+	var expectEquals(var data1, var data2, float errorDb);
+
+    /** Creates a XML representation of the current network. */
+    String dumpNetworkAsXml();
+    
+    
+	// ================================================================================= API Methods
+
+private:
+
+	snex::ui::WorkbenchData::Ptr wb;
+};
+
+
 struct DspNetworkListeners
 {
 	struct Base : public valuetree::AnyListener
