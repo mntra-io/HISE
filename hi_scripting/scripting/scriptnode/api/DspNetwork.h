@@ -113,6 +113,13 @@ public:
 		return items.isEmpty();
 	}
 
+	void addCustomError(NodeBase* n, Error::ErrorCode c, const String& errorMessage)
+	{
+		Error e;
+		e.error = c;
+		addError(n, e, errorMessage);
+	}
+
 	void addError(NodeBase* n, Error e, const String& errorMessage = {})
 	{
 		customErrorMessage = errorMessage;
@@ -185,11 +192,11 @@ public:
 		return s;
 	}
 
-	String getErrorMessage(NodeBase* n) const
+	String getErrorMessage(NodeBase* n = nullptr) const
 	{
 		for (auto& i : items)
 		{
-			if (i.node == n)
+			if (i.node == n || n == nullptr)
 			{
 				return i.toString(customErrorMessage);
 			}
@@ -416,7 +423,7 @@ public:
 			SnexSourceCompileHandler(snex::ui::WorkbenchData* d, ProcessorWithScriptingContent* sp_);;
 
 			void processTestParameterEvent(int parameterIndex, double value) final override {};
-			void prepareTest(PrepareSpecs ps, const Array<snex::ui::WorkbenchData::TestData::ParameterEvent>& initialParameters) final override {};
+            Result prepareTest(PrepareSpecs ps, const Array<snex::ui::WorkbenchData::TestData::ParameterEvent>& initialParameters) final override { return Result::ok(); };
 			void processTest(ProcessDataDyn& data) final override {};
 
 			void run() override;
@@ -918,7 +925,16 @@ public:
 
 	ModValue& getNetworkModValue() { return networkModValue; }
 
+	void addPostInitFunction(const std::function<bool(void)>& f)
+	{
+		postInitFunctions.add(f);
+	}
+
+	void runPostInitFunctions();
+
 private:
+
+	Array<std::function<bool()>> postInitFunctions;
 
 	ModValue networkModValue;
 
@@ -1023,19 +1039,21 @@ private:
 			return 0.0f;
 		};
 
-		~ProjectNodeHolder()
-		{
-			if (loaded)
-			{
-				n.callDestructor();
-			}
-		}
+		~ProjectNodeHolder();
 
 		bool isActive() const { return forwardToNode; }
 
 		void prepare(PrepareSpecs ps)
 		{
+			dll->clearError();
+
 			n.prepare(ps);
+
+			auto e = dll->getError();
+
+			if (!e.isOk())
+				throw e;
+
 			n.reset();
 		}
 
@@ -1198,113 +1216,7 @@ struct HostHelpers
 };
 
 
-#if USE_BACKEND
-using namespace snex;
-using namespace snex::ui;
-
-/* A test
-
-	- fix multi channel
-	- add exception check
-	- implement external data stuff
-	- extend timeout
-	- implement parameters
-*/
-
-
-struct ScriptnodeCompileHandlerBase : public snex::ui::WorkbenchData::CompileHandler
-{
-	ScriptnodeCompileHandlerBase(WorkbenchData* d, DspNetwork* network_);
-
-	WorkbenchData::CompileResult compile(const String& codeToCompile) override;
-
-	void processTestParameterEvent(int parameterIndex, double value) override;
-
-	void prepareTest(PrepareSpecs ps, const Array<ParameterEvent>& initialParameters);
-
-	void initExternalData(ExternalDataHolder* h) override;
-
-	void postCompile(ui::WorkbenchData::CompileResult& lastResult) override;
-
-	Result runTest(ui::WorkbenchData::CompileResult& lastResult) override;
-
-
-
-	void processTest(ProcessDataDyn& data);
-
-	bool shouldProcessEventsManually() const;
-
-	void processHiseEvent(HiseEvent& e);;
-
-	virtual PrepareSpecs getPrepareSpecs() const = 0;
-
-	WeakReference<DspNetwork> network;
-};
-
-/** A test object for a DSP Network. */
-struct ScriptNetworkTest : public hise::ConstScriptingObject
-{
-	struct CProvider : public WorkbenchData::CodeProvider
-	{
-		CProvider(WorkbenchData::Ptr wb, DspNetwork* n) :
-			WorkbenchData::CodeProvider(wb.get()),
-			id(n->getId())
-		{};
-
-		String loadCode() const override { return {}; }
-		bool providesCode() const override { return false; }
-		bool saveCode(const String& ) override { return true; }
-		Identifier getInstanceId() const override { return id; }
-		Identifier id;
-	};
-
-	struct CHandler : public ScriptnodeCompileHandlerBase
-	{
-		CHandler(WorkbenchData::Ptr wb, DspNetwork* n);
-
-		PrepareSpecs getPrepareSpecs() const override { return ps; }
-
-		PrepareSpecs ps;
-	};
-
-	struct Wrapper
-	{
-		API_METHOD_WRAPPER_0(ScriptNetworkTest, runTest);
-		API_VOID_METHOD_WRAPPER_2(ScriptNetworkTest, setTestProperty);
-		API_VOID_METHOD_WRAPPER_3(ScriptNetworkTest, setProcessSpecs);
-		API_METHOD_WRAPPER_3(ScriptNetworkTest, expectEquals);
-        API_METHOD_WRAPPER_0(ScriptNetworkTest, dumpNetworkAsXml);
-	};
-
-	ScriptNetworkTest(DspNetwork* n, var testData);;
-
-	Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("NetworkTest"); }
-
-	// ================================================================================= API Methods
-
-	/** runs the test and returns the buffer. */
-	var runTest();
-
-	/** Sets a test property. */
-	void setTestProperty(String id, var value);
-
-	/** Set the processing specifications for the test run. */
-	void setProcessSpecs(int numChannels, double sampleRate, int blockSize);
-
-	/** Compares the two data types and returns a error message if they don't match. */
-	var expectEquals(var data1, var data2, float errorDb);
-
-    /** Creates a XML representation of the current network. */
-    String dumpNetworkAsXml();
-    
-    
-	// ================================================================================= API Methods
-
-private:
-
-	snex::ui::WorkbenchData::Ptr wb;
-};
-
+#if !USE_FRONTEND
 
 struct DspNetworkListeners
 {

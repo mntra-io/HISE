@@ -200,6 +200,8 @@ DspNetwork::DspNetwork(hise::ProcessorWithScriptingContent* p, ValueTree data_, 
     });
 
 	checkIfDeprecated();
+
+	runPostInitFunctions();
 }
 
 DspNetwork::~DspNetwork()
@@ -209,6 +211,8 @@ DspNetwork::~DspNetwork()
 	nodes.clear();
     nodeFactories.clear();
 	
+	
+
 	getMainController()->removeTempoListener(&tempoSyncer);
 }
 
@@ -466,6 +470,8 @@ void DspNetwork::setForwardControlsToParameters(bool shouldForward)
 
 void DspNetwork::prepareToPlay(double sampleRate, double blockSize)
 {
+	runPostInitFunctions();
+
 	if (sampleRate > 0.0)
 	{
 		SimpleReadWriteLock::ScopedWriteLock sl(getConnectionLock(), isInitialised());
@@ -485,6 +491,9 @@ void DspNetwork::prepareToPlay(double sampleRate, double blockSize)
 				currentSpecs.voiceIndex = getPolyHandler();
 
 				getRootNode()->prepare(currentSpecs);
+
+				runPostInitFunctions();
+
 				getRootNode()->reset();
 
 				if (projectNodeHolder.isActive())
@@ -1082,6 +1091,15 @@ hise::ScriptParameterHandler* DspNetwork::getCurrentParameterHandler()
 		return &networkParameterHandler;
 }
 
+void DspNetwork::runPostInitFunctions()
+{
+	for (int i = 0; i < postInitFunctions.size(); i++)
+	{
+		if (postInitFunctions[i]())
+			postInitFunctions.remove(i--);
+	}
+}
+
 DspNetwork::Holder::Holder()
 {
 	JUCE_ASSERT_MESSAGE_MANAGER_EXISTS;
@@ -1448,18 +1466,21 @@ void DeprecationChecker::throwIf(DeprecationId id)
 
 	if (!check(id))
 	{
-		Error e;
-		e.error = Error::ErrorCode::DeprecatedNode;
-		e.actual = (int)id;
-
-		auto nodeTree = cppgen::ValueTreeIterator::findParentWithType(v, PropertyIds::Node);
-		auto nId = nodeTree[PropertyIds::ID].toString();
-
-		if (auto node = n->getNodeWithId(nId))
+		try
 		{
-			n->getExceptionHandler().addError(node, e);
+			Error::throwError(Error::ErrorCode::DeprecatedNode, (int)id);
 		}
+		catch (Error& e)
+		{
+			auto nodeTree = cppgen::ValueTreeIterator::findParentWithType(v, PropertyIds::Node);
+			auto nId = nodeTree[PropertyIds::ID].toString();
 
+			if (auto node = n->getNodeWithId(nId))
+			{
+				n->getExceptionHandler().addError(node, e);
+			}
+		}
+		
 		notOk = true;
 	}
 #endif
@@ -1500,6 +1521,14 @@ scriptnode::NodeBase::Ptr DspNetwork::AnonymousNodeCloner::clone(NodeBase::Ptr p
 	return parent.createFromValueTree(parent.isPolyphonic(), p->getValueTree(), false);
 }
 
+DspNetwork::ProjectNodeHolder::~ProjectNodeHolder()
+{
+	if (loaded && dll != nullptr)
+	{
+		dll->deInitOpaqueNode(&n);
+	}
+}
+
 void DspNetwork::ProjectNodeHolder::process(ProcessDataDyn& data)
 {
 	NodeProfiler np(network.getRootNode(), data.getNumSamples());
@@ -1519,7 +1548,7 @@ void DspNetwork::ProjectNodeHolder::init(dll::ProjectDll::Ptr dllToUse)
 
 		if (dllId == network.getId())
 		{
-			dll->initNode(&n, i, network.isPolyphonic());
+			dll->initOpaqueNode(&n, i, network.isPolyphonic());
 			loaded = true;
 		}
 	}
@@ -1655,218 +1684,7 @@ void ScriptnodeExceptionHandler::validateMidiProcessingContext(NodeBase* b)
 	}
 }
 
-#if USE_BACKEND
 
-ScriptNetworkTest::ScriptNetworkTest(DspNetwork* n, var testData) :
-	ConstScriptingObject(n->getScriptProcessor(), 0),
-	wb(new snex::ui::WorkbenchData())
-{
-	wb->setCompileHandler(new CHandler(wb, n));
-	wb->setCodeProvider(new CProvider(wb, n));
-
-	wb->getTestData().fromJSON(testData, dontSendNotification);
-
-	ADD_API_METHOD_0(runTest);
-	ADD_API_METHOD_2(setTestProperty);
-	ADD_API_METHOD_3(setProcessSpecs);
-	ADD_API_METHOD_3(expectEquals);
-	ADD_API_METHOD_0(dumpNetworkAsXml);
-}
-
-juce::var ScriptNetworkTest::runTest()
-{
-	wb->triggerRecompile();
-	auto& td = wb->getTestData();
-	auto v = new VariantBuffer(td.testOutputData.getNumSamples());
-	FloatVectorOperations::copy(v->buffer.getWritePointer(0), td.testOutputData.getReadPointer(0), v->size);
-	return var(v);
-}
-
-String ScriptNetworkTest::dumpNetworkAsXml()
-{
-    auto v = dynamic_cast<CHandler*>(wb->getCompileHandler())->network->getValueTree();
-    auto copy = v.createCopy();
-    
-#if USE_BACKEND
-    DspNetworkListeners::PatchAutosaver::stripValueTree(copy);
-#endif
-    
-    auto xml = copy.createXml();
-    
-    return xml->createDocument("");
-}
-
-void ScriptNetworkTest::setTestProperty(String id, var value)
-{
-	auto v = wb->getTestData().toJSON();
-
-	if (auto obj = v.getDynamicObject())
-		obj->setProperty(Identifier(id), value);
-
-	wb->getTestData().fromJSON(v, dontSendNotification);
-}
-
-void ScriptNetworkTest::setProcessSpecs(int numChannels, double sampleRate, int blockSize)
-{
-	auto c = dynamic_cast<CHandler*>(wb->getCompileHandler());
-	c->ps.numChannels = numChannels;
-	c->ps.blockSize = blockSize;
-	c->ps.sampleRate = sampleRate;
-}
-
-juce::var ScriptNetworkTest::expectEquals(var data1, var data2, float errorDb)
-{
-	auto isNumeric = [](const var& v)
-	{
-		return v.isInt() || v.isDouble() || v.isInt64() || v.isBool();
-	};
-
-	if (data1.isArray() && (data2.isArray() || isNumeric(data2)))
-	{
-		auto size1 = data1.size();
-		auto size2 = isNumeric(data2) ? data2.size() : size1;
-
-		if (size1 != size2)
-			return var("Array size mismatch");
-
-		for (int i = 0; i < size1; i++)
-		{
-			auto v = isNumeric(data2) ? data2 : data2[i];
-			auto ok = expectEquals(data1[i], v, errorDb);
-
-			if (ok.isString())
-				return ok;
-		}
-
-		return 0;
-	}
-	if (data1.isBuffer() && (data2.isBuffer() || isNumeric(data2)))
-	{
-		auto p1 = data1.getBuffer()->buffer.getReadPointer(0);
-		auto p2 = !isNumeric(data2) ? data2.getBuffer()->buffer.getReadPointer(0) : nullptr;
-		auto size1 = data1.getBuffer()->size;
-		auto size2 = !isNumeric(data2) ? data2.getBuffer()->size : size1;
-
-		if (size1 != size2)
-			return var("Buffer size mismatch");
-
-		for (int i = 0; i < size1; i++)
-		{
-			float v = p2 != nullptr ? p2[i] : (float)data2;
-			auto result = expectEquals(p1[i], v, errorDb);
-
-			if (result.isString())
-				return result;
-		}
-
-		return 0;
-	}
-	if (isNumeric(data1) && isNumeric(data2))
-	{
-		auto v1 = (float)data1;
-		auto v2 = (float)data2;
-
-		auto diff = hmath::abs(v1 - v2);
-
-		if (diff > Decibels::decibelsToGain(errorDb))
-		{
-			String error;
-			error << "Value error: " << String(Decibels::gainToDecibels(diff), 1) << " dB";
-			return var(error);
-		}
-
-		return 0;
-	}
-	
-	return var("unsupported type");
-}
-
-ScriptNetworkTest::CHandler::CHandler(WorkbenchData::Ptr wb, DspNetwork* n) :
-	ScriptnodeCompileHandlerBase(wb.get(), n)
-{
-	ps.voiceIndex = n->getPolyHandler();
-	ps.numChannels = wb->getTestData().testSourceData.getNumChannels();
-	ps.blockSize = 512;
-	ps.numChannels = 1;
-	ps.sampleRate = 44100.0;
-}
-
-ScriptnodeCompileHandlerBase::ScriptnodeCompileHandlerBase(WorkbenchData* d, DspNetwork* network_) :
-	CompileHandler(d),
-	network(network_)
-{
-
-}
-
-snex::ui::WorkbenchData::CompileResult ScriptnodeCompileHandlerBase::compile(const String& codeToCompile)
-{
-	return {};
-}
-
-void ScriptnodeCompileHandlerBase::processTestParameterEvent(int parameterIndex, double value)
-{
-	SimpleReadWriteLock::ScopedReadLock sl(network->getConnectionLock());
-	network->getCurrentParameterHandler()->setParameter(parameterIndex, value);
-}
-
-void ScriptnodeCompileHandlerBase::prepareTest(PrepareSpecs ps, const Array<ParameterEvent>& initialParameters)
-{
-	network->setNumChannels(ps.numChannels);
-	network->prepareToPlay(ps.sampleRate, ps.blockSize);
-
-	for (auto pe : initialParameters)
-	{
-		if(pe.timeStamp == 0)
-			processTestParameterEvent(pe.parameterIndex, pe.valueToUse);
-	}
-	
-	network->reset();
-}
-
-void ScriptnodeCompileHandlerBase::initExternalData(ExternalDataHolder* h)
-{
-
-}
-
-void ScriptnodeCompileHandlerBase::postCompile(ui::WorkbenchData::CompileResult& lastResult)
-{
-	runTest(lastResult);
-}
-
-Result ScriptnodeCompileHandlerBase::runTest(ui::WorkbenchData::CompileResult& lastResult)
-{
-	auto& td = getParent()->getTestData();
-
-	auto cs = getPrepareSpecs();
-
-	if (cs.sampleRate <= 0.0 || cs.blockSize == 0)
-	{
-		cs.sampleRate = 44100.0;
-		cs.blockSize = 512;
-	}
-
-	td.initProcessing(cs);
-	td.processTestData(getParent());
-	return Result::ok();
-}
-
-void ScriptnodeCompileHandlerBase::processTest(ProcessDataDyn& data)
-{
-	network->process(data);
-}
-
-bool ScriptnodeCompileHandlerBase::shouldProcessEventsManually() const
-{
-	return false;
-}
-
-void ScriptnodeCompileHandlerBase::processHiseEvent(HiseEvent& e)
-{
-	jassertfalse;
-}
-
-
-#endif
 
 }
 

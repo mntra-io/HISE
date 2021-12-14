@@ -117,6 +117,7 @@ public:
         MenuExportFileAsSnippet,
 		MenuExportSampleDataForInstaller,
 		MenuExportCompileFilesInPool,
+		MenuExportCompileNetworksAsDll,
 		MenuFileQuit,
 		MenuEditOffset = 0x30000,
 		MenuEditUndo,
@@ -197,7 +198,7 @@ public:
 		MenuToolsEnableAutoSaving,
 		MenuToolsEnableDebugLogging,
 		MenuToolsRecordOneSecond,
-		
+		MenuToolsShowDspNetworkDllInfo,
 		MenuToolsDeviceSimulatorOffset,
 		MenuHelpShowAboutPage = 0x70000,
 		MenuHelpShowDocumentation,
@@ -340,6 +341,7 @@ public:
 		static void moveModule(CopyPasteTarget *currentCopyPasteTarget, bool moveUp);
 		static void createExternalScriptFile(BackendRootWindow * bpe);
 		static void exportMainSynthChainAsPlayerLibrary(BackendRootWindow * bpe);
+		static void compileNetworksToDll(BackendRootWindow* bpe);
 		static void cleanBuildDirectory(BackendRootWindow * bpe);
 		static void convertAllSamplesToMonolith(BackendRootWindow * bpe);
 		static void convertSfzFilesToSampleMaps(BackendRootWindow * bpe);
@@ -370,6 +372,7 @@ public:
 		static void copyMissingSampleListToClipboard(BackendRootWindow * bpe);
 		static void createRecoveryXml(BackendRootWindow * bpe);
 		static void showDocWindow(BackendRootWindow * bpe);
+		static void showNetworkDllInfo(BackendRootWindow * bpe);
 	};
 
 private:
@@ -394,6 +397,29 @@ private:
 
 	Array<File> recentFileList;
 
+};
+
+struct XmlBackupFunctions
+{
+	static void removeEditorStatesFromXml(XmlElement &xml);
+
+	static XmlElement* getFirstChildElementWithAttribute(XmlElement* parent, const String& attributeName, const String& value);
+
+	static void addContentFromSubdirectory(XmlElement& xml, const File& fileToLoad);
+
+	static void extractContentData(XmlElement& xml, const String& interfaceId, const File& xmlFile);
+
+	static void removeAllScripts(XmlElement &xml);
+
+	static void restoreAllScripts(ValueTree &v, ModulatorSynthChain *masterChain, const String &newId);
+
+	static File getScriptDirectoryFor(ModulatorSynthChain *masterChain, const String &chainId = String());
+
+	static File getScriptFileFor(ModulatorSynthChain *, File& directory, const String &id);
+
+private:
+
+	static String getSanitiziedName(const String &id);
 };
 
 } // namespace hise

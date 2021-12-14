@@ -851,7 +851,11 @@ public:
 		JUCE_DECLARE_WEAK_REFERENCEABLE(EventListener);
 	};
 
-	virtual ~ComplexDataUIUpdaterBase() {};
+	virtual ~ComplexDataUIUpdaterBase() 
+	{
+		ScopedLock sl(updateLock);
+		listeners.clear();
+	};
 
 	void addEventListener(EventListener* l)
 	{
@@ -955,6 +959,8 @@ private:
 
 			if (forceUpdate || (isMoreImportantChange && valueHasChanged))
 			{
+				ScopedLock sl(updateLock);
+
 				lastChange = jmax(t, lastChange);
 
 				for (auto l : listeners)
@@ -2305,7 +2311,7 @@ public:
 
 	static int getTempoInSamples(double hostTempoBpm, double sampleRate, float tempoFactor);
 
-	static const StringArray& getTempoNames() { return tempoNames; };
+	static StringArray getTempoNames();;
 
 	/** Returns the time for the specified tempo in milliseconds. */
 	static float getTempoInMilliSeconds(double hostTempoBpm, Tempo t);;
@@ -2333,7 +2339,9 @@ public:
 
 private:
 
-	static StringArray tempoNames;
+	using TempoString = char[6];
+
+	static TempoString tempoNames[numTempos];
 	static float tempoFactors[numTempos];
 
 };

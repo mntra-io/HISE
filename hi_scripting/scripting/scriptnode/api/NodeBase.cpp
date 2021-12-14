@@ -59,7 +59,13 @@ NodeBase::NodeBase(DspNetwork* rootNetwork, ValueTree data_, int numConstants_) 
 	currentId(v_data[PropertyIds::ID].toString()),	
 	subHolder(rootNetwork->getCurrentHolder())
 {
-	bypassState.referTo(data_, PropertyIds::Bypassed, getUndoManager(), false);
+	if (!v_data.hasProperty(PropertyIds::Bypassed))
+		v_data.setProperty(PropertyIds::Bypassed, false, getUndoManager());
+
+	bypassListener.setCallback(data_, 
+							   PropertyIds::Bypassed, 
+							   valuetree::AsyncMode::Synchronously, 
+							   BIND_MEMBER_FUNCTION_2(NodeBase::updateBypassState));
 
 	setDefaultValue(PropertyIds::NodeColour, 0);
 	setDefaultValue(PropertyIds::Comment, "");
@@ -139,7 +145,17 @@ void NodeBase::set(var id, var value)
 {
 	checkValid();
 
-	setNodeProperty(id.toString(), value);
+	Identifier id_(id.toString());
+
+	if (hasNodeProperty(id_))
+	{
+		setNodeProperty(id.toString(), value);
+	}
+
+	if (getValueTree().hasProperty(id_))
+	{
+		getValueTree().setProperty(id_, value, getUndoManager());
+	}
 }
 
 var NodeBase::getNodeProperty(const Identifier& id)
@@ -204,10 +220,8 @@ void NodeBase::setBypassed(bool shouldBeBypassed)
 {
 	checkValid();
 
-	if (enableUndo)
-		bypassState.setValue(shouldBeBypassed, getUndoManager());
-	else
-		bypassState.setValue(shouldBeBypassed, nullptr);
+	bypassState = shouldBeBypassed;
+
 }
 
 
@@ -516,8 +530,15 @@ void NodeBase::updateFrozenState(Identifier id, var newValue)
 {
 	if (auto n = getEmbeddedNetwork())
 	{
-		if (n->canBeFrozen())
-			n->setUseFrozenNode((bool)newValue);
+		try
+		{
+			if (n->canBeFrozen())
+				n->setUseFrozenNode((bool)newValue);
+		}
+		catch (Error& e)
+		{
+			getRootNetwork()->getExceptionHandler().addError(this, e);
+		}
 	}
 }
 
@@ -1182,14 +1203,11 @@ scriptnode::parameter::dynamic_base::Ptr ConnectionBase::createParameterFromConn
 		{
 			if (auto validNode = dynamic_cast<SoftBypassNode*>(tn))
 			{
-				auto r = RangeHelpers::getDoubleRange(c).getRange();
-				p = new NodeBase::DynamicBypassParameter(tn, r);
+				p = new NodeBase::DynamicBypassParameter(tn, {});
 			}
 			else
 			{
-				Error e;
-				e.error = Error::IllegalBypassConnection;
-				tn->getRootNetwork()->getExceptionHandler().addError(tn, e);
+				tn->getRootNetwork()->getExceptionHandler().addCustomError(tn, Error::IllegalBypassConnection, "Can't add a bypass here");
 				return nullptr;
 			}
 		}
@@ -1200,7 +1218,7 @@ scriptnode::parameter::dynamic_base::Ptr ConnectionBase::createParameterFromConn
 
 		if (numConnections == 1)
 		{
-			if (!scaleInput || p->getRange() == inputRange)
+			if (!scaleInput || RangeHelpers::equalsWithError(p->getRange(), inputRange, 0.001))
 				return p;
 		}
 

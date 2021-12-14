@@ -199,6 +199,7 @@ struct ScriptingObjects::ScriptFile::Wrapper
 	API_METHOD_WRAPPER_0(ScriptFile, deleteFileOrDirectory);
 	API_METHOD_WRAPPER_1(ScriptFile, loadEncryptedObject);
 	API_METHOD_WRAPPER_1(ScriptFile, toReferenceString);
+	API_METHOD_WRAPPER_1(ScriptFile, getRelativePathFrom);
 	API_VOID_METHOD_WRAPPER_2(ScriptFile, setReadOnly);
 	API_VOID_METHOD_WRAPPER_3(ScriptFile, extractZipFile);
 	API_VOID_METHOD_WRAPPER_0(ScriptFile, show);
@@ -245,6 +246,7 @@ ScriptingObjects::ScriptFile::ScriptFile(ProcessorWithScriptingContent* p, const
 	ADD_API_METHOD_3(extractZipFile);
 	ADD_API_METHOD_2(setReadOnly);
 	ADD_API_METHOD_1(toReferenceString);
+	ADD_API_METHOD_1(getRelativePathFrom);
 }
 
 
@@ -549,6 +551,25 @@ juce::var ScriptingObjects::ScriptFile::loadAsAudioFile() const
 	}
 
 	return var();
+}
+
+String ScriptingObjects::ScriptFile::getRelativePathFrom(var otherFile)
+{
+	if (auto sf = dynamic_cast<ScriptFile*>(otherFile.getObject()))
+	{
+		if (!sf->f.isDirectory())
+			reportScriptError("otherFile is not a directory");
+
+		auto rp = f.getRelativePathFrom(sf->f);
+		return rp.replaceCharacter('\\', '/');
+	}
+	else
+	{
+		reportScriptError("otherFile is not a file");
+	}
+
+
+	return {};
 }
 
 void ScriptingObjects::ScriptFile::show()
@@ -4755,7 +4776,7 @@ Array<Identifier> ScriptingObjects::ScriptedLookAndFeel::getAllFunctionNames()
 	return sa;
 }
 
-bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const Identifier& functionname, var argsObject)
+bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const Identifier& functionname, var argsObject, Component* c)
 {
 	// If this hits, you need to add that id to the array above.
 	jassert(getAllFunctionNames().contains(functionname));
@@ -4790,13 +4811,19 @@ bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const
 		
 		g->getDrawHandler().flush();
 
-		DrawActions::Handler::Iterator iter(&g->getDrawHandler());
+		DrawActions::Handler::Iterator it(&g->getDrawHandler());
 
-		while (auto action = iter.getNextAction())
+		if (c != nullptr)
 		{
-			action->perform(g_);
+			it.render(g_, c);
+		}
+		else
+		{
+			while (auto action = it.getNextAction())
+				action->perform(g_);
 		}
 
+		
 		return true;
 	}
 
@@ -4868,7 +4895,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawAlertBox(Graphics& g_, Aler
 
 		addParentFloatingTile(w, obj);
 
-		if (get()->callWithGraphics(g_, "drawAlertWindow", var(obj)))
+		if (get()->callWithGraphics(g_, "drawAlertWindow", var(obj), &w))
 			return;
 	}
 
@@ -4921,7 +4948,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawPopupMenuBackground(Graphic
 		obj->setProperty("width", width);
 		obj->setProperty("height", height);
 
-		if (get()->callWithGraphics(g_, "drawPopupMenuBackground", var(obj)))
+		if (get()->callWithGraphics(g_, "drawPopupMenuBackground", var(obj), nullptr))
 			return;
 	}
 
@@ -4941,7 +4968,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawPopupMenuItem(Graphics& g_,
 		obj->setProperty("hasSubMenu", hasSubMenu);
 		obj->setProperty("text", text);
 
-		if (get()->callWithGraphics(g_, "drawPopupMenuItem", var(obj)))
+		if (get()->callWithGraphics(g_, "drawPopupMenuItem", var(obj), nullptr))
 			return;
 	}
 
@@ -4967,7 +4994,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawToggleButton(Graphics &g_, 
 
 		addParentFloatingTile(b, obj);
 
-		if (get()->callWithGraphics(g_, "drawToggleButton", var(obj)))
+		if (get()->callWithGraphics(g_, "drawToggleButton", var(obj), &b))
 			return;
 	}
 
@@ -5009,7 +5036,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawRotarySlider(Graphics &g_, 
 
 		addParentFloatingTile(s, obj);
 
-		if (get()->callWithGraphics(g_, "drawRotarySlider", var(obj)))
+		if (get()->callWithGraphics(g_, "drawRotarySlider", var(obj), &s))
 			return;
 	}
 
@@ -5068,7 +5095,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawLinearSlider(Graphics &g, i
 
 		addParentFloatingTile(slider, obj);
 
-		if (get()->callWithGraphics(g, "drawLinearSlider", var(obj)))
+		if (get()->callWithGraphics(g, "drawLinearSlider", var(obj), &slider))
 			return;
 	}
 
@@ -5117,7 +5144,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawComboBox(Graphics& g_, int 
 
 		addParentFloatingTile(cb, obj);
 
-		if (get()->callWithGraphics(g_, "drawComboBox", var(obj)))
+		if (get()->callWithGraphics(g_, "drawComboBox", var(obj), &cb))
 			return;
 	}
 
@@ -5162,7 +5189,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawButtonBackground(Graphics& 
 
 		addParentFloatingTile(button, obj);
 
-		if (get()->callWithGraphics(g_, "drawDialogButton", var(obj)))
+		if (get()->callWithGraphics(g_, "drawDialogButton", var(obj), &button))
 			return;
 	}
 
@@ -5184,7 +5211,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawNumberTag(Graphics& g_, Col
 			obj->setProperty("area", ApiHelpers::getVarRectangle(area.toFloat()));
 			obj->setProperty("macroIndex", number - 1);
 
-			if (l->callWithGraphics(g_, "drawNumberTag", var(obj)))
+			if (l->callWithGraphics(g_, "drawNumberTag", var(obj), nullptr))
 				return;
 		}
 	}
@@ -5203,7 +5230,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawPresetBrowserBackground(Gra
 		obj->setProperty("itemColour2", modalBackgroundColour.getARGB());
 		obj->setProperty("textColour", textColour.getARGB());
 
-		if (get()->callWithGraphics(g_, "drawPresetBrowserBackground", var(obj)))
+		if (get()->callWithGraphics(g_, "drawPresetBrowserBackground", var(obj), p))
 			return;
 	}
 
@@ -5222,7 +5249,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawColumnBackground(Graphics& 
 		obj->setProperty("itemColour2", modalBackgroundColour.getARGB());
 		obj->setProperty("textColour", textColour.getARGB());
 
-		if (get()->callWithGraphics(g_, "drawPresetBrowserColumnBackground", var(obj)))
+		if (get()->callWithGraphics(g_, "drawPresetBrowserColumnBackground", var(obj), nullptr))
 			return;
 	}
 
@@ -5244,7 +5271,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawListItem(Graphics& g_, int 
 		obj->setProperty("itemColour2", modalBackgroundColour.getARGB());
 		obj->setProperty("textColour", textColour.getARGB());
 
-		if (get()->callWithGraphics(g_, "drawPresetBrowserListItem", var(obj)))
+		if (get()->callWithGraphics(g_, "drawPresetBrowserListItem", var(obj), nullptr))
 			return;
 	}
 
@@ -5278,7 +5305,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawSearchBar(Graphics& g_, Rec
 
 		obj->setProperty("icon", var(p));
 
-		if (get()->callWithGraphics(g_, "drawPresetBrowserSearchBar", var(obj)))
+		if (get()->callWithGraphics(g_, "drawPresetBrowserSearchBar", var(obj), nullptr))
 			return;
 	}
 
@@ -5308,7 +5335,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTablePath(Graphics& g_, Tab
 
 		addParentFloatingTile(te, obj);
 
-		if (get()->callWithGraphics(g_, "drawTablePath", var(obj)))
+		if (get()->callWithGraphics(g_, "drawTablePath", var(obj), &te))
 			return;
 	}
 
@@ -5332,7 +5359,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTablePoint(Graphics& g_, Ta
 
 		addParentFloatingTile(te, obj);
 
-		if (get()->callWithGraphics(g_, "drawTablePoint", var(obj)))
+		if (get()->callWithGraphics(g_, "drawTablePoint", var(obj), &te))
 			return;
 	}
 
@@ -5355,7 +5382,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTableRuler(Graphics& g_, Ta
 
 		addParentFloatingTile(te, obj);
 
-		if (get()->callWithGraphics(g_, "drawTableRuler", var(obj)))
+		if (get()->callWithGraphics(g_, "drawTableRuler", var(obj), &te))
 			return;
 	}
 
@@ -5388,7 +5415,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawScrollbar(Graphics& g_, Scr
 		
 		addParentFloatingTile(scrollbar, obj);
 
-		if (get()->callWithGraphics(g_, "drawScrollbar", var(obj)))
+		if (get()->callWithGraphics(g_, "drawScrollbar", var(obj), &scrollbar))
 			return;
 	}
 
@@ -5419,7 +5446,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawAhdsrPathSection(Graphics& 
 
 		addParentFloatingTile(graph, obj);
 
-		if (get()->callWithGraphics(g, "drawAhdsrPath", var(obj)))
+		if (get()->callWithGraphics(g, "drawAhdsrPath", var(obj), &graph))
 			return;
 	}
 	
@@ -5442,7 +5469,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawAhdsrBallPosition(Graphics&
 
 		addParentFloatingTile(graph, obj);
 
-		if (get()->callWithGraphics(g, "drawAhdsrBall", var(obj)))
+		if (get()->callWithGraphics(g, "drawAhdsrBall", var(obj), &graph))
 			return;
 	}
 
@@ -5465,7 +5492,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawMidiDropper(Graphics& g_, R
 		obj->setProperty("textColour", d.findColour(HiseColourScheme::ComponentTextColourId).getARGB());
 		obj->setProperty("text", text);
 
-		if (get()->callWithGraphics(g_, "drawMidiDropper", var(obj)))
+		if (get()->callWithGraphics(g_, "drawMidiDropper", var(obj), &d))
 			return;
 	}
 
@@ -5484,7 +5511,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawHiseThumbnailBackground(Gra
         obj->setProperty("itemColour", th.findColour(AudioDisplayComponent::ColourIds::fillColour).getARGB());
         obj->setProperty("textColour", th.findColour(AudioDisplayComponent::ColourIds::outlineColour).getARGB());
         
-        if (get()->callWithGraphics(g_, "drawThumbnailBackground", var(obj)))
+        if (get()->callWithGraphics(g_, "drawThumbnailBackground", var(obj), &th))
             return;
     }
 
@@ -5511,7 +5538,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawHiseThumbnailPath(Graphics&
         obj->setProperty("itemColour", th.findColour(AudioDisplayComponent::ColourIds::fillColour).getARGB());
         obj->setProperty("textColour", th.findColour(AudioDisplayComponent::ColourIds::outlineColour).getARGB());
         
-        if (get()->callWithGraphics(g_, "drawThumbnailPath", var(obj)))
+        if (get()->callWithGraphics(g_, "drawThumbnailPath", var(obj), &th))
             return;
     }
 
@@ -5538,7 +5565,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawThumbnailRange(Graphics& g_
         obj->setProperty("itemColour", th.findColour(AudioDisplayComponent::ColourIds::fillColour).getARGB());
         obj->setProperty("textColour", th.findColour(AudioDisplayComponent::ColourIds::outlineColour).getARGB());
         
-        if (get()->callWithGraphics(g_, "drawThumbnailRange", var(obj)))
+        if (get()->callWithGraphics(g_, "drawThumbnailRange", var(obj), &th))
             return;
     }
 
@@ -5557,7 +5584,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTextOverlay(Graphics& g_, H
         obj->setProperty("itemColour", th.findColour(AudioDisplayComponent::ColourIds::fillColour).getARGB());
         obj->setProperty("textColour", th.findColour(AudioDisplayComponent::ColourIds::outlineColour).getARGB());
         
-        if (get()->callWithGraphics(g_, "drawThumbnailText", var(obj)))
+        if (get()->callWithGraphics(g_, "drawThumbnailText", var(obj), &th))
             return;
     }
 
@@ -5576,7 +5603,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawKeyboardBackground(Graphics
 
 		
 
-		if (get()->callWithGraphics(g_, "drawKeyboardBackground", var(obj)))
+		if (get()->callWithGraphics(g_, "drawKeyboardBackground", var(obj), c))
 			return;
 	}
 
@@ -5597,7 +5624,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawWhiteNote(CustomKeyboardSta
 		obj->setProperty("down", isDown);
         obj->setProperty("keyColour", state->getColourForSingleKey(midiNoteNumber).getARGB());
 
-		if (get()->callWithGraphics(g_, "drawWhiteNote", var(obj)))
+		if (get()->callWithGraphics(g_, "drawWhiteNote", var(obj), c))
 			return;
 	}
 
@@ -5618,7 +5645,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawBlackNote(CustomKeyboardSta
 		obj->setProperty("down", isDown);
         obj->setProperty("keyColour", state->getColourForSingleKey(midiNoteNumber).getARGB());
 
-		if (get()->callWithGraphics(g_, "drawBlackNote", var(obj)))
+		if (get()->callWithGraphics(g_, "drawBlackNote", var(obj), c))
 			return;
 	}
 
@@ -5650,7 +5677,7 @@ juce::Image ScriptingObjects::ScriptedLookAndFeel::Laf::createIcon(PresetHandler
 		Image img2(Image::ARGB, img.getWidth(), img.getHeight(), true);
 		Graphics g(img2);
 
-		if (l->callWithGraphics(g, "drawAlertWindowIcon", var(obj)))
+		if (l->callWithGraphics(g, "drawAlertWindowIcon", var(obj), nullptr))
 		{
 			if ((int)obj->getProperty("type") == -1)
 				return {};
@@ -5678,7 +5705,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTag(Graphics& g_, bool blin
 		obj->setProperty("itemColour2", modalBackgroundColour.getARGB());
 		obj->setProperty("textColour", textColour.getARGB());
 
-		if (get()->callWithGraphics(g_, "drawPresetBrowserTag", var(obj)))
+		if (get()->callWithGraphics(g_, "drawPresetBrowserTag", var(obj), nullptr))
 			return;
 	}
 
@@ -5699,7 +5726,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawModalOverlay(Graphics& g_, 
 		obj->setProperty("itemColour2", modalBackgroundColour.getARGB());
 		obj->setProperty("textColour", textColour.getARGB());
 
-		if (l->callWithGraphics(g_, "drawPresetBrowserDialog", var(obj)))
+		if (l->callWithGraphics(g_, "drawPresetBrowserDialog", var(obj), nullptr))
 			return;
 	}
 
