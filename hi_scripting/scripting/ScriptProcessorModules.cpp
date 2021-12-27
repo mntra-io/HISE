@@ -691,6 +691,25 @@ void JavascriptMasterEffect::postCompileCallback()
 
 
 
+void JavascriptMasterEffect::voicesKilled()
+{
+	if (auto n = getActiveNetwork())
+	{
+
+		n->reset();
+	}
+}
+
+bool JavascriptMasterEffect::hasTail() const
+{
+	if (auto n = getActiveNetwork())
+	{
+		return n->hasTail();
+	}
+
+	return false;
+}
+
 void JavascriptMasterEffect::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
 	MasterEffectProcessor::prepareToPlay(sampleRate, samplesPerBlock);
@@ -781,6 +800,19 @@ void JavascriptMasterEffect::applyEffect(AudioSampleBuffer &b, int startSample, 
 		scriptEngine->executeCallback((int)Callback::processBlock, &lastResult);
 
 		BACKEND_ONLY(if (!lastResult.wasOk()) debugError(this, lastResult.getErrorMessage()));
+	}
+}
+
+void JavascriptMasterEffect::setBypassed(bool shouldBeBypassed, NotificationType notifyChangeHandler) noexcept
+{
+	MasterEffectProcessor::setBypassed(shouldBeBypassed, notifyChangeHandler);
+
+	if (!shouldBeBypassed)
+	{
+		if (auto n = getActiveNetwork())
+		{
+			n->reset();
+		}
 	}
 }
 

@@ -160,7 +160,7 @@ namespace parameter
 
 		if (auto p = cloneTargets[index])
 		{
-			v = p->getRange().convertFrom0to1(v);
+			v = p->getRange().convertFrom0to1(v, true);
 			p->call(v);
 		}
 	}
@@ -743,7 +743,7 @@ namespace ui
 			details->setProperty(PropertyIds::ParameterId, index);
 			details->setProperty(PropertyIds::SwitchTarget, true);
 
-			container->startDragging(var(details), this, ModulationSourceBaseComponent::createDragImageStatic(false));
+			container->startDragging(var(details), this, ScaledImage(ModulationSourceBaseComponent::createDragImageStatic(false)));
 			findParentComponentOfClass<DspNetworkGraph>()->repaint();
 		}
 	}

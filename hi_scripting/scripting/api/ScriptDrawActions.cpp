@@ -402,7 +402,12 @@ namespace ScriptedDrawActions
 			int prevR = shadow.radius;
 
 			shadow.radius *= scaleFactor;
-			shadow.drawForImage(g, mainImage);
+
+			if (shadow.radius > 0)
+			{
+				shadow.drawForImage(g, mainImage);
+			}
+
 			shadow.radius = prevR;
 
 			g.restoreState();
@@ -459,6 +464,8 @@ namespace ScriptedDrawActions
 
 		void perform(Graphics& g) override
 		{
+			using namespace juce::gl;
+
 			auto invT = AffineTransform::scale(1.0f / handler->getScaleFactor()).translated(bounds.getX(), bounds.getY());
 
 			
@@ -512,6 +519,8 @@ namespace ScriptedDrawActions
 
 					auto enabled = obj->enableBlending;
 
+					using namespace juce::gl;
+
 					auto wasEnabled = glIsEnabled(GL_BLEND);
 
 					int blendSrc;
@@ -544,6 +553,8 @@ namespace ScriptedDrawActions
 						cachedOpenGlBuffer = new ScreenshotListener::CachedImageBuffer(sb);
 
 						Image::BitmapData data(cachedOpenGlBuffer->data, Image::BitmapData::writeOnly);
+
+						
 
 						glFlush();
 						glReadPixels(sb.getX(), sb.getY(), sb.getWidth(), sb.getHeight(), GL_BGR_EXT, GL_UNSIGNED_BYTE, data.getPixelPointer(0, 0));

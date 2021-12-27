@@ -419,6 +419,8 @@ void DspNetwork::registerOwnedFactory(NodeFactory* ownedFactory)
 
 void DspNetwork::reset()
 {
+	SimpleReadWriteLock::ScopedWriteLock sl(getConnectionLock());
+	
 	if (projectNodeHolder.isActive())
 		projectNodeHolder.n.reset();
 	else
@@ -454,6 +456,11 @@ void DspNetwork::process(ProcessDataDyn& data)
 		if (exceptionHandler.isOk())
 			getRootNode()->process(data);
 	}
+}
+
+bool DspNetwork::hasTail() const
+{
+	return true;
 }
 
 juce::Identifier DspNetwork::getParameterIdentifier(int parameterIndex)
