@@ -29,8 +29,6 @@
     <string>Raw Material Software Limited</string>
     <key>NSHighResolutionCapable</key>
     <true/>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.developer-tools</string>
     <key>CFBundleDocumentTypes</key>
     <array>
       <dict>
@@ -46,8 +44,6 @@
         <string>Icon</string>
         <key>NSPersistentStoreTypeKey</key>
         <string>XML</string>
-        <key>LSHandlerRank</key>
-        <string>Default</string>
       </dict>
     </array>
   </dict>
