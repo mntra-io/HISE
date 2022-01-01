@@ -574,10 +574,10 @@ var PresetBrowserPanel::toDynamicObject() const
 	storePropertyInObject(obj, SpecialPanelIds::ShowFolderButton, options.showFolderButton);
 	storePropertyInObject(obj, SpecialPanelIds::ShowNotes, options.showNotesLabel);
 	storePropertyInObject(obj, SpecialPanelIds::ShowEditButtons, options.showEditButtons);
-	storePropertyInObject(obj, SpecialPanelIds::EditButtonOffset, var(options.editButtonOffset));
 	storePropertyInObject(obj, SpecialPanelIds::ShowAddButton, options.showAddButton);
 	storePropertyInObject(obj, SpecialPanelIds::ShowRenameButton, options.showRenameButton);
 	storePropertyInObject(obj, SpecialPanelIds::ShowDeleteButton, options.showDeleteButton);
+	storePropertyInObject(obj, SpecialPanelIds::EditButtonOffset, var(options.editButtonOffset));
 	storePropertyInObject(obj, SpecialPanelIds::ShowFavoriteIcon, options.showFavoriteIcons);
 	storePropertyInObject(obj, SpecialPanelIds::NumColumns, options.numColumns);
 	storePropertyInObject(obj, SpecialPanelIds::ColumnWidthRatio, var(options.columnWidthRatios));
@@ -693,7 +693,7 @@ var PresetBrowserPanel::getDefaultProperty(int index) const
 	RETURN_DEFAULT_PROPERTY(index, SpecialPanelIds::ShowAddButton, true);
 	RETURN_DEFAULT_PROPERTY(index, SpecialPanelIds::ShowRenameButton, true);
 	RETURN_DEFAULT_PROPERTY(index, SpecialPanelIds::ShowDeleteButton, true);
-	RETURN_DEFAULT_PROPERTY(index, SpecialPanelIds::EditButtonOffset, 0);
+	RETURN_DEFAULT_PROPERTY(index, SpecialPanelIds::EditButtonOffset, 10);
 	RETURN_DEFAULT_PROPERTY(index, SpecialPanelIds::NumColumns, 3);
 
 	Array<var> defaultRatios;
