@@ -881,7 +881,7 @@ void PresetBrowser::resized()
 		saveButton->setBounds(ar.removeFromRight(100));
 		manageButton->setBounds(ar.removeFromLeft(100));
 		
-		if (searchBarBounds.size() != 4)
+		if (searchBarBounds.size() != 4 || searchBarBounds.isEmpty())
 			searchBar->setBounds(ar);
 
 		y += 40;
@@ -897,17 +897,13 @@ void PresetBrowser::resized()
 
 		favoriteButton->setVisible(showFavoritesButton);
 
-		if (showFavoritesButton)
-		{
-			if (favoriteButtonBounds.size() != 4)
-				favoriteButton->setBounds(ar.removeFromLeft(30));
-			else 
-				favoriteButton->setBounds((int)favoriteButtonBounds[0], (int)favoriteButtonBounds[1], (int)favoriteButtonBounds[2], (int)favoriteButtonBounds[3]);
-		}
+		if(showFavoritesButton)
+			favoriteButton->setBounds(ar.removeFromLeft(30));
+
 
 		ar.removeFromLeft(10);
 
-		if (searchBarBounds.size() != 4)
+		if (searchBarBounds.size() != 4 || searchBarBounds.isEmpty())
 			searchBar->setBounds(ar);
 
 		y += 40;
@@ -1252,9 +1248,6 @@ void PresetBrowser::setOptions(const Options& newOptions)
 	
 	searchBarBounds.clear();
 	searchBarBounds.addArray(newOptions.searchBarBounds);
-
-	favoriteButtonBounds.clear();
-	favoriteButtonBounds.addArray(newOptions.favoriteButtonBounds);
 	
 	setShowButton(0, newOptions.showFolderButton);
 	setShowButton(1, newOptions.showSaveButtons);

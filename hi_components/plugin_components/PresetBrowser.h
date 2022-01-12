@@ -82,7 +82,6 @@ public:
 		Array<var> listAreaOffset;
 		Array<var> columnRowPadding;
 		Array<var> searchBarBounds;
-		Array<var> favoriteButtonBounds;
 		bool showSaveButtons = true;
 		bool showFolderButton = true;
 		bool showFavoriteIcons = true;
@@ -237,7 +236,6 @@ private:
 	int numColumns = 3;
 	Array<var> columnWidthRatios;
 	Array<var> searchBarBounds;
-	Array<var> favoriteButtonBounds;
 	
 	File defaultRoot;
 	File rootFile;

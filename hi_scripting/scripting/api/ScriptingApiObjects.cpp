@@ -2061,6 +2061,7 @@ struct ScriptingObjects::ScriptingModulator::Wrapper
 	API_VOID_METHOD_WRAPPER_2(ScriptingModulator, setAttribute);
 	API_METHOD_WRAPPER_1(ScriptingModulator, getAttribute);
   API_METHOD_WRAPPER_1(ScriptingModulator, getAttributeId);
+	API_METHOD_WRAPPER_1(ScriptingModulator, getAttributeIndex);
 	API_METHOD_WRAPPER_0(ScriptingModulator, getNumAttributes);
 	API_VOID_METHOD_WRAPPER_1(ScriptingModulator, setBypassed);
 	API_METHOD_WRAPPER_0(ScriptingModulator, isBypassed);
@@ -2114,6 +2115,7 @@ moduleHandler(m_, dynamic_cast<JavascriptProcessor*>(p))
 	ADD_API_METHOD_0(getIntensity);
   ADD_API_METHOD_1(getAttribute);
   ADD_API_METHOD_1(getAttributeId);
+	ADD_API_METHOD_1(getAttributeIndex);
 	ADD_API_METHOD_0(getCurrentLevel);
 	ADD_API_METHOD_0(exportState);
 	ADD_API_METHOD_1(restoreState);
@@ -2210,6 +2212,14 @@ String ScriptingObjects::ScriptingModulator::getAttributeId(int parameterIndex)
         return mod->getIdentifierForParameterIndex(parameterIndex).toString();    
     
     return String();
+}
+
+int ScriptingObjects::ScriptingModulator::getAttributeIndex(String parameterId)
+{
+    if (checkValidObject())
+        return mod->getParameterIndexForIdentifier(parameterId);
+
+    return -1;
 }
 
 int ScriptingObjects::ScriptingModulator::getNumAttributes() const
@@ -2498,6 +2508,7 @@ struct ScriptingObjects::ScriptingEffect::Wrapper
 	API_VOID_METHOD_WRAPPER_2(ScriptingEffect, setAttribute);
     API_METHOD_WRAPPER_1(ScriptingEffect, getAttribute);
     API_METHOD_WRAPPER_1(ScriptingEffect, getAttributeId);
+		API_METHOD_WRAPPER_1(ScriptingEffect, getAttributeIndex);
 	API_METHOD_WRAPPER_0(ScriptingEffect, getNumAttributes);
 	API_VOID_METHOD_WRAPPER_1(ScriptingEffect, setBypassed);
 	API_METHOD_WRAPPER_0(ScriptingEffect, isBypassed);
@@ -2540,6 +2551,7 @@ moduleHandler(fx, dynamic_cast<JavascriptProcessor*>(p))
 	ADD_API_METHOD_0(isBypassed);
     ADD_API_METHOD_1(getAttribute);
     ADD_API_METHOD_1(getAttributeId);
+		ADD_API_METHOD_1(getAttributeIndex);
 	ADD_API_METHOD_1(getCurrentLevel);
 	ADD_API_METHOD_0(exportState);
 	ADD_API_METHOD_1(restoreState);
@@ -2591,6 +2603,14 @@ String ScriptingObjects::ScriptingEffect::getAttributeId(int parameterIndex)
         return effect->getIdentifierForParameterIndex(parameterIndex).toString();    
     
     return String();
+}
+
+int ScriptingObjects::ScriptingEffect::getAttributeIndex(String parameterId)
+{
+    if (checkValidObject())
+        return effect->getParameterIndexForIdentifier(parameterId);
+
+    return -1;
 }
 
 int ScriptingObjects::ScriptingEffect::getNumAttributes() const
@@ -3077,6 +3097,7 @@ struct ScriptingObjects::ScriptingSynth::Wrapper
 	API_VOID_METHOD_WRAPPER_2(ScriptingSynth, setAttribute);
     API_METHOD_WRAPPER_1(ScriptingSynth, getAttribute);
     API_METHOD_WRAPPER_1(ScriptingSynth, getAttributeId);
+		API_METHOD_WRAPPER_1(ScriptingSynth, getAttributeIndex);
 	API_METHOD_WRAPPER_0(ScriptingSynth, getNumAttributes);
 	API_VOID_METHOD_WRAPPER_1(ScriptingSynth, setBypassed);
 	API_METHOD_WRAPPER_0(ScriptingSynth, isBypassed);
@@ -3118,6 +3139,7 @@ ScriptingObjects::ScriptingSynth::ScriptingSynth(ProcessorWithScriptingContent *
 	ADD_API_METHOD_2(setAttribute);
     ADD_API_METHOD_1(getAttribute);
     ADD_API_METHOD_1(getAttributeId);
+		ADD_API_METHOD_1(getAttributeIndex);
 	ADD_API_METHOD_1(setBypassed);
 	ADD_API_METHOD_0(isBypassed);
 	ADD_API_METHOD_1(getChildSynthByIndex);
@@ -3171,6 +3193,14 @@ String ScriptingObjects::ScriptingSynth::getAttributeId(int parameterIndex)
         return synth->getIdentifierForParameterIndex(parameterIndex).toString();    
     
     return String();
+}
+
+int ScriptingObjects::ScriptingSynth::getAttributeIndex(String parameterId)
+{
+    if (checkValidObject())
+        return synth->getParameterIndexForIdentifier(parameterId);
+
+    return -1;
 }
 
 int ScriptingObjects::ScriptingSynth::getNumAttributes() const
@@ -3378,6 +3408,7 @@ struct ScriptingObjects::ScriptingMidiProcessor::Wrapper
     API_METHOD_WRAPPER_1(ScriptingMidiProcessor, getAttribute);
 	API_METHOD_WRAPPER_0(ScriptingMidiProcessor, getNumAttributes);
 	API_METHOD_WRAPPER_1(ScriptingMidiProcessor, getAttributeId);
+	API_METHOD_WRAPPER_1(ScriptingMidiProcessor, getAttributeIndex);
 	API_VOID_METHOD_WRAPPER_1(ScriptingMidiProcessor, setBypassed);
 	API_METHOD_WRAPPER_0(ScriptingMidiProcessor, isBypassed);
 	API_METHOD_WRAPPER_0(ScriptingMidiProcessor, exportState);
@@ -3420,6 +3451,7 @@ mp(mp_)
 	ADD_API_METHOD_0(exportScriptControls);
 	ADD_API_METHOD_0(getNumAttributes);
 	ADD_API_METHOD_1(getAttributeId);
+	ADD_API_METHOD_1(getAttributeIndex);
 	ADD_API_METHOD_0(asMidiPlayer);
 }
 
@@ -3495,6 +3527,14 @@ String ScriptingObjects::ScriptingMidiProcessor::getAttributeId(int parameterInd
         return mp->getIdentifierForParameterIndex(parameterIndex).toString();    
     
     return String();
+}
+
+int ScriptingObjects::ScriptingMidiProcessor::getAttributeIndex(String parameterId)
+{
+    if (checkValidObject())
+        return mp->getParameterIndexForIdentifier(parameterId);
+
+    return -1;
 }
 
 void ScriptingObjects::ScriptingMidiProcessor::setBypassed(bool shouldBeBypassed)
@@ -3588,6 +3628,7 @@ struct ScriptingObjects::ScriptingAudioSampleProcessor::Wrapper
 	API_VOID_METHOD_WRAPPER_2(ScriptingAudioSampleProcessor, setAttribute);
     API_METHOD_WRAPPER_1(ScriptingAudioSampleProcessor, getAttribute);
     API_METHOD_WRAPPER_1(ScriptingAudioSampleProcessor, getAttributeId);
+		API_METHOD_WRAPPER_1(ScriptingAudioSampleProcessor, getAttributeIndex);
 	API_METHOD_WRAPPER_0(ScriptingAudioSampleProcessor, getNumAttributes);
 	API_VOID_METHOD_WRAPPER_1(ScriptingAudioSampleProcessor, setBypassed);
 	API_METHOD_WRAPPER_0(ScriptingAudioSampleProcessor, isBypassed);
@@ -3621,6 +3662,7 @@ audioSampleProcessor(dynamic_cast<Processor*>(sampleProcessor))
 	ADD_API_METHOD_2(setAttribute);
     ADD_API_METHOD_1(getAttribute);
     ADD_API_METHOD_1(getAttributeId);
+		ADD_API_METHOD_1(getAttributeIndex);
 	ADD_API_METHOD_0(getNumAttributes);
 	ADD_API_METHOD_1(setBypassed);
 	ADD_API_METHOD_0(isBypassed);
@@ -3658,6 +3700,14 @@ String ScriptingObjects::ScriptingAudioSampleProcessor::getAttributeId(int param
         return audioSampleProcessor->getIdentifierForParameterIndex(parameterIndex).toString();    
     
     return String();
+}
+
+int ScriptingObjects::ScriptingAudioSampleProcessor::getAttributeIndex(String parameterId)
+{
+    if (checkValidObject())
+        return audioSampleProcessor->getParameterIndexForIdentifier(parameterId);
+
+    return -1;
 }
 
 int ScriptingObjects::ScriptingAudioSampleProcessor::getNumAttributes() const
@@ -4787,6 +4837,30 @@ juce::Array<juce::Identifier> ApiHelpers::getGlobalApiClasses()
 	};
 	
 	return ids;
+}
+
+juce::PathStrokeType ApiHelpers::createPathStrokeType(var strokeType)
+{
+	PathStrokeType s(1.0f);
+
+	if (auto obj = strokeType.getDynamicObject())
+	{
+		static const StringArray endcaps = { "butt", "square", "rounded" };
+		static const StringArray jointStyles = { "mitered", "curved","beveled" };
+
+		auto endCap = (PathStrokeType::EndCapStyle)endcaps.indexOf(obj->getProperty("EndCapStyle").toString());
+		auto jointStyle = (PathStrokeType::JointStyle)jointStyles.indexOf(obj->getProperty("JointStyle").toString());
+		auto thickness = (float)obj->getProperty("Thickness");
+
+		s = PathStrokeType(SANITIZED(thickness), jointStyle, endCap);
+	}
+	else
+	{
+		auto t = (float)strokeType;
+		s = PathStrokeType(SANITIZED(t));
+	}
+
+	return s;
 }
 
 #if USE_BACKEND
