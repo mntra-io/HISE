@@ -318,6 +318,9 @@ public:
         /** Creates a fix object factory using the data layout. */
         var createFixObjectFactory(var layoutDescription);
         
+		/** Creates a reference to the script license manager. */
+		var createLicenseUnlocker();
+
 		/** Sends an allNotesOff message at the next buffer. */
 		void allNotesOff();
 
@@ -348,8 +351,14 @@ public:
 		/** Returns the millisecond value for the supplied tempo (HINT: Use "TempoSync" mode from Slider!) */
 		double getMilliSecondsForTempo(int tempoIndex) const;;
 
-    /** launches the given URL in the system's web browser. */
-    void openWebsite(String url);
+		/** launches the given URL in the system's web browser. */
+		void openWebsite(String url);
+
+		/** Copies the given text to the clipboard. */
+		void copyToClipboard(String textToCopy);
+
+		/** Returns the clipboard content. */
+		String getClipboardContent();
 
 		/** Creates a list of all available expansions. */
 		var getExpansionList();
@@ -1457,6 +1466,9 @@ public:
 		
 		/**  Convert a file size in bytes to a neat string description. */
 		String descriptionOfSizeInBytes(int bytes);
+
+		/** Returns the number of free bytes on the volume of a given folder. */
+		int64 getBytesFreeOnVolume(var folder);
 
 		// ========================================================= End of API calls
 

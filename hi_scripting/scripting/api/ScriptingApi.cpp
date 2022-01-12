@@ -916,8 +916,13 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_0(Engine, getLatencySamples);
 	API_METHOD_WRAPPER_2(Engine, getDspNetworkReference);
 	API_METHOD_WRAPPER_1(Engine, getSystemTime);
+	API_METHOD_WRAPPER_0(Engine, createLicenseUnlocker);
 	API_METHOD_WRAPPER_1(Engine, loadAudioFileIntoBufferArray);
+	API_METHOD_WRAPPER_0(Engine, getClipboardContent);
+	API_VOID_METHOD_WRAPPER_1(Engine, copyToClipboard);
 };
+
+
 
 ScriptingApi::Engine::Engine(ProcessorWithScriptingContent *p) :
 ScriptingObject(p),
@@ -1031,6 +1036,9 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_3(showYesNoWindow);
 	ADD_API_METHOD_3(showMessageBox);
 	ADD_API_METHOD_1(getSystemTime);
+	ADD_API_METHOD_0(createLicenseUnlocker);
+	ADD_API_METHOD_0(getClipboardContent);
+	ADD_API_METHOD_1(copyToClipboard);
 }
 
 
@@ -1454,7 +1462,7 @@ var ScriptingApi::Engine::createGlobalScriptLookAndFeel()
 		return var(sc);
 	else
 	{
-		auto slaf = new ScriptingObjects::ScriptedLookAndFeel(getScriptProcessor());
+		auto slaf = new ScriptingObjects::ScriptedLookAndFeel(getScriptProcessor(), true);
 		return var(slaf);
 	}
 }
@@ -1462,6 +1470,11 @@ var ScriptingApi::Engine::createGlobalScriptLookAndFeel()
 var ScriptingApi::Engine::createFixObjectFactory(var layoutData)
 {
     return var(new fixobj::Factory(getScriptProcessor(), layoutData));
+}
+
+juce::var ScriptingApi::Engine::createLicenseUnlocker()
+{
+	return var(new ScriptUnlocker::RefObject(getScriptProcessor()));
 }
 
 var ScriptingApi::Engine::createFFT()
@@ -1604,6 +1617,16 @@ void ScriptingApi::Engine::openWebsite(String url)
     {
         reportScriptError("not a valid URL");
     }
+}
+
+void ScriptingApi::Engine::copyToClipboard(String textToCopy)
+{
+	SystemClipboard::copyTextToClipboard(textToCopy);
+}
+
+String ScriptingApi::Engine::getClipboardContent()
+{
+	return SystemClipboard::getTextFromClipboard();
 }
 
 var ScriptingApi::Engine::getExpansionList()
@@ -5578,6 +5601,7 @@ struct ScriptingApi::FileSystem::Wrapper
 	API_METHOD_WRAPPER_1(FileSystem, fromAbsolutePath);
 	API_VOID_METHOD_WRAPPER_4(FileSystem, browse);
 	API_VOID_METHOD_WRAPPER_2(FileSystem, browseForDirectory);
+	API_METHOD_WRAPPER_1(FileSystem, getBytesFreeOnVolume);
 };
 
 ScriptingApi::FileSystem::FileSystem(ProcessorWithScriptingContent* pwsc):
@@ -5603,6 +5627,7 @@ ScriptingApi::FileSystem::FileSystem(ProcessorWithScriptingContent* pwsc):
 	ADD_API_METHOD_4(browse);
 	ADD_API_METHOD_2(browseForDirectory);
 	ADD_API_METHOD_1(fromAbsolutePath);
+	ADD_API_METHOD_1(getBytesFreeOnVolume);
 }
 
 ScriptingApi::FileSystem::~FileSystem()
@@ -5680,6 +5705,20 @@ void ScriptingApi::FileSystem::browseForDirectory(var startFolder, var callback)
 String ScriptingApi::FileSystem::getSystemId()
 {
 	return OnlineUnlockStatus::MachineIDUtilities::getLocalMachineIDs()[0];
+}
+
+int64 ScriptingApi::FileSystem::getBytesFreeOnVolume(var folder)
+{
+	File f;
+
+	if (folder.isInt())
+		f = getFile((SpecialLocations)(int)folder);
+	else if (auto sf = dynamic_cast<ScriptingObjects::ScriptFile*>(folder.getObject()))
+		f = sf->f;
+
+	auto numBytes = f.getBytesFreeOnVolume();
+
+	return numBytes;
 }
 
 void ScriptingApi::FileSystem::browseInternally(File f, bool forSaving, bool isDirectory, String wildcard, var callback)
