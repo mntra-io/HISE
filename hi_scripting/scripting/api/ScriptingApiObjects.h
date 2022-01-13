@@ -285,7 +285,7 @@ namespace ScriptingObjects
 		var createDirectory(String directoryName);
 
 		/** Returns the size of the file in bytes. */
-		int getSize();
+		int64 getSize();
 		
 		/*Reads a file and generates the hash of its contents. */
 		String getHash();
