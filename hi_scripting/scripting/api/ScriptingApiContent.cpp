@@ -122,6 +122,7 @@ struct ScriptingApi::Content::ScriptComponent::Wrapper
 	API_METHOD_WRAPPER_0(ScriptComponent, getWidth);
 	API_METHOD_WRAPPER_0(ScriptComponent, getHeight);
 	API_METHOD_WRAPPER_1(ScriptComponent, getLocalBounds);
+	API_METHOD_WRAPPER_4(ScriptComponent, getTrimmedBounds);
 	API_METHOD_WRAPPER_0(ScriptComponent, getChildComponents);
 	API_VOID_METHOD_WRAPPER_0(ScriptComponent, changed);
     API_METHOD_WRAPPER_0(ScriptComponent, getGlobalPositionX);
@@ -225,6 +226,7 @@ ScriptingApi::Content::ScriptComponent::ScriptComponent(ProcessorWithScriptingCo
 	ADD_API_METHOD_0(getWidth);
 	ADD_API_METHOD_0(getHeight);
 	ADD_API_METHOD_1(getLocalBounds);
+	ADD_API_METHOD_4(getTrimmedBounds);
 	ADD_API_METHOD_0(getChildComponents);
 	ADD_API_METHOD_0(changed);
 	ADD_API_METHOD_0(getGlobalPositionX);
@@ -1136,6 +1138,19 @@ var ScriptingApi::Content::ScriptComponent::getLocalBounds(float reduceAmount)
 	Array<var> b;
 	b.add(ar.getX()); b.add(ar.getY()); b.add(ar.getWidth()); b.add(ar.getHeight());
 	return var(b);
+}
+
+var ScriptingApi::Content::ScriptComponent::getTrimmedBounds(float top, float left, float bottom, float right)
+{
+	Rectangle<float> ar(0.0f, 0.0f, (float)getScriptObjectProperty(Properties::width), (float)getScriptObjectProperty(Properties::height));
+	ar = ar.withTrimmedTop(top);
+	ar = ar.withTrimmedLeft(left);
+	ar = ar.withTrimmedBottom(bottom);
+	ar = ar.withTrimmedRight(right);
+
+	Array<var> b;
+	b.add(ar.getX()); b.add(ar.getY()); b.add(ar.getWidth()); b.add(ar.getHeight());
+	return var(b);	
 }
 
 void ScriptingApi::Content::ScriptComponent::setKeyPressCallback(var keyboardFunction)
