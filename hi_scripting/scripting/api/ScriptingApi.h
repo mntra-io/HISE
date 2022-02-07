@@ -315,6 +315,9 @@ public:
 		/** Creates a reference to the DSP network of another script processor. */
 		var getDspNetworkReference(String processorId, String id);
 
+		/** Returns a reference to the global routing manager. */
+		var getGlobalRoutingManager();
+
 		/** Creates a background task that can execute heavyweight functions. */
 		var createBackgroundTask(String name);
 

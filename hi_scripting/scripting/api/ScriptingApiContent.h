@@ -624,6 +624,10 @@ public:
 
 		bool isConnectedToProcessor() const;;
 
+		bool isConnectedToGlobalCable() const;
+
+		void sendGlobalCableValue(var v);
+
 		Processor* getConnectedProcessor() const { return connectedProcessor.get(); };
 
 		int getConnectedParameterIndex() { return connectedParameterIndex; };
@@ -669,6 +673,10 @@ public:
 		{
 			return scriptChangedProperties.contains(id);
 		}
+
+		void repaintThisAndAllChildren();
+
+
 
 		void setPropertyToLookFor(const Identifier& id)
 		{
@@ -784,6 +792,8 @@ public:
             ProcessorWithScriptingContent* p;
         };
         
+		struct GlobalCableConnection;
+
 		AsyncControlCallbackSender controlSender;
 
 		bool isPositionProperty(Identifier id) const;
@@ -815,6 +825,8 @@ public:
 
 		WeakReference<Processor> connectedProcessor;
 		int connectedParameterIndex = -1;
+
+		ScopedPointer<GlobalCableConnection> globalConnection;
 
         int connectedMacroIndex = -1;
         bool macroRecursionProtection = false;
@@ -1755,20 +1767,7 @@ public:
 
 		void setScriptObjectPropertyWithChangeMessage(const Identifier &id, var newValue, NotificationType notifyEditor=sendNotification) override
 		{
-			if (id == getIdFor((int)ScriptComponent::Properties::visible))
-			{
-				const bool wasVisible = (bool)getScriptObjectProperty(visible);
-
-				const bool isNowVisible = (bool)newValue;
-
-				setScriptObjectProperty(visible, newValue);
-
-				if (wasVisible != isNowVisible)
-				{
-					repaintThisAndAllChildren();
-
-				}
-			}
+			
 
 			ScriptComponent::setScriptObjectPropertyWithChangeMessage(id, newValue, notifyEditor);
 
@@ -1784,8 +1783,6 @@ public:
 			}
 #endif
 		}
-
-		void repaintThisAndAllChildren();
 
 		struct Wrapper;
 
