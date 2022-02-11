@@ -138,6 +138,9 @@ namespace ScriptingObjects
 		/** If this is enabled, the shader will create a buffered image of the last rendering result. */
 		void setEnableCachedBuffer(bool shouldEnableBuffer);
 
+		/** Adds a preprocessor definition before the code and recompiles the shader (Empty string removes all preprocessors). */
+		void setPreprocessor(String preprocessorString, var value);
+
 		// ===========================================================================
 
 		int blockWhileWaiting() override;
@@ -237,6 +240,8 @@ namespace ScriptingObjects
 		};
 
 	private:
+
+		NamedValueSet preprocessors;
 
 		bool screenshotPending = false;
 		static bool renderingScreenShot;
@@ -567,7 +572,7 @@ namespace ScriptingObjects
 			void drawColumnBackground(Graphics& g, Rectangle<int> listArea, const String& emptyText) override;
 			void drawTag(Graphics& g, bool blinking, bool active, bool selected, const String& name, Rectangle<int> position) override;
 			void drawModalOverlay(Graphics& g, Rectangle<int> area, Rectangle<int> labelArea, const String& title, const String& command) override;
-			void drawListItem(Graphics& g, int columnIndex, int, const String& itemName, Rectangle<int> position, bool rowIsSelected, bool deleteMode) override;
+			void drawListItem(Graphics& g, int columnIndex, int, const String& itemName, Rectangle<int> position, bool rowIsSelected, bool deleteMode, bool hover) override;
 			void drawSearchBar(Graphics& g, Rectangle<int> area) override;
 
 			void drawTableBackground(Graphics& g, TableEditor& te, Rectangle<float> area, double rulerPosition) override;
