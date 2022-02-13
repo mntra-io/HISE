@@ -1370,7 +1370,14 @@ void ScriptingApi::Engine::reloadAllSamples()
 
 	auto mc = getScriptProcessor()->getMainController_();
 	
+#if USE_BACKEND
 	mc->getSampleManager().getProjectHandler().checkSubDirectories();
+#else
+	mc->getSampleManager().getProjectHandler().checkAllSampleReferences();
+#endif
+
+	
+
 
 	mc->getKillStateHandler().killVoicesAndCall(mc->getMainSynthChain(), f, MainController::KillStateHandler::SampleLoadingThread);
 }
@@ -5208,6 +5215,8 @@ startTime(0.0)
 
 void ScriptingApi::Console::print(var x)
 {
+	
+
 #if USE_BACKEND
 
 	AudioThreadGuard::Suspender suspender;
@@ -5217,6 +5226,8 @@ void ScriptingApi::Console::print(var x)
     jp->addInplaceDebugValue(id, lineNumber, x.toString());
     
 	debugToConsole(getProcessor(), x);
+#else
+	DBG(x.toString());
 #endif
 }
 
@@ -5855,6 +5866,7 @@ void ScriptingApi::FileSystem::browseInternally(File f, bool forSaving, bool isD
 		if (a.isObject())
 		{
 			WeakCallbackHolder cb(p_, callback, 1);
+			cb.setHighPriority();
 			cb.call(&a, 1);
 		}
 	};
