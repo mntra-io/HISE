@@ -883,8 +883,6 @@ var ScriptExpansionReference::loadDataFile(var relativePath)
 
 			if(fileToLoad.existsAsFile())
 				return JSON::parse(fileToLoad.loadFileAsString());
-
-			reportScriptError("Can't find data file " + fileToLoad.getFullPathName());
 		}
 		else
 		{
@@ -909,10 +907,6 @@ var ScriptExpansionReference::loadDataFile(var relativePath)
 					return obj;
 
 				reportScriptError("Error at parsing JSON: " + ok.getErrorMessage());
-			}
-			else
-			{
-				reportScriptError("Can't find data file " + ref.getReferenceString());
 			}
 		}
 	}
