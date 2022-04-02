@@ -322,7 +322,7 @@ bool ScriptingObjects::ScriptFile::startAsProcess(String parameters)
 
 String ScriptingObjects::ScriptFile::getHash()
 {
-	return MD5(f).toHexString();
+	return SHA256(f).toHexString();
 };
 
 bool ScriptingObjects::ScriptFile::hasWriteAccess()
