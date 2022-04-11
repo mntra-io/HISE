@@ -195,6 +195,7 @@ struct ScriptingObjects::ScriptFile::Wrapper
 	API_METHOD_WRAPPER_1(ScriptFile, toString);
 	API_METHOD_WRAPPER_0(ScriptFile, isFile);
 	API_METHOD_WRAPPER_0(ScriptFile, isDirectory);
+	API_METHOD_WRAPPER_0(ScriptFile, hasWriteAccess);
 	API_METHOD_WRAPPER_1(ScriptFile, writeObject);
 	API_METHOD_WRAPPER_2(ScriptFile, writeAsXmlFile);
 	API_METHOD_WRAPPER_0(ScriptFile, loadFromXmlFile);
@@ -209,6 +210,7 @@ struct ScriptingObjects::ScriptFile::Wrapper
 	API_METHOD_WRAPPER_1(ScriptFile, rename);
 	API_METHOD_WRAPPER_1(ScriptFile, toReferenceString);
 	API_METHOD_WRAPPER_1(ScriptFile, getRelativePathFrom);
+	API_METHOD_WRAPPER_0(ScriptFile, getNumZippedItems);
 	API_VOID_METHOD_WRAPPER_2(ScriptFile, setReadOnly);
 	API_VOID_METHOD_WRAPPER_3(ScriptFile, extractZipFile);
 	API_VOID_METHOD_WRAPPER_0(ScriptFile, show);
@@ -249,6 +251,7 @@ ScriptingObjects::ScriptFile::ScriptFile(ProcessorWithScriptingContent* p, const
 	ADD_API_METHOD_1(startAsProcess);
 	ADD_API_METHOD_0(isDirectory);
 	ADD_API_METHOD_0(deleteFileOrDirectory);
+	ADD_API_METHOD_0(hasWriteAccess);
 	ADD_API_METHOD_1(writeObject);
 	ADD_API_METHOD_1(writeString);
 	ADD_API_METHOD_2(writeEncryptedObject);
@@ -260,6 +263,7 @@ ScriptingObjects::ScriptFile::ScriptFile(ProcessorWithScriptingContent* p, const
 	ADD_API_METHOD_1(rename);
 	ADD_API_METHOD_0(show);
 	ADD_API_METHOD_3(extractZipFile);
+	ADD_API_METHOD_0(getNumZippedItems);
 	ADD_API_METHOD_2(setReadOnly);
 	ADD_API_METHOD_1(toReferenceString);
 	ADD_API_METHOD_1(getRelativePathFrom);
@@ -319,6 +323,11 @@ bool ScriptingObjects::ScriptFile::startAsProcess(String parameters)
 String ScriptingObjects::ScriptFile::getHash()
 {
 	return SHA256(f).toHexString();
+};
+
+bool ScriptingObjects::ScriptFile::hasWriteAccess()
+{
+	return f.hasWriteAccess();
 };
 
 String ScriptingObjects::ScriptFile::toString(int formatType) const
@@ -867,6 +876,12 @@ void ScriptingObjects::ScriptFile::extractZipFile(var targetDirectory, bool over
 	auto p = dynamic_cast<Processor*>(getScriptProcessor());
 
 	getScriptProcessor()->getMainController_()->getKillStateHandler().killVoicesAndCall(p, cb, MainController::KillStateHandler::SampleLoadingThread);
+}
+
+int ScriptingObjects::ScriptFile::getNumZippedItems()
+{
+	juce::ZipFile zipFile(f);
+	return zipFile.getNumEntries();
 }
 
 void ScriptingObjects::ScriptFile::setReadOnly(bool shouldBeReadOnly, bool applyRecursively)
