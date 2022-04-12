@@ -1789,7 +1789,8 @@ void CompileExporter::ProjectTemplateHelpers::handleCompanyInfo(CompileExporter*
 	REPLACE_WILDCARD_WITH_STRING("%MC%", exporter->dataObject.getSetting(HiseSettings::User::CompanyCode).toString());
 	REPLACE_WILDCARD_WITH_STRING("%COMPANY_WEBSITE%", exporter->dataObject.getSetting(HiseSettings::User::CompanyURL).toString());
 	REPLACE_WILDCARD_WITH_STRING("%COMPANY_COPYRIGHT%", exporter->dataObject.getSetting(HiseSettings::User::CompanyCopyright).toString());
-    REPLACE_WILDCARD_WITH_STRING("%COPYRIGHT_NOTICE%", exporter->dataObject.getSetting(HiseSettings::User::CompanyCopyright).toString());
+  REPLACE_WILDCARD_WITH_STRING("%COPYRIGHT_NOTICE%", exporter->dataObject.getSetting(HiseSettings::User::CompanyCopyright).toString());
+	REPLACE_WILDCARD_WITH_STRING("%DEVELOPMENT_TEAM_ID%", exporter->dataObject.getSetting(HiseSettings::User::TeamDevelopmentID).toString());
 }
 
 void CompileExporter::ProjectTemplateHelpers::handleVisualStudioVersion(const HiseSettings::Data& dataObject, String& templateProject)
