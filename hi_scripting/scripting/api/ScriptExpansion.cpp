@@ -1616,6 +1616,12 @@ juce::Result FullInstrumentExpansion::initialise()
 			return Result::fail("Error parsing hxi file");
 
 		jassert(allData.isValid() && allData.getType() == ExpansionIds::FullData);
+		
+		for (auto fileType : getListOfPooledSubDirectories())
+		{
+			setCompressorForPool(fileType, true);
+			restorePool(allData, fileType);
+		}
 
 		auto networkData = allData.getChildWithName("Networks");
 
