@@ -549,6 +549,7 @@ public:
     /** Returns a string of the value with the supplied number of digits. */
     String doubleToString(double value, int digits);
 		
+		/** Returns a string representing this numeric value in hexadecimal. */
 		String intToHexString(int value);
 
 		/** Signals that the application should terminate. */
