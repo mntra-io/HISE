@@ -67,7 +67,7 @@ struct SnexTileBase : public Component,
 			setCurrentFile(File(fileName));
 	}
 
-    virtual void workbenchChanged(snex::ui::WorkbenchData::Ptr newWorkbench) = 0;
+	virtual void workbenchChanged(snex::ui::WorkbenchData::Ptr newWorkbench) = 0;
 
 	int getNumDefaultableProperties() const override { return numSpecialPanelIds; };
 	Identifier getDefaultablePropertyId(int index) const override
@@ -102,27 +102,27 @@ struct SnexTileBase : public Component,
 */
 template <typename C> struct SnexWorkbenchPanel : public FloatingTileContent,
 							public Component,
-public snex::ui::WorkbenchData::Listener,
-public snex::ui::WorkbenchManager::WorkbenchChangeListener
+							public snex::ui::WorkbenchData::Listener,
+							public snex::ui::WorkbenchManager::WorkbenchChangeListener
 {
-    using Ptr = snex::ui::WorkbenchData::Ptr;
+	using Ptr = snex::ui::WorkbenchData::Ptr;
 
 	SnexWorkbenchPanel(FloatingTile* parent):
 		FloatingTileContent(parent)
 	{
-        auto wb = static_cast<snex::ui::WorkbenchManager*>(getMainController()->getWorkbenchManager());
-        static_assert(std::is_base_of<scriptnode::analyse::ui::WorkbenchComponent, C>(), "not a workbench component");
+		auto wb = static_cast<snex::ui::WorkbenchManager*>(getMainController()->getWorkbenchManager());
+		static_assert(std::is_base_of<snex::ui::WorkbenchComponent, C>(), "not a workbench component");
 		wb->addListener(this);
 		setWorkbench(wb->getCurrentWorkbench());
 	}
 
 	~SnexWorkbenchPanel()
 	{
-        auto wb = static_cast<snex::ui::WorkbenchManager*>(getMainController()->getWorkbenchManager());
+		auto wb = static_cast<snex::ui::WorkbenchManager*>(getMainController()->getWorkbenchManager());
 		wb->removeListener(this);
 	}
 
-    void workbenchChanged(snex::ui::WorkbenchData::Ptr newWorkbench) override
+	void workbenchChanged(snex::ui::WorkbenchData::Ptr newWorkbench) override
 	{
 		auto wb = static_cast<snex::ui::WorkbenchManager*>(getMainController()->getWorkbenchManager());
 

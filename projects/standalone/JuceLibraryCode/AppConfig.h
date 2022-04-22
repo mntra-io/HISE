@@ -118,10 +118,6 @@
  #define   USE_COPY_PROTECTION 0
 #endif
 
-#ifndef    USE_SCRIPT_COPY_PROTECTION
- //#define USE_SCRIPT_COPY_PROTECTION 0
-#endif
-
 #ifndef    USE_IPP
  #define   USE_IPP 0
 #endif
@@ -196,10 +192,6 @@
 
 #ifndef    READ_ONLY_FACTORY_PRESETS
  //#define READ_ONLY_FACTORY_PRESETS 0
-#endif
-
-#ifndef    CONFIRM_PRESET_OVERWRITE
- //#define CONFIRM_PRESET_OVERWRITE 1
 #endif
 
 #ifndef    ENABLE_CONSOLE_OUTPUT
@@ -502,7 +494,7 @@
 #endif
 
 #ifndef    JUCE_DSP_USE_SHARED_FFTW
- #define   JUCE_DSP_USE_SHARED_FFTW 0
+ #define   JUCE_DSP_USE_SHARED_FFTW 1
 #endif
 
 #ifndef    JUCE_DSP_USE_STATIC_FFTW
