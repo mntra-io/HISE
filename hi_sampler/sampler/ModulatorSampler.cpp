@@ -1325,8 +1325,7 @@ void ModulatorSampler::loadSampleMap(PoolReference ref)
 	ScopedValueSetter<bool> ia(abortIteration, true);
 	SimpleReadWriteLock::ScopedWriteLock sl(getIteratorLock());
 
-	if (ref.getReferenceString() != String())
-		getSampleMap()->load(ref);
+	getSampleMap()->load(ref);
 }
 
 void ModulatorSampler::loadEmbeddedValueTree(const ValueTree& v, bool /*loadAsynchronous*/ /*= false*/)
