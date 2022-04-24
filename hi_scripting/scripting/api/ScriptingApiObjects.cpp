@@ -330,6 +330,7 @@ bool ScriptingObjects::ScriptFile::hasWriteAccess()
 	return f.hasWriteAccess();
 };
 
+
 String ScriptingObjects::ScriptFile::toString(int formatType) const
 {
 	switch (formatType)
