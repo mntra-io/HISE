@@ -552,9 +552,6 @@ public:
 		/** Returns a string representing this numeric value in hexadecimal. */
 		String intToHexString(int value);
 		
-		/** Checks whether the CTRL key's flag is set. */
-		bool isCtrlDown();
-
 		/** Signals that the application should terminate. */
 		void quit();
 
