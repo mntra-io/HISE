@@ -1632,7 +1632,10 @@ juce::Result FullInstrumentExpansion::initialise()
 		auto iconData = allData.getChildWithName(ExpansionIds::HeaderData).getChildWithName(ExpansionIds::Icon)[ExpansionIds::Data].toString();
 
 		if(iconData.isNotEmpty())
+		{
 			pool->getImagePool().setDataProvider(new PublicIconProvider(&pool->getImagePool(), iconData));
+			restorePool(allData, FileHandlerBase::Images); // Temporary workaround
+		}			
 
 		fullyLoaded = false;
 
