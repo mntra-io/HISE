@@ -874,6 +874,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_2(Engine, matchesRegex);
 	API_METHOD_WRAPPER_2(Engine, getRegexMatches);
 	API_METHOD_WRAPPER_2(Engine, doubleToString);
+	API_METHOD_WRAPPER_1(Engine, intToHexString);
 	API_METHOD_WRAPPER_0(Engine, getOS);
 	API_METHOD_WRAPPER_0(Engine, getSystemStats);
 	API_METHOD_WRAPPER_0(Engine, isPlugin);
@@ -997,6 +998,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_2(matchesRegex);
 	ADD_API_METHOD_2(getRegexMatches);
 	ADD_API_METHOD_2(doubleToString);
+	ADD_API_METHOD_1(intToHexString);
 	ADD_API_METHOD_1(getMasterPeakLevel);
 	ADD_API_METHOD_0(getOS);
 	ADD_API_METHOD_0(getSystemStats);
@@ -1078,12 +1080,14 @@ var ScriptingApi::Engine::getProjectInfo()
 		obj->setProperty("CompanyCopyright", GET_HISE_SETTING(getProcessor()->getMainController()->getMainSynthChain(), HiseSettings::User::CompanyCopyright).toString());
 		obj->setProperty("ProjectName", GET_HISE_SETTING(getProcessor()->getMainController()->getMainSynthChain(), HiseSettings::Project::Name).toString());
 		obj->setProperty("ProjectVersion", GET_HISE_SETTING(getProcessor()->getMainController()->getMainSynthChain(), HiseSettings::Project::Version).toString());
+		obj->setProperty("EncryptionKey", GET_HISE_SETTING(getProcessor()->getMainController()->getMainSynthChain(), HiseSettings::Project::EncryptionKey).toString());
 	#else 
 		obj->setProperty("Company", hise::FrontendHandler::getCompanyName());
 		obj->setProperty("CompanyURL", hise::FrontendHandler::getCompanyWebsiteName());
 		obj->setProperty("CompanyCopyright", hise::FrontendHandler::getCompanyCopyright());
 		obj->setProperty("ProjectName", hise::FrontendHandler::getProjectName());
 		obj->setProperty("ProjectVersion", hise::FrontendHandler::getVersionString());
+		obj->setProperty("EncryptionKey", hise::FrontendHandler::getExpansionKey());
 	#endif
 
 	obj->setProperty("HISEBuild", String(HISE_VERSION));
@@ -2348,6 +2352,10 @@ void ScriptingApi::Engine::loadImageIntoPool(const String& id)
 	auto mc = getScriptProcessor()->getMainController_();
 
 	auto pool = mc->getCurrentImagePool();
+
+	if (auto e = mc->getExpansionHandler().getExpansionForWildcardReference(id))
+		pool = &e->pool->getImagePool();
+
 	const bool isWildcard = id.contains("*");
 
 	if (isWildcard)
@@ -2566,6 +2574,11 @@ var ScriptingApi::Engine::getRegexMatches(String stringToMatch, String wildcard)
 String ScriptingApi::Engine::doubleToString(double value, int digits)
 {
     return String(value, digits);
+}
+
+String ScriptingApi::Engine::intToHexString(int value)
+{
+    return String::toHexString(value);
 }
 
 void ScriptingApi::Engine::quit()
@@ -6080,6 +6093,28 @@ var ScriptingApi::Server::downloadFile(String subURL, var parameters, var target
 {
 	if (auto sf = dynamic_cast<ScriptingObjects::ScriptFile*>(targetFile.getObject()))
 	{
+		if (subURL.contains("?") && parameters.getDynamicObject() != nullptr && parameters.getDynamicObject()->getProperties().isEmpty())
+		{
+			auto parameterObject = new DynamicObject();
+			auto realSubURL = subURL.upToFirstOccurrenceOf("?", false, false);
+			auto parameterString = subURL.fromFirstOccurrenceOf("?", false, false);
+			auto parameterObjects = StringArray::fromTokens(parameterString, "&", "");
+
+			for (auto po : parameterObjects)
+			{
+				auto key = po.upToFirstOccurrenceOf("=", false, false);
+				auto value = po.fromFirstOccurrenceOf("=", false, false);
+
+				if (!key.isEmpty() && !value.isEmpty())
+				{
+					parameterObject->setProperty(Identifier(key), var(value));
+				}
+			}
+
+			parameters = var(parameterObject);
+			subURL = realSubURL;
+		}
+
 		if (sf->f.isDirectory())
 		{
 			reportScriptError("target file is a directory");

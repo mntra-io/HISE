@@ -598,6 +598,18 @@ void PoolHelpers::Reference::parseReferenceString(const MainController* mc, cons
 
 			return;
 		}
+		else
+		{
+			auto globalScriptPath = dynamic_cast<const GlobalSettingManager*>(mc)->getSettingsObject().getSetting(HiseSettings::Scripting::GlobalScriptPath);
+			File globalScriptFolder = File(globalScriptPath.toString());
+			
+			if (f.isAChildOf(globalScriptFolder))
+			{
+				auto filePath = f.getFullPathName().replace(globalScriptPath.toString() + "/", "").replace("\\", "/");
+				reference = "{GLOBAL_SCRIPT_FOLDER}" + filePath;
+				return;
+			}
+		}
 #endif
 
 		m = AbsolutePath;
@@ -751,7 +763,7 @@ juce::MemoryInputStream* PoolBase::DataProvider::createInputStream(const String&
 	}
 	else
 	{
-		jassertfalse;
+		//jassertfalse;
 		return nullptr;
 	}
 }

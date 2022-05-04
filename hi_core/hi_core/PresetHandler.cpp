@@ -2767,6 +2767,7 @@ juce::File FileHandlerBase::checkSubDirectory(SubDirectories dir)
 		{
 			if (!File(absolutePath).exists())
 			{
+				#if !HISE_DEACTIVATE_OVERLAY
 				if (PresetHandler::showYesNoWindow("Missing Sample Folder", "The sample relocation folder does not exist. Press OK to choose a new location or Cancel to ignore this.", PresetHandler::IconType::Warning))
 				{
 					FileChooser fc("Redirect sample folder to the following location");
@@ -2780,6 +2781,7 @@ juce::File FileHandlerBase::checkSubDirectory(SubDirectories dir)
 						return f;
 					}
 				}
+				#endif
 			}
 
 			return File(absolutePath);

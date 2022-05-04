@@ -1616,12 +1616,6 @@ juce::Result FullInstrumentExpansion::initialise()
 			return Result::fail("Error parsing hxi file");
 
 		jassert(allData.isValid() && allData.getType() == ExpansionIds::FullData);
-		
-		for (auto fileType : getListOfPooledSubDirectories())
-		{
-			setCompressorForPool(fileType, true);
-			restorePool(allData, fileType);
-		}
 
 		auto networkData = allData.getChildWithName("Networks");
 
@@ -1638,7 +1632,10 @@ juce::Result FullInstrumentExpansion::initialise()
 		auto iconData = allData.getChildWithName(ExpansionIds::HeaderData).getChildWithName(ExpansionIds::Icon)[ExpansionIds::Data].toString();
 
 		if(iconData.isNotEmpty())
+		{
 			pool->getImagePool().setDataProvider(new PublicIconProvider(&pool->getImagePool(), iconData));
+			restorePool(allData, FileHandlerBase::Images); // Temporary workaround
+		}			
 
 		fullyLoaded = false;
 
