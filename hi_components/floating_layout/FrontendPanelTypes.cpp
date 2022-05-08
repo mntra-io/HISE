@@ -1286,10 +1286,10 @@ void TableFloatingTileBase::initTable()
 	auto fWidth = (int)font.getStringWidthFloat(first) + 20;
 
 	table.getHeader().addColumn(getIndexName(), CCNumber, fWidth, fWidth, fWidth);
-	table.getHeader().addColumn("Parameter", ParameterName, 70);
+	table.getHeader().addColumn("Parameter", ParameterName, 160);
 	table.getHeader().addColumn("Inverted", Inverted, 70, 70, 70);
-	table.getHeader().addColumn("Min", Minimum, 70, 70, 70);
-	table.getHeader().addColumn("Max", Maximum, 70, 70, 70);
+	table.getHeader().addColumn("Min", Minimum, 40);
+	table.getHeader().addColumn("Max", Maximum, 40);
 	table.getHeader().setStretchToFitActive(true);
 }
 
