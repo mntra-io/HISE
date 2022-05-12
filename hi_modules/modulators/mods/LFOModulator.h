@@ -97,6 +97,7 @@ public:
 		NumSteps,
 		LoopEnabled, ///< enables loop mode for the LFO
 		PhaseOffset, ///< the initial phase of the LFO
+		SyncToMasterClock, ///< sync the LFO to the master clock
 		numParameters
 	};
 
@@ -332,6 +333,10 @@ private:
 	int lastIndex = 0;
 
 	TempoSyncer::Tempo currentTempo;
+	
+	heap<float> stepData;
+
+	bool syncToMasterClock = false;
 
 	JUCE_DECLARE_WEAK_REFERENCEABLE(LfoModulator);
 };

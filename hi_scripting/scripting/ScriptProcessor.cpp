@@ -163,6 +163,10 @@ void ProcessorWithScriptingContent::controlCallback(ScriptingApi::Content::Scrip
 			sp->repaintWrapped();
 		}
 	}
+	else if (auto customAuto = component->getCustomAutomation())
+	{
+		customAuto->call((float)controllerValue);
+	}
 	else if (auto callback = component->getCustomControlCallback())
 	{
 		if (MessageManager::getInstance()->isThisTheMessageThread())
@@ -321,11 +325,22 @@ int ProcessorWithScriptingContent::getNumScriptParameters() const
 
 void ProcessorWithScriptingContent::restoreContent(const ValueTree &restoredState)
 {
-	restoredContentValues = restoredState.getChildWithName("Content");
+	auto& uph = getMainController_()->getUserPresetHandler();
 
-	if (content.get() != nullptr)
+	if (uph.isUsingCustomDataModel())
 	{
-		content->restoreFromValueTree(restoredContentValues);
+		if (uph.isUsingPersistentObject())
+		{
+			restoredContentValues = restoredState;
+			getMainController_()->getUserPresetHandler().loadCustomValueTree(restoredState);
+		}
+	}
+	else
+	{
+		restoredContentValues = restoredState.getChildWithName("Content");
+
+		if (content.get() != nullptr)
+			content->restoreFromValueTree(restoredContentValues);
 	}
 }
 
@@ -537,15 +552,15 @@ void FileChangeListener::addFileContentToValueTree(ValueTree externalScriptFiles
 {
 	String fileName = scriptFile.getRelativePathFrom(GET_PROJECT_HANDLER(chainToExport).getSubDirectory(ProjectHandler::SubDirectories::Scripts));
 
-	// Wow, much cross-platform, very OSX, totally Windows
-	fileName = fileName.replace("\\", "/");
-
 	File globalScriptFolder = PresetHandler::getGlobalScriptFolder(chainToExport);
 
 	if (globalScriptFolder.isDirectory() && scriptFile.isAChildOf(globalScriptFolder))
 	{
 		fileName = "{GLOBAL_SCRIPT_FOLDER}" + scriptFile.getRelativePathFrom(globalScriptFolder);
 	}
+
+	// Wow, much cross-platform, very OSX, totally Windows
+	fileName = fileName.replace("\\", "/");
 
 	for (int j = 0; j < externalScriptFiles.getNumChildren(); j++)
 	{
@@ -851,8 +866,21 @@ JavascriptProcessor::SnippetResult JavascriptProcessor::compileInternal()
 
 	const bool saveThisContent = lastCompileWasOK && content != nullptr && !useStoredContentData;
 
-	if (saveThisContent) 
-		thisAsScriptBaseProcessor->restoredContentValues = content->exportAsValueTree();
+	auto& uph = thisAsScriptBaseProcessor->getMainController_()->getUserPresetHandler();
+
+	if (saveThisContent)
+	{
+		if (uph.isUsingCustomDataModel())
+		{
+			if (uph.isUsingPersistentObject())
+			{
+				thisAsScriptBaseProcessor->restoredContentValues = ValueTree("Content");
+				thisAsScriptBaseProcessor->restoredContentValues.addChild(uph.createCustomValueTree("data"), -1, nullptr);
+			}
+		}
+		else
+			thisAsScriptBaseProcessor->restoredContentValues = content->exportAsValueTree();
+	}
 
 	auto thisAsProcessor = dynamic_cast<Processor*>(this);
 
@@ -941,7 +969,27 @@ JavascriptProcessor::SnippetResult JavascriptProcessor::compileInternal()
 
 	try
 	{
-		content->restoreAllControlsFromPreset(thisAsScriptBaseProcessor->restoredContentValues);
+		if (uph.isUsingCustomDataModel())
+		{
+			// We need to reinitialise the automation ID property here because
+			// it might not find the automation data before
+			for (int i = 0; i < getContent()->getNumComponents(); i++)
+			{
+				auto sc = getContent()->getComponent(i);
+				
+				auto id = sc->getIdFor(ScriptComponent::Properties::automationId);
+				auto idValue = sc->getScriptObjectProperty(id);
+
+				sc->setScriptObjectPropertyWithChangeMessage(id, idValue, sendNotificationAsync);
+			}
+
+			if (uph.isUsingPersistentObject())
+			{
+				uph.loadCustomValueTree(thisAsScriptBaseProcessor->restoredContentValues);
+			}
+		}
+		else
+			content->restoreAllControlsFromPreset(thisAsScriptBaseProcessor->restoredContentValues);
 	}
 	catch (String& s)
 	{
@@ -1374,18 +1422,18 @@ void JavascriptProcessor::setConnectedFile(const String& fileReference, bool com
 
 #if USE_BACKEND
 
-//	const File f = File();
+	File f = File();
 	
-/*	if (fileReference.contains("{GLOBAL_SCRIPT_FOLDER}"))
+	if (fileReference.contains("{GLOBAL_SCRIPT_FOLDER}"))
 	{
-		File globalScriptFolder = PresetHandler::getGlobalScriptFolder(dynamic_cast<const Processor*>(this));
+		File globalScriptFolder = PresetHandler::getGlobalScriptFolder(dynamic_cast<Processor*>(this));
 		const String filePath = fileReference.fromFirstOccurrenceOf("{GLOBAL_SCRIPT_FOLDER}", false, false);
 		f = globalScriptFolder.getChildFile(filePath);
 	}
 	else
-	{*/
-const File f = GET_PROJECT_HANDLER(dynamic_cast<const Processor*>(this)).getFilePath(fileReference, ProjectHandler::SubDirectories::Scripts);
-	//}
+	{
+		f = GET_PROJECT_HANDLER(dynamic_cast<const Processor*>(this)).getFilePath(fileReference, ProjectHandler::SubDirectories::Scripts);
+	}
 	
 	const String code = f.loadFileAsString();
 #else

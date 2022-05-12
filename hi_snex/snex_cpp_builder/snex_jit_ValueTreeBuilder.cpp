@@ -123,6 +123,30 @@ struct CloneHelpers
     }
 };
 
+void ValueTreeBuilder::cleanValueTreeIds(ValueTree& vToClean)
+{
+	ValueTreeIterator::forEach(vToClean, ValueTreeIterator::ChildrenFirst, [](ValueTree& c)
+	{
+		static const Array<Identifier> idsToClean = { PropertyIds::ID, PropertyIds::NodeId, PropertyIds::ParameterId };
+
+		for (const auto& id : idsToClean)
+		{
+			if (c.hasProperty(id))
+			{
+				auto possibleVariableName = c[id].toString();
+				auto betterVariableName = cppgen::StringHelpers::makeValidCppName(possibleVariableName);
+
+				if (possibleVariableName.compare(betterVariableName) != 0)
+				{
+					c.setProperty(id, betterVariableName, nullptr);
+				}
+			}
+		}
+
+		return false;
+	});
+}
+
 void ValueTreeBuilder::setHeaderForFormat()
 {
 	switch (outputFormat)
@@ -395,6 +419,13 @@ Node::Ptr ValueTreeBuilder::parseNode(const ValueTree& n)
 	auto typeId = getNodeId(n);
 
 	Node::Ptr newNode = createNode(n, typeId.getIdentifier(), getNodePath(n).toString());
+
+	if (newNode->hasProperty(PropertyIds::UncompileableNode, false))
+	{
+		Error e;
+		e.errorMessage << "You can't compile a Network with a " << getNodePath(n).toString() << " node.";
+		throw e;
+	}
 
 	if (newNode->hasProperty(PropertyIds::IsPolyphonic, false))
 	{
@@ -760,6 +791,14 @@ void ValueTreeBuilder::parseContainerParameters(Node::Ptr c)
 	auto pTree = c->nodeTree.getChildWithName(PropertyIds::Parameters);
 	auto numParameters = pTree.getNumChildren();
 
+    if(c->isRootNode() && numParameters > OpaqueNode::NumMaxParameters)
+    {
+        Error e;
+        e.v = c->nodeTree;
+        e.errorMessage = "Too many parameters in the root node.\n> If you need that many parameters, raise the `OpaqueNode::NumMaxParameter` constant in `hi_dsp_library/node_api/nodes/OpaqueNode.h` and recompile HISE.";
+        throw e;
+    }
+    
 	Namespace n(*this, c->scopedId.getIdentifier().toString() + "_parameters", !ValueTreeIterator::hasRealParameters(c->nodeTree));
 
 	if(numParameters == 0)
