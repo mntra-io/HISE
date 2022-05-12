@@ -2109,6 +2109,9 @@ namespace ScriptingObjects
 		/** Registers a function that will be executed whenever a value is sent through the cable. */
 		void registerCallback(var callbackFunction, bool synchronous);
 
+		/** Connects the cable to a macro control. */
+		void connectToMacroControl(int macroIndex, bool macroIsTarget, bool filterRepetitions);
+
 		// =============================================================================================
 
 	private:
@@ -2214,11 +2217,12 @@ namespace ScriptingObjects
 		ScriptedMidiPlayer(ProcessorWithScriptingContent* p, MidiPlayer* player_);
 		~ScriptedMidiPlayer();
 
+		
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("MidiPlayer"); };
+
 		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("MidiPlayer"); }
 
 		String getDebugValue() const override;
-
-		String getDebugName() const override;
 
 		void sequenceLoaded(HiseMidiSequence::Ptr newSequence) override;
 		void trackIndexChanged() override;
@@ -2238,6 +2242,12 @@ namespace ScriptingObjects
 		/** Returns the playback position in the current loop between 0.0 and 1.0. */
 		var getPlaybackPosition();
 
+		/** Returns the position of the last played note. */
+		var getLastPlayedNotePosition() const;
+
+		/** Syncs the playback of this MIDI player to the master clock (external or internal). */
+		void setSyncToMasterClock(bool shouldSyncToMasterClock);
+
 		/** If true, the panel will get a repaint() call whenever the playback position changes. 
 		
 			Otherwise it will only be updated when the sequence changes. */
@@ -2251,6 +2261,12 @@ namespace ScriptingObjects
 
 		/** Writes the given array of MessageHolder objects into the current sequence. This is undoable. */
 		void flushMessageList(var messageList);
+
+		/** Uses Ticks instead of samples when editing the MIDI data. */
+		void setUseTimestampInTicks(bool shouldUseTicksAsTimestamps);
+
+		/** Returns the tick resolution for a quarter note. */
+		int getTicksPerQuarter() const;
 
 		/** Creates an empty sequence with the given length. */
 		void create(int nominator, int denominator, int barLength);
@@ -2308,6 +2324,8 @@ namespace ScriptingObjects
 		struct Wrapper;
 
 	private:
+
+		bool useTicks = false;
 
 		bool repaintOnPlaybackChange = false;
 

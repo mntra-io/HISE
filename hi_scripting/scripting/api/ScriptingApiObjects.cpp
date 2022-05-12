@@ -4572,8 +4572,12 @@ struct ScriptingObjects::ScriptedMidiPlayer::Wrapper
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, isEmpty);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getNumTracks);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getNumSequences);
+	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getTicksPerQuarter);
+	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setUseTimestampInTicks);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getTimeSignature);
 	API_METHOD_WRAPPER_1(ScriptedMidiPlayer, setTimeSignature);
+	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getLastPlayedNotePosition);
+	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setSyncToMasterClock);
 };
 
 ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingContent* p, MidiPlayer* player_):
@@ -4604,6 +4608,10 @@ ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingC
 	ADD_API_METHOD_0(getNumSequences);
 	ADD_API_METHOD_0(getTimeSignature);
 	ADD_API_METHOD_1(setTimeSignature);
+	ADD_API_METHOD_1(setSyncToMasterClock);
+	ADD_API_METHOD_1(setUseTimestampInTicks);
+	ADD_API_METHOD_0(getTicksPerQuarter);
+	ADD_API_METHOD_0(getLastPlayedNotePosition);
 }
 
 ScriptingObjects::ScriptedMidiPlayer::~ScriptedMidiPlayer()
@@ -4617,18 +4625,6 @@ juce::String ScriptingObjects::ScriptedMidiPlayer::getDebugValue() const
 		return {};
 
 	return String(getPlayer()->getPlaybackPosition(), 2);
-}
-
-juce::String ScriptingObjects::ScriptedMidiPlayer::getDebugName() const
-{
-
-	if (!sequenceValid())
-		return {};
-
-	if (auto seq = getPlayer()->getCurrentSequence())
-		return seq->getId().toString();
-
-	return "No sequence loaded";
 }
 
 void ScriptingObjects::ScriptedMidiPlayer::trackIndexChanged()
@@ -4704,6 +4700,31 @@ var ScriptingObjects::ScriptedMidiPlayer::getPlaybackPosition()
 	return getPlayer()->getPlaybackPosition();
 }
 
+juce::var ScriptingObjects::ScriptedMidiPlayer::getLastPlayedNotePosition() const
+{
+	if (getPlayer()->getPlayState() == MidiPlayer::PlayState::Stop)
+		return -1;
+
+	if (auto seq = getPlayer()->getCurrentSequence())
+	{
+		return seq->getLastPlayedNotePosition();
+	}
+
+	return 0;
+}
+
+void ScriptingObjects::ScriptedMidiPlayer::setSyncToMasterClock(bool shouldSyncToMasterClock)
+{
+	if (shouldSyncToMasterClock && !getScriptProcessor()->getMainController_()->getMasterClock().isGridEnabled())
+	{
+		reportScriptError("You have to enable the master clock before using this method");
+	}
+	else
+	{
+		getPlayer()->setSyncToMasterClock(shouldSyncToMasterClock);
+	}
+}
+
 void ScriptingObjects::ScriptedMidiPlayer::setRepaintOnPositionChange(var shouldRepaintPanel)
 {
 	if ((bool)shouldRepaintPanel != repaintOnPlaybackChange)
@@ -4732,7 +4753,12 @@ var ScriptingObjects::ScriptedMidiPlayer::getEventList()
 	if (!sequenceValid())
 		return {};
 
-	auto list = getPlayer()->getCurrentSequence()->getEventList(getPlayer()->getSampleRate(), getPlayer()->getMainController()->getBpm());
+	auto sr = getPlayer()->getSampleRate();
+	auto bpm = getPlayer()->getMainController()->getBpm();
+
+	getPlayer()->getCurrentSequence()->setTimeStampEditFormat(useTicks ? HiseMidiSequence::TimestampEditFormat::Ticks : HiseMidiSequence::TimestampEditFormat::Samples);
+
+	auto list = getPlayer()->getCurrentSequence()->getEventList(sr, bpm);
 
 	Array<var> eventHolders;
 
@@ -4763,10 +4789,23 @@ void ScriptingObjects::ScriptedMidiPlayer::flushMessageList(var messageList)
 				reportScriptError("Illegal item in message list: " + e.toString());
 		}
 
+		if (auto seq = getPlayer()->getCurrentSequence())
+			seq->setTimeStampEditFormat(useTicks ? HiseMidiSequence::TimestampEditFormat::Ticks : HiseMidiSequence::TimestampEditFormat::Samples);
+
 		getPlayer()->flushEdit(events);
 	}
 	else
 		reportScriptError("Input is not an array");
+}
+
+void ScriptingObjects::ScriptedMidiPlayer::setUseTimestampInTicks(bool shouldUseTimestamps)
+{
+	useTicks = shouldUseTimestamps;
+}
+
+int ScriptingObjects::ScriptedMidiPlayer::getTicksPerQuarter() const
+{
+	return HiseMidiSequence::TicksPerQuarter;
 }
 
 void ScriptingObjects::ScriptedMidiPlayer::create(int nominator, int denominator, int barLength)
@@ -6296,6 +6335,7 @@ struct ScriptingObjects::GlobalCableReference::Wrapper
 	API_VOID_METHOD_WRAPPER_3(GlobalCableReference, setRangeWithSkew);
 	API_VOID_METHOD_WRAPPER_3(GlobalCableReference, setRangeWithStep);
 	API_VOID_METHOD_WRAPPER_2(GlobalCableReference, registerCallback);
+	API_VOID_METHOD_WRAPPER_3(GlobalCableReference, connectToMacroControl);
 };
 
 struct ScriptingObjects::GlobalCableReference::DummyTarget : public scriptnode::routing::GlobalRoutingManager::CableTargetBase
@@ -6359,6 +6399,7 @@ ScriptingObjects::GlobalCableReference::GlobalCableReference(ProcessorWithScript
 	ADD_API_METHOD_3(setRangeWithSkew);
 	ADD_API_METHOD_3(setRangeWithStep);
 	ADD_API_METHOD_2(registerCallback);
+	ADD_API_METHOD_3(connectToMacroControl);
 }
 
 ScriptingObjects::GlobalCableReference::~GlobalCableReference()
@@ -6526,5 +6567,85 @@ void ScriptingObjects::GlobalCableReference::registerCallback(var callbackFuncti
 		callbacks.add(nc);
 	}
 }
+
+struct MacroCableTarget : public scriptnode::routing::GlobalRoutingManager::CableTargetBase,
+						 public ControlledObject
+{
+	MacroCableTarget(MainController* mc, int index, bool filterReps) :
+		ControlledObject(mc),
+		macroIndex(index),
+		filterRepetitions(filterReps)
+	{
+		macroData = mc->getMainSynthChain()->getMacroControlData(macroIndex);
+	};
+
+	void selectCallback(Component* rootEditor)
+	{
+		// maybe open the macro panel?
+		jassertfalse;
+	}
+
+	String getTargetId() const override
+	{
+		return "Macro " + String(macroIndex + 1);
+	}
+
+	void sendValue(double v) override
+	{
+		auto newValue = 127.0f * jlimit(0.0f, 1.0f, (float)v);
+		
+		if (!filterRepetitions || lastValue != newValue)
+		{
+			lastValue = newValue;
+			macroData->setValue(newValue);
+		}
+	}
+
+	Path getTargetIcon() const override
+	{
+		Path p;
+		p.loadPathFromData(HiBinaryData::SpecialSymbols::macros, sizeof(HiBinaryData::SpecialSymbols::macros));
+		return p;
+	}
+
+	const bool filterRepetitions;
+	float lastValue = -1.0f;
+	const int macroIndex;
+	WeakReference<MacroControlBroadcaster::MacroControlData> macroData;
+};
+
+
+void ScriptingObjects::GlobalCableReference::connectToMacroControl(int macroIndex, bool macroIsTarget, bool filterRepetitions)
+{
+	if (auto c = getCableFromVar(cable))
+	{
+		if (macroIsTarget)
+		{
+			using CableType = scriptnode::routing::GlobalRoutingManager::CableTargetBase;
+
+			for (int i = 0; i < c->getTargetList().size(); i++)
+			{
+				if (auto m = dynamic_cast<MacroCableTarget*>(c->getTargetList()[i].get()))
+				{
+					if (macroIndex == -1 || m->macroIndex == macroIndex)
+					{
+						c->removeTarget(m);
+						i--;
+						continue;
+					}
+				}
+			}
+
+			if (macroIndex != -1)
+				c->addTarget(new MacroCableTarget(getScriptProcessor()->getMainController_(), macroIndex, filterRepetitions));
+		}
+		else
+		{
+			// not implemented
+			jassertfalse;
+		}
+	}
+}
+
 
 } // namespace hise
