@@ -139,7 +139,7 @@ struct StereoChannelData
     in combination with a high-pitched sample!
 */
 #ifndef MAX_SAMPLER_PITCH
-#define MAX_SAMPLER_PITCH 8
+#define MAX_SAMPLER_PITCH 32
 #endif
 
 // This is the default preload size. I defined a pretty random value here, but you can change this dynamically.
