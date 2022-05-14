@@ -2583,8 +2583,8 @@ String ScriptingApi::Engine::intToHexString(int value)
 
 void ScriptingApi::Engine::quit()
 {
-	#if IS_STANDALONE_APP
-		quit();
+    #if IS_STANDALONE_APP
+    JUCEApplication::quit();
 	#endif
 }
 
