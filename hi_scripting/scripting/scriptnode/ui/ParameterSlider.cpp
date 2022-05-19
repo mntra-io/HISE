@@ -873,6 +873,8 @@ ParameterSlider::ParameterSlider(NodeBase* node_, int index_) :
 	setName(pTree[PropertyIds::ID].toString());
     setLearnable(node->getRootNetwork()->getRootNode() == node);
 
+    setTooltip(node->getId() + "." + getName());
+    
 	connectionListener.setTypesToWatch({ PropertyIds::Connections, PropertyIds::ModulationTargets, PropertyIds::Nodes });
 	connectionListener.setCallback(pTree.getRoot(), valuetree::AsyncMode::Asynchronously,
 		BIND_MEMBER_FUNCTION_2(ParameterSlider::updateOnConnectionChange));
@@ -1016,6 +1018,19 @@ void ParameterSlider::paint(Graphics& g)
 {
 	Slider::paint(g);
 
+    if(blinkAlpha > 0.0f && modulationActive)
+    {
+        auto b = getLocalBounds().toFloat();
+        b = b.removeFromTop(48);
+        b = b.withSizeKeepingCentre(48, 48).translated(0.0f, 3.0f);
+        g.setColour(Colours::white.withAlpha(blinkAlpha * JUCE_LIVE_CONSTANT_OFF(0.7f)));
+        
+        auto m = JUCE_LIVE_CONSTANT_OFF(8.8f);
+        auto r = JUCE_LIVE_CONSTANT_OFF(4.0f);
+        
+        g.drawEllipse(b.reduced(m), r);
+    }
+    
 	if (macroHoverIndex != -1)
 	{
 		g.setColour(Colour(SIGNAL_COLOUR));
@@ -1046,9 +1061,26 @@ void ParameterSlider::timerCallback()
 {
 	auto thisDisplayValue = getValueToDisplay();
 
-	if (thisDisplayValue != lastDisplayValue)
+	if (thisDisplayValue != lastDisplayValue || blinkAlpha > 0.0f)
 	{
-		lastDisplayValue = thisDisplayValue;
+        auto sl = getRange().getLength();
+        auto delta = std::abs(thisDisplayValue - lastDisplayValue);
+        
+        if(delta / sl > 0.01)
+        {
+            blinkAlpha = 1.0f;
+            lastDisplayValue = thisDisplayValue;
+            
+            if(auto l = dynamic_cast<ParameterKnobLookAndFeel::SliderLabel*>(getTextBox()))
+            {
+                l->updateText();
+            }
+        }
+        else
+        {
+            blinkAlpha = jmax(0.0f, blinkAlpha - 0.08f);
+        }
+        
 		repaint();
 	}
 }
@@ -1146,7 +1178,9 @@ void ParameterSlider::mouseDown(const MouseEvent& e)
     
 	if (e.mods.isShiftDown())
 	{
+        ScopedValueSetter<bool> svs(skipTextUpdate, true);
 		Slider::showTextBox();
+        
 		return;
 	}
 
@@ -1181,6 +1215,11 @@ void ParameterSlider::mouseDown(const MouseEvent& e)
 
 void ParameterSlider::mouseEnter(const MouseEvent& e)
 {
+    if(auto l = dynamic_cast<ParameterKnobLookAndFeel::SliderLabel*>(getTextBox()))
+    {
+        l->updateText();
+    }
+    
 	if (!isEnabled())
 	{
 		findParentComponentOfClass<DspNetworkGraph>()->repaint();
@@ -1210,6 +1249,12 @@ void ParameterSlider::mouseMove(const MouseEvent& e)
 
 void ParameterSlider::mouseExit(const MouseEvent& e)
 {
+    if(auto l = dynamic_cast<ParameterKnobLookAndFeel::SliderLabel*>(getTextBox()))
+    {
+        if(!skipTextUpdate)
+            l->updateText();
+    }
+    
 	if (!isEnabled())
 	{
 		findParentComponentOfClass<DspNetworkGraph>()->repaint();
@@ -1400,6 +1445,8 @@ void ParameterKnobLookAndFeel::drawRotarySlider(Graphics& g, int , int , int wid
 	b = b.removeFromTop(48);
 	b = b.withSizeKeepingCentre(48, 48).translated(0.0f, 3.0f);
 
+    
+    
 	drawVectorRotaryKnob(g, b.toFloat(), modProportion, isBipolar, s.isMouseOverOrDragging(true) || ps->parameterToControl->isModulated(), s.isMouseButtonDown(), s.isEnabled(), modProportion);
 }
 
@@ -1444,6 +1491,21 @@ void MacroParameterSlider::mouseDrag(const MouseEvent& )
 void MacroParameterSlider::mouseUp(const MouseEvent& e)
 {
 	findParentComponentOfClass<DspNetworkGraph>()->repaint();
+}
+
+void MacroParameterSlider::mouseEnter(const MouseEvent& e)
+{
+	findParentComponentOfClass<DspNetworkGraph>()->repaint();
+}
+
+void MacroParameterSlider::mouseExit(const MouseEvent& e)
+{
+	findParentComponentOfClass<DspNetworkGraph>()->repaint();
+}
+
+WeakReference<NodeBase::Parameter> MacroParameterSlider::getParameter()
+{
+	return slider.parameterToControl;
 }
 
 void MacroParameterSlider::paintOverChildren(Graphics& g)
@@ -1501,6 +1563,31 @@ void MacroParameterSlider::setEditEnabled(bool shouldBeEnabled)
 
 bool MacroParameterSlider::keyPressed(const KeyPress& key)
 {
+	if (key == KeyPress::F11Key)
+	{
+		NodeBase::List newSelection;
+		auto network = getParameter()->parent->getRootNetwork();
+
+		network->deselectAll();
+
+		for (auto c : getParameter()->data.getChildWithName(PropertyIds::Connections))
+		{
+			auto nId = c[PropertyIds::NodeId].toString();
+			if (auto n = network->getNodeWithId(nId))
+				network->addToSelection(n, ModifierKeys::commandModifier);
+		}
+
+		if (!newSelection.isEmpty())
+		{
+			if (auto g = findParentComponentOfClass<DspNetworkGraph>())
+			{
+				DspNetworkGraph::Actions::foldUnselectedNodes(*g);
+			}
+			
+		}
+
+		return true;
+	}
 	if (key == KeyPress::deleteKey || key == KeyPress::backspaceKey)
 	{
 		auto treeToRemove = slider.parameterToControl->data;
@@ -1548,6 +1635,27 @@ void ParameterSlider::showRangeComponent(bool temporary)
 }
 
 
+
+void ParameterKnobLookAndFeel::SliderLabel::updateText()
+{
+	if (!enableTextSwitch)
+		return;
+
+	if (parent->isMouseOverOrDragging(true))
+	{
+		auto value = parent->getValue();
+		auto p = dynamic_cast<ParameterSlider*>(parent.getComponent())->parameterToControl;
+
+		if (!parent->isEnabled() && p != nullptr)
+			value = p->getValue();
+
+		setText(parent->getTextFromValue(value), dontSendNotification);
+	}
+	else
+		setText(parent->getName(), dontSendNotification);
+
+	repaint();
+}
 
 }
 
