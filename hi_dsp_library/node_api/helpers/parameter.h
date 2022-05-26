@@ -150,6 +150,8 @@ template <class T, int P> struct single_base
 
 	template <int Index, class OtherType> void connect(OtherType& element)
 	{
+        static_assert(P >= 0, "parameter index must be positive");
+        
 		static_assert(Index == 0, "Index must be zero");
         static_assert(std::is_same<typename OtherType::ObjectType, typename T::ObjectType>(), "target type mismatch");
 
@@ -233,6 +235,8 @@ template <typename T, typename RangeType=typename ranges::Identity> struct bypas
 			auto shouldBeOn = v >= s[0] && v <= s[1];
 			v = (double)!shouldBeOn;
 		}
+		else
+			v = v < 0.5;
 
 		T::template setParameter<9000>(obj, v);
 	}

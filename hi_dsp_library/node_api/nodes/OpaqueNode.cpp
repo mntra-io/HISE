@@ -182,8 +182,12 @@ bool StaticLibraryHostFactory::initOpaqueNode(scriptnode::OpaqueNode* n, int ind
 {
 	if (polyphonicIfPossible && items[index].pf)
 		items[index].pf(n);
-	else
+    else if (items[index].f)
 		items[index].f(n);
+    else
+    {
+        return false;
+    }
 
 	if (items[index].pf)
 		n->setCanBePolyphonic();
@@ -292,6 +296,12 @@ Error DynamicLibraryHostFactory::getError() const
 		return projectDll->getError();
 
 	return {};
+}
+
+void DynamicLibraryHostFactory::deinitOpaqueNode(scriptnode::OpaqueNode* n)
+{
+	if (projectDll != nullptr)
+		projectDll->deInitOpaqueNode(n);
 }
 
 String ProjectDll::getFuncName(ExportedFunction f)

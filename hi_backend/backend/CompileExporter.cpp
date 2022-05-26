@@ -1658,6 +1658,9 @@ hise::CompileExporter::ErrorCodes CompileExporter::createPluginProjucerFile(Targ
 			aaxIdentifier << "." << GET_SETTING(HiseSettings::Project::Name).removeCharacters(" -_.,;");
 
 			REPLACE_WILDCARD_WITH_STRING("%AAX_IDENTIFIER%", aaxIdentifier);
+            
+            // Only build 64bit Intel binaries for AAX
+            REPLACE_WILDCARD_WITH_STRING("%ARM_ARCH%", "x86_64");
 		}
 		else
 		{
@@ -1665,6 +1668,7 @@ hise::CompileExporter::ErrorCodes CompileExporter::createPluginProjucerFile(Targ
 			REPLACE_WILDCARD_WITH_STRING("%AAX_RELEASE_LIB%", String());
 			REPLACE_WILDCARD_WITH_STRING("%AAX_DEBUG_LIB%", String());
 			REPLACE_WILDCARD_WITH_STRING("%AAX_IDENTIFIER%", String());
+            REPLACE_WILDCARD_WITH_STRING("%ARM_ARCH%", "arm64,arm64e,x86_64");
 		}
 	}
 
@@ -2408,11 +2412,8 @@ void CompileExporter::BatchFileCreator::createBatchFile(CompileExporter* exporte
 		int threads = SystemStats::getNumCpus() - 2;
 		String xcodeLine;
 		xcodeLine << "xcodebuild -project \"Builds/MacOSX/" << projectName << ".xcodeproj\" -configuration \"" << exporter->configurationName << "\" -jobs \"" << threads << "\"";
-
-		if (!isUsingCIMode())
-		{
-			xcodeLine << " | xcpretty";
-		}
+		xcodeLine << " | xcpretty";
+		
 
         ADD_LINE(xcodeLine);
         ADD_LINE("echo Compiling finished. Cleaning up...");
