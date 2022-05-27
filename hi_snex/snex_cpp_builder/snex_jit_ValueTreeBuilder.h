@@ -34,6 +34,8 @@
 
 #define BETTER_TEMPLATE_FORWARDING 1
 
+#define ENABLE_CPP_DEBUG_LOG 0
+
 namespace snex {
 namespace cppgen {
 using namespace juce;
@@ -71,6 +73,17 @@ struct ValueTreeIterator
 		return (v.getParent().getNumChildren() - 1) == getIndexInParent(v);
 	}
 
+	static bool isParent(const ValueTree& v, const ValueTree& possibleParent)
+	{
+		if (!v.isValid())
+			return false;
+
+		if (v == possibleParent)
+			return true;
+
+		return isParent(v.getParent(), possibleParent);
+	}
+
 	static int getIndexInParent(const ValueTree& v)
 	{
 		return v.getParent().indexOf(v);
@@ -86,6 +99,17 @@ struct ValueTreeIterator
 		return v;
 	}
 
+    static bool fixCppIllegalCppKeyword(String& s)
+    {
+        if(s == "switch")
+        {
+            s = "switcher";
+            return true;
+        }
+        
+        return false;
+    }
+    
 	static bool isBetween(IterationType l, IterationType u, IterationType v);
 	static bool isBackwards(IterationType t);
 	static bool isRecursive(IterationType t);
@@ -187,6 +211,9 @@ struct Node : public ReferenceCountedObject,
 			auto fId = NamespacedIdentifier(CustomNodeProperties::getModeNamespace(nodeTree));
 			auto cId = ValueTreeIterator::getNodeProperty(nodeTree, PropertyIds::Mode).toString().toLowerCase().replaceCharacter(' ', '_');
 
+            ValueTreeIterator::fixCppIllegalCppKeyword(cId);
+            
+            
 			UsingTemplate ud(parent, "unused", fId.getChildId(cId));
 
 			if (hasProperty(PropertyIds::TemplateArgumentIsPolyphonic))
@@ -535,15 +562,24 @@ struct ValueTreeBuilder: public Base
     
     struct ScopedChannelSetter
     {
-        ScopedChannelSetter(ValueTreeBuilder& vtb_, int numChannels):
+        ScopedChannelSetter(ValueTreeBuilder& vtb_, int numChannels, bool allowHigherChannelCount):
           vtb(vtb_),
           prevNumChannels(vtb_.numChannelsToCompile)
         {
-            jassert(numChannels <= vtb.numChannelsToCompile);
+            jassert(numChannels <= vtb.numChannelsToCompile || allowHigherChannelCount);
+
+#if ENABLE_CPP_DEBUG_LOG
+			DBG("Setting channel count to " + String(numChannels));
+#endif
+
             vtb.numChannelsToCompile = numChannels;
         }
         ~ScopedChannelSetter()
         {
+#if ENABLE_CPP_DEBUG_LOG
+			DBG("Setting channel count back to " + String(prevNumChannels));
+#endif
+
             vtb.numChannelsToCompile = prevNumChannels;
         }
         
