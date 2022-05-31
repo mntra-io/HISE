@@ -314,6 +314,12 @@ namespace ScriptingObjects
 		/** Creates a fillable path using the provided strokeData (with optional dot. */
 		var createStrokedPath(var strokeData, var dotData);
 
+		/** Creates a string representation of this path. */
+		String toString();
+
+		/** Restores a path that has been converted into a string. */
+		void fromString(String stringPath);
+
 		// ============================================================================================================
 
 		struct Wrapper;
@@ -511,6 +517,7 @@ namespace ScriptingObjects
 			public RingBufferComponentBase::LookAndFeelMethods,
 			public AhdsrGraph::LookAndFeelMethods,
 			public MidiFileDragAndDropper::LookAndFeelMethods,
+			public SliderPack::LookAndFeelMethods,
 			public CustomKeyboardLookAndFeelBase
 		{
 			Laf(MainController* mc) :
@@ -596,11 +603,19 @@ namespace ScriptingObjects
             void drawHiseThumbnailBackground(Graphics& g, HiseAudioThumbnail& th, bool areaIsEnabled, Rectangle<int> area) override;
             void drawHiseThumbnailPath(Graphics& g, HiseAudioThumbnail& th, bool areaIsEnabled, const Path& path) override;
             void drawHiseThumbnailRectList(Graphics& g, HiseAudioThumbnail& th, bool areaIsEnabled, const HiseAudioThumbnail::RectangleListType& rectList) override;
+
+			void drawThumbnailRuler(Graphics& g, HiseAudioThumbnail& te, int xPosition) override;
+
             void drawTextOverlay(Graphics& g, HiseAudioThumbnail& th, const String& text, Rectangle<float> area) override;
             
 			void drawKeyboardBackground(Graphics &g, Component* c, int width, int height) override;
 			void drawWhiteNote(CustomKeyboardState* state, Component* c, int midiNoteNumber, Graphics &g, int x, int y, int w, int h, bool isDown, bool isOver, const Colour &lineColour, const Colour &textColour) override;
 			void drawBlackNote(CustomKeyboardState* state, Component* c, int midiNoteNumber, Graphics &g, int x, int y, int w, int h, bool isDown, bool isOver, const Colour &noteFillColour) override;
+
+			void drawSliderPackBackground(Graphics& g, SliderPack& s) override;
+			void drawSliderPackFlashOverlay(Graphics& g, SliderPack& s, int sliderIndex, Rectangle<int> sliderBounds, float intensity) override;
+			void drawSliderPackRightClickLine(Graphics& g, SliderPack& s, Line<float> lineToDraw) override;
+			void drawSliderPackTextPopup(Graphics& g, SliderPack& s, const String& textToDraw) override;
 
 			Image createIcon(PresetHandler::IconType type) override;
 

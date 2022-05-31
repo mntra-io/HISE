@@ -889,6 +889,8 @@ struct ScriptingObjects::PathObject::Wrapper
 	API_VOID_METHOD_WRAPPER_3(PathObject, addArc);
 	API_METHOD_WRAPPER_2(PathObject, createStrokedPath);
 	API_METHOD_WRAPPER_1(PathObject, getBounds);
+	API_METHOD_WRAPPER_0(PathObject, toString);
+	API_VOID_METHOD_WRAPPER_1(PathObject, fromString);
 };
 
 ScriptingObjects::PathObject::PathObject(ProcessorWithScriptingContent* p) :
@@ -903,6 +905,8 @@ ScriptingObjects::PathObject::PathObject(ProcessorWithScriptingContent* p) :
 	ADD_API_METHOD_3(addArc);
 	ADD_API_METHOD_1(getBounds);
 	ADD_API_METHOD_2(createStrokedPath);
+	ADD_API_METHOD_0(toString);
+	ADD_API_METHOD_1(fromString);
 }
 
 ScriptingObjects::PathObject::~PathObject()
@@ -1021,6 +1025,16 @@ juce::var ScriptingObjects::PathObject::createStrokedPath(var strokeData, var do
 	np->p.startNewSubPath(p.getBounds().getBottomRight());
 
 	return var(np);
+}
+
+String ScriptingObjects::PathObject::toString()
+{
+	return p.toString();
+}
+
+void ScriptingObjects::PathObject::fromString(String stringPath)
+{
+	p.restoreFromString(stringPath);
 }
 
 struct ScriptingObjects::GraphicsObject::Wrapper
@@ -1221,12 +1235,48 @@ void ScriptingObjects::GraphicsObject::applyVignette(float amount, float radius,
 
 void ScriptingObjects::GraphicsObject::addNoise(var noiseAmount)
 {
-	if (auto cl = drawActionHandler.getCurrentLayer())
+	auto m = drawActionHandler.getNoiseMapManager();
+
+	Rectangle<int> ar;
+
+	if (auto sc = dynamic_cast<ScriptComponent*>(parent))
 	{
-		cl->addPostAction(new ScriptedPostDrawActions::addNoise(jlimit(0.0f, 1.0f, (float)noiseAmount)));
+		ar = Rectangle<int>(0, 0, (int)sc->getScriptObjectProperty(ScriptComponent::Properties::width), (int)sc->getScriptObjectProperty(ScriptComponent::Properties::height));
 	}
-	else
-		reportScriptError("You need to create a layer for adding noise");
+
+	if (noiseAmount.isDouble())
+	{
+		if (ar.isEmpty())
+			reportScriptError("No valid area for noise map specified");
+		else
+			drawActionHandler.addDrawAction(new ScriptedPostDrawActions::addNoise(m, jlimit(0.0f, 1.0f, (float)noiseAmount), ar));
+	}
+	else if (auto obj = noiseAmount.getDynamicObject())
+	{
+		auto alpha = jlimit(0.0f, 1.0f, (float)noiseAmount["alpha"]);
+		auto monochrom = (bool)noiseAmount["monochromatic"];
+
+		auto sf = (float)noiseAmount.getProperty("scaleFactor", 1.0);
+
+		auto customArea = noiseAmount.getProperty("area", var());
+
+		if (customArea.isArray())
+		{
+			ar = ApiHelpers::getIntRectangleFromVar(customArea);
+		}
+
+		if(ar.isEmpty())
+			reportScriptError("Invalid area for noise map");
+		else
+		{
+			if (sf == -1.0f)
+				sf = drawActionHandler.getScaleFactor();
+
+			auto scale = jlimit(0.125, 2.0, (double)sf);
+
+			drawActionHandler.addDrawAction(new ScriptedPostDrawActions::addNoise(m, jlimit(0.0f, 1.0f, (float)alpha), ar, monochrom, scale));
+		}
+	}
 }
 
 void ScriptingObjects::GraphicsObject::desaturate()
@@ -1682,7 +1732,11 @@ Array<Identifier> ScriptingObjects::ScriptedLookAndFeel::getAllFunctionNames()
 		"drawAhdsrPath",
 		"drawKeyboardBackground",
 		"drawWhiteNote",
-		"drawBlackNote"
+		"drawBlackNote",
+		"drawSliderPackBackground",
+		"drawSliderPackFlashOverlay",
+		"drawSliderPackRightClickLine",
+		"drawSliderPackTextPopup"
 	};
 
 	return sa;
@@ -2563,6 +2617,27 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawHiseThumbnailRectList(Graph
 	jassertfalse; // should never happen
 }
 
+void ScriptingObjects::ScriptedLookAndFeel::Laf::drawThumbnailRuler(Graphics& g_, HiseAudioThumbnail& th, int xPosition)
+{
+	if (functionDefined("drawThumbnailRuler"))
+	{
+		auto obj = new DynamicObject();
+		auto area = th.getLocalBounds();
+		obj->setProperty("area", ApiHelpers::getVarRectangle(area.toFloat()));
+		
+		obj->setProperty("xPosition", xPosition);
+
+		setColourOrBlack(obj, "bgColour", th, AudioDisplayComponent::ColourIds::bgColour);
+		setColourOrBlack(obj, "itemColour", th, AudioDisplayComponent::ColourIds::fillColour);
+		setColourOrBlack(obj, "textColour", th, AudioDisplayComponent::ColourIds::outlineColour);
+
+		if (get()->callWithGraphics(g_, "drawThumbnailRuler", var(obj), &th))
+			return;
+	}
+
+	HiseAudioThumbnail::LookAndFeelMethods::drawThumbnailRuler(g_, th, xPosition);
+}
+
 void ScriptingObjects::ScriptedLookAndFeel::Laf::drawThumbnailRange(Graphics& g_, HiseAudioThumbnail& th, Rectangle<float> area, int areaIndex, Colour c, bool areaEnabled)
 {
 	if (functionDefined("drawThumbnailRange"))
@@ -2658,6 +2733,112 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawBlackNote(CustomKeyboardSta
 	}
 
 	CustomKeyboardLookAndFeelBase::drawBlackNote(state, c, midiNoteNumber, g_, x, y, w, h, isDown, isOver, noteFillColour);
+}
+
+void ScriptingObjects::ScriptedLookAndFeel::Laf::drawSliderPackBackground(Graphics& g_, SliderPack& s)
+{
+	if (functionDefined("drawSliderPackBackground"))
+	{
+		auto obj = new DynamicObject();
+
+		obj->setProperty("id", s.getName());
+
+		setColourOrBlack(obj, "bgColour", s, Slider::ColourIds::backgroundColourId);
+		setColourOrBlack(obj, "itemColour", s, Slider::thumbColourId);
+		setColourOrBlack(obj, "itemColour2", s, Slider::textBoxOutlineColourId);
+		setColourOrBlack(obj, "textColour", s, Slider::trackColourId);
+		
+
+		obj->setProperty("numSliders", s.getNumSliders());
+		obj->setProperty("displayIndex", s.getData()->getNextIndexToDisplay());
+
+		obj->setProperty("area", ApiHelpers::getVarRectangle(s.getLocalBounds().toFloat()));
+
+		if(get()->callWithGraphics(g_, "drawSliderPackBackground", var(obj), &s))
+			return;
+	}
+
+	SliderPack::LookAndFeelMethods::drawSliderPackBackground(g_, s);
+}
+
+void ScriptingObjects::ScriptedLookAndFeel::Laf::drawSliderPackFlashOverlay(Graphics& g_, SliderPack& s, int sliderIndex, Rectangle<int> sliderBounds, float intensity)
+{
+	if (functionDefined("drawSliderPackFlashOverlay"))
+	{
+		auto obj = new DynamicObject();
+
+		obj->setProperty("id", s.getName());
+
+		setColourOrBlack(obj, "bgColour", s, Slider::ColourIds::backgroundColourId);
+		setColourOrBlack(obj, "itemColour", s, Slider::thumbColourId);
+		setColourOrBlack(obj, "itemColour2", s, Slider::textBoxOutlineColourId);
+		setColourOrBlack(obj, "textColour", s, Slider::trackColourId);
+
+		obj->setProperty("numSliders", s.getNumSliders());
+		obj->setProperty("displayIndex", sliderIndex);
+		obj->setProperty("value", s.getValue(sliderIndex));
+		obj->setProperty("intensity", intensity);
+
+		auto sBounds = sliderBounds;
+		sBounds.setY(0);
+		sBounds.setHeight(s.getHeight()); s.getValue(sliderIndex);
+
+		obj->setProperty("area", ApiHelpers::getVarRectangle(sBounds.toFloat()));
+
+		if (get()->callWithGraphics(g_, "drawSliderPackFlashOverlay", var(obj), &s))
+			return;
+	}
+
+	SliderPack::LookAndFeelMethods::drawSliderPackFlashOverlay(g_, s, sliderIndex, sliderBounds, intensity);
+}
+
+void ScriptingObjects::ScriptedLookAndFeel::Laf::drawSliderPackRightClickLine(Graphics& g_, SliderPack& s, Line<float> lineToDraw)
+{
+	if (functionDefined("drawSliderPackRightClickLine"))
+	{
+		auto obj = new DynamicObject();
+
+		obj->setProperty("id", s.getName());
+
+		setColourOrBlack(obj, "bgColour", s, Slider::ColourIds::backgroundColourId);
+		setColourOrBlack(obj, "itemColour", s, Slider::thumbColourId);
+		setColourOrBlack(obj, "itemColour2", s, Slider::textBoxOutlineColourId);
+		setColourOrBlack(obj, "textColour", s, Slider::trackColourId);
+
+		obj->setProperty("x1", lineToDraw.getStartX());
+		obj->setProperty("x2", lineToDraw.getEndX());
+		obj->setProperty("y1", lineToDraw.getStartY());
+		obj->setProperty("y2", lineToDraw.getEndY());
+
+		if (get()->callWithGraphics(g_, "drawSliderPackRightClickLine", var(obj), &s))
+			return;
+	}
+
+	SliderPack::LookAndFeelMethods::drawSliderPackRightClickLine(g_, s, lineToDraw);
+}
+
+void ScriptingObjects::ScriptedLookAndFeel::Laf::drawSliderPackTextPopup(Graphics& g_, SliderPack& s, const String& textToDraw)
+{
+	if (functionDefined("drawSliderPackTextPopup"))
+	{
+		auto obj = new DynamicObject();
+
+		obj->setProperty("id", s.getName());
+
+		setColourOrBlack(obj, "bgColour", s, Slider::ColourIds::backgroundColourId);
+		setColourOrBlack(obj, "itemColour", s, Slider::thumbColourId);
+		setColourOrBlack(obj, "itemColour2", s, Slider::textBoxOutlineColourId);
+		setColourOrBlack(obj, "textColour", s, Slider::trackColourId);
+
+		obj->setProperty("area", ApiHelpers::getVarRectangle(s.getLocalBounds().toFloat()));
+		
+		obj->setProperty("text", textToDraw);
+
+		if (get()->callWithGraphics(g_, "drawSliderPackTextPopup", var(obj), &s))
+			return;
+	}
+
+	SliderPack::LookAndFeelMethods::drawSliderPackTextPopup(g_, s, textToDraw);
 }
 
 juce::Image ScriptingObjects::ScriptedLookAndFeel::Laf::createIcon(PresetHandler::IconType type)
