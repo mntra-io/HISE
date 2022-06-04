@@ -81,6 +81,11 @@ DspNetwork::DspNetwork(hise::ProcessorWithScriptingContent* p, ValueTree data_, 
     if(!data.hasProperty(PropertyIds::CompileChannelAmount))
         data.setProperty(PropertyIds::CompileChannelAmount, 2, nullptr);
     
+	if (!data.hasProperty(PropertyIds::HasTail))
+		data.setProperty(PropertyIds::HasTail, true, nullptr);
+
+	hasTailProperty.referTo(data, PropertyIds::HasTail, &um, true);
+
 	if (!data.hasProperty(ExpansionIds::Version))
 	{
 		data.setProperty(ExpansionIds::Version, "0.0.0", nullptr);
@@ -222,6 +227,8 @@ DspNetwork::DspNetwork(hise::ProcessorWithScriptingContent* p, ValueTree data_, 
 
 DspNetwork::~DspNetwork()
 {
+	stopTimer();
+
 	root = nullptr;
 	selectionUpdater = nullptr;
 	nodes.clear();
@@ -249,17 +256,22 @@ void DspNetwork::createAllNodesOnce()
 
 	for (auto f : nodeFactories)
 	{
-        if(f->getId() == Identifier("project"))
-            continue;
-        
+		auto isProjectFactory = f->getId() == Identifier("project");
+            
+		if (isProjectFactory)
+			continue;
+
+		int index = 0;
 		for (auto id : f->getModuleList())
 		{
-			NodeBase::Holder s;
+			ScopedPointer<NodeBase::Holder> s = new NodeBase::Holder();
 
-			currentNodeHolder = &s;
+			currentNodeHolder = s;
 			create(id, "unused");
 			exceptionHandler.removeError(nullptr);
 			currentNodeHolder = nullptr;
+
+			s = nullptr;
 		}
 	}
 
@@ -442,8 +454,8 @@ void DspNetwork::reset()
 	
 	if (projectNodeHolder.isActive())
 		projectNodeHolder.n.reset();
-	else
-		getRootNode()->reset();
+	else if (auto rn = getRootNode())
+		rn->reset();
 }
 
 void DspNetwork::handleHiseEvent(HiseEvent& e)
@@ -482,7 +494,7 @@ void DspNetwork::process(ProcessDataDyn& data)
 
 bool DspNetwork::hasTail() const
 {
-	return true;
+	return hasTailProperty.get();
 }
 
 juce::Identifier DspNetwork::getParameterIdentifier(int parameterIndex)
@@ -1397,6 +1409,7 @@ DspNetwork::SelectionUpdater::SelectionUpdater(DspNetwork& parent_) :
 
 DspNetwork::SelectionUpdater::~SelectionUpdater()
 {
+	MessageManagerLock mm;
 	parent.selection.removeChangeListener(this);
 }
 

@@ -3098,7 +3098,7 @@ ScriptingObjects::ScriptingEffect* ScriptingObjects::ScriptingSlotFX::setEffect(
 			slot->setEffect(effectName, false);
 		}
 
-		return new ScriptingEffect(getScriptProcessor(), slot->getCurrentEffect());
+		return new ScriptingEffect(getScriptProcessor(), dynamic_cast<EffectProcessor*>(slot->getCurrentEffect()));
     }
 	else
 	{
@@ -3113,7 +3113,7 @@ ScriptingObjects::ScriptingEffect* ScriptingObjects::ScriptingSlotFX::getCurrent
 	{
 		if (auto fx = slot->getCurrentEffect())
 		{
-			return new ScriptingEffect(getScriptProcessor(), fx);
+			return new ScriptingEffect(getScriptProcessor(), dynamic_cast<EffectProcessor*>(fx));
 		}
 	}
 
@@ -3829,7 +3829,7 @@ struct ScriptingObjects::ScriptingAudioSampleProcessor::Wrapper
 };
 
 
-ScriptingObjects::ScriptingAudioSampleProcessor::ScriptingAudioSampleProcessor(ProcessorWithScriptingContent *p, AudioSampleProcessor *sampleProcessor) :
+ScriptingObjects::ScriptingAudioSampleProcessor::ScriptingAudioSampleProcessor(ProcessorWithScriptingContent *p, Processor *sampleProcessor) :
 ConstScriptingObject(p, dynamic_cast<Processor*>(sampleProcessor) != nullptr ? dynamic_cast<Processor*>(sampleProcessor)->getNumParameters() : 0),
 audioSampleProcessor(dynamic_cast<Processor*>(sampleProcessor))
 {
@@ -3936,11 +3936,20 @@ void ScriptingObjects::ScriptingAudioSampleProcessor::setFile(String fileName)
 		auto pool = audioSampleProcessor->getMainController()->getCurrentAudioSampleBufferPool();
 
 		if (!fileName.contains("{EXP::") && !pool->areAllFilesLoaded())
-			reportScriptError("You must call Engine.loadAudioFilesIntoPool() before using this method");
+		{
+			PoolReference ref(getScriptProcessor()->getMainController_(), fileName, FileHandlerBase::AudioFiles);
+
+			if (ref.getReferenceString().contains("{PROJECT_FOLDER}"))
+			{
+				reportScriptError("You must call Engine.loadAudioFilesIntoPool() before using this method");
+			}
+		}
+			
 #endif
 
-		auto asp = dynamic_cast<AudioSampleProcessor*>(audioSampleProcessor.get());
-		asp->getBuffer().fromBase64String(fileName);
+		auto p = dynamic_cast<ProcessorWithExternalData*>(audioSampleProcessor.get());
+		jassert(p != nullptr);
+		p->getAudioFile(0)->fromBase64String(fileName);
 	}
 }
 
