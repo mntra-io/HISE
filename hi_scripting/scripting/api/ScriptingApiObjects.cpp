@@ -3959,7 +3959,7 @@ String ScriptingObjects::ScriptingAudioSampleProcessor::getFilename()
 	{
 		if (checkValidObject())
 		{
-			return dynamic_cast<AudioSampleProcessor*>(audioSampleProcessor.get())->getFileName();
+            return dynamic_cast<ProcessorWithExternalData*>(audioSampleProcessor.get())->getAudioFile(0)->toBase64String();
 		}
 	}
 
@@ -3969,7 +3969,7 @@ String ScriptingObjects::ScriptingAudioSampleProcessor::getFilename()
 var ScriptingObjects::ScriptingAudioSampleProcessor::getSampleStart()
 {
 	if (checkValidObject())
-		return dynamic_cast<AudioSampleProcessor*>(audioSampleProcessor.get())->getBuffer().getCurrentRange().getStart();
+		return dynamic_cast<ProcessorWithExternalData*>(audioSampleProcessor.get())->getAudioFile(0)->getCurrentRange().getStart();
 
 	return 0;
 }
@@ -3977,7 +3977,7 @@ var ScriptingObjects::ScriptingAudioSampleProcessor::getSampleStart()
 void ScriptingObjects::ScriptingAudioSampleProcessor::setSampleRange(int start, int end)
 {
 	if (checkValidObject())
-		dynamic_cast<AudioSampleProcessor*>(audioSampleProcessor.get())->getBuffer().setRange(Range<int>(start, end));
+        return dynamic_cast<ProcessorWithExternalData*>(audioSampleProcessor.get())->getAudioFile(0)->setRange(Range<int>(start, end));
 }
 
 var ScriptingObjects::ScriptingAudioSampleProcessor::getAudioFile(int slotIndex)
@@ -3996,7 +3996,7 @@ int ScriptingObjects::ScriptingAudioSampleProcessor::getSampleLength() const
 {
 	if (checkValidObject())
 	{
-		return dynamic_cast<const AudioSampleProcessor*>(audioSampleProcessor.get())->getBuffer().getCurrentRange().getLength();
+        return dynamic_cast<ProcessorWithExternalData*>(audioSampleProcessor.get())->getAudioFile(0)->getCurrentRange().getLength();
 	}
 	else return 0;
 }
