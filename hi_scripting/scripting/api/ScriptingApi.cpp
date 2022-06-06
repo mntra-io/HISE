@@ -1112,16 +1112,27 @@ void ScriptingApi::Engine::addModuleStateToUserPreset(var moduleId)
 {
 	if (auto jmp = dynamic_cast<JavascriptMidiProcessor*>(getProcessor()))
 	{
-		auto newId = moduleId.toString();
+		String newId;
 
 		auto& ids = jmp->getListOfModuleIds();
 
-		if (newId.isEmpty())
+		if (moduleId.isString())
 		{
-			ids.clear();
-			debugToConsole(getProcessor(), "Removed all stored modules");
-			return;
+			newId = moduleId.toString();
+
+			if (newId.isEmpty())
+			{
+				ids.clear();
+				debugToConsole(getProcessor(), "Removed all stored modules");
+				return;
+			}
+
 		}
+		else
+			newId = moduleId["ID"].toString();
+
+		if (newId.isEmpty())
+			reportScriptError("Invalid ID");
 
 		auto p = ProcessorHelpers::getFirstProcessorWithName(getProcessor()->getMainController()->getMainSynthChain(), newId);
 
@@ -1142,9 +1153,23 @@ void ScriptingApi::Engine::addModuleStateToUserPreset(var moduleId)
 			}
 		}
 
-		if (!ids.contains(newId))
+		bool wasRemoved = false;
+
+		for (auto ms : ids)
 		{
-			ids.add(newId);
+			if (ms->id == newId)
+			{
+				ids.removeObject(ms);
+				wasRemoved = true;
+				
+				break;
+			}
+		}
+
+		ids.add(new MainController::UserPresetHandler::StoredModuleData(moduleId, p));
+
+		if (!wasRemoved)
+		{
 			debugToConsole(getProcessor(), "Added " + newId + " to user preset system");
 		}
 	}
@@ -4737,21 +4762,24 @@ ScriptingObjects::ScriptingAudioSampleProcessor * ScriptingApi::Synth::getAudioS
 {
 	WARN_IF_AUDIO_THREAD(true, ScriptGuard::ObjectCreation);
 
-	Processor::Iterator<AudioSampleProcessor> it(owner);
+	Processor::Iterator<ProcessorWithExternalData> it(owner);
 
-		AudioSampleProcessor *asp;
+	ProcessorWithExternalData *asp;
 
 
-		while ((asp = it.getNextProcessor()) != nullptr)
+	while ((asp = it.getNextProcessor()) != nullptr)
+	{
+		if (dynamic_cast<Processor*>(asp)->getId() == name)
 		{
-			if (dynamic_cast<Processor*>(asp)->getId() == name)
+			if (asp->getNumDataObjects(ExternalData::DataType::AudioFile) > 0)
 			{
-				return new ScriptAudioSampleProcessor(getScriptProcessor(), asp);
+				return new ScriptAudioSampleProcessor(getScriptProcessor(), dynamic_cast<Processor*>(asp));
 			}
 		}
+	}
 
-        reportScriptError(name + " was not found. ");
-		RETURN_IF_NO_THROW(new ScriptAudioSampleProcessor(getScriptProcessor(), nullptr))
+    reportScriptError(name + " was not found. ");
+	RETURN_IF_NO_THROW(new ScriptAudioSampleProcessor(getScriptProcessor(), nullptr))
 }
 
 

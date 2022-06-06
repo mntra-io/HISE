@@ -358,7 +358,12 @@ public:
 		void setVoiceKillerToUse(snex::Types::VoiceResetter* vk_)
 		{
 			if (isPolyphonic())
+			{
 				vk = vk_;
+
+				if (getActiveNetwork())
+					getActiveNetwork()->setVoiceKiller(vk);
+			}
 		}
 
 		SimpleReadWriteLock& getNetworkLock() { return connectLock; }
@@ -982,6 +987,8 @@ private:
 	UndoManager um;
 
 	const bool isPoly;
+
+	CachedValue<bool> hasTailProperty;
 
 	snex::Types::DllBoundaryTempoSyncer tempoSyncer;
 	snex::Types::PolyHandler polyHandler;

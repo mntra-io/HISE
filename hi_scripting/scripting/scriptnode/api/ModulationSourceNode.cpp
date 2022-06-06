@@ -102,6 +102,8 @@ ModulationSourceBaseComponent::ModulationSourceBaseComponent(PooledUIUpdater* up
 
 	setRepaintsOnMouseActivity(true);
 	setMouseCursor(createMouseCursor());
+
+	setSize(256, 28);
 }
 
 void ModulationSourceBaseComponent::paint(Graphics& g)
@@ -367,8 +369,10 @@ void WrapperNode::initParameterData(ParameterDataList& pData)
 				}
 				else
 				{
-					// Don't want to interupt the loading on another thread
-					jassertfalse;
+                    auto p = dynamic_cast<Processor*>(getRootNetwork()->getScriptProcessor());
+                    
+                    // Don't want to interupt the loading on another thread
+                    debugError(p, errorMessage);					
 				}
 #else
 				// There's a mismatch between parameters in the value tree

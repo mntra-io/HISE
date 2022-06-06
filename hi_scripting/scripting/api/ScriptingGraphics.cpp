@@ -1701,7 +1701,10 @@ ScriptingObjects::ScriptedLookAndFeel::ScriptedLookAndFeel(ProcessorWithScriptin
 
 ScriptingObjects::ScriptedLookAndFeel::~ScriptedLookAndFeel()
 {
-
+    SimpleReadWriteLock::ScopedWriteLock sl(lock);
+    functions = var();
+    g = nullptr;
+    loadedImages.clear();
 }
 
 void ScriptingObjects::ScriptedLookAndFeel::registerFunction(var functionName, var function)
@@ -1758,7 +1761,8 @@ Array<Identifier> ScriptingObjects::ScriptedLookAndFeel::getAllFunctionNames()
 		"drawSliderPackBackground",
 		"drawSliderPackFlashOverlay",
 		"drawSliderPackRightClickLine",
-		"drawSliderPackTextPopup"
+		"drawSliderPackTextPopup",
+        "getIdealPopupMenuItemSize"
 	};
 
 	return sa;
@@ -1771,54 +1775,58 @@ bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const
 
 	auto f = functions.getProperty(functionname, {});
 
+    
+    
 	if (HiseJavascriptEngine::isJavascriptFunction(f))
 	{
-		var args[2];
+        var args[2];
 
-		args[0] = var(g.get());
-		args[1] = argsObject;
+        args[0] = var(g.get());
+        args[1] = argsObject;
+        
+        if(auto sl = SimpleReadWriteLock::ScopedTryReadLock(lock))
+        {
+            if (c != nullptr && c->getParentComponent() != nullptr)
+            {
+                var n = c->getParentComponent()->getName();
+                argsObject.getDynamicObject()->setProperty("parentName", n);
+            }
 
-		if (c != nullptr && c->getParentComponent() != nullptr)
-		{
-			var n = c->getParentComponent()->getName();
-			argsObject.getDynamicObject()->setProperty("parentName", n);
-		}
+            var thisObject(this);
+            var::NativeFunctionArgs arg(thisObject, args, 2);
+            auto engine = dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine();
+            Result r = Result::ok();
 
-		var thisObject(this);
-		var::NativeFunctionArgs arg(thisObject, args, 2);
-		auto engine = dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine();
-		Result r = Result::ok();
+            try
+            {
+                ScopedLock sl(getScriptProcessor()->getMainController_()->getJavascriptThreadPool().getLookAndFeelRenderLock());
+                engine->callExternalFunctionRaw(f, arg);
+            }
+            catch (String& errorMessage)
+            {
+                debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), errorMessage);
+            }
+            catch (HiseJavascriptEngine::RootObject::Error& e)
+            {
+                auto p = dynamic_cast<Processor*>(getScriptProcessor());
+                debugToConsole(p, e.toString(p) + e.errorMessage);
+            }
 
-		try
-		{
-			ScopedLock sl(getScriptProcessor()->getMainController_()->getJavascriptThreadPool().getLookAndFeelRenderLock());
-			engine->callExternalFunctionRaw(f, arg);
-		}
-		catch (String& errorMessage)
-		{
-			debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), errorMessage);
-		}
-		catch (HiseJavascriptEngine::RootObject::Error& e)
-		{
-			auto p = dynamic_cast<Processor*>(getScriptProcessor());
-			debugToConsole(p, e.toString(p) + e.errorMessage);
-		}
+            g->getDrawHandler().flush();
 
-		g->getDrawHandler().flush();
+            DrawActions::Handler::Iterator it(&g->getDrawHandler());
 
-		DrawActions::Handler::Iterator it(&g->getDrawHandler());
-
-		if (c != nullptr)
-		{
-			it.render(g_, c);
-		}
-		else
-		{
-			while (auto action = it.getNextAction())
-				action->perform(g_);
-		}
-
-
+            if (c != nullptr)
+            {
+                it.render(g_, c);
+            }
+            else
+            {
+                while (auto action = it.getNextAction())
+                    action->perform(g_);
+            }
+        }
+        
 		return true;
 	}
 
@@ -1834,6 +1842,8 @@ var ScriptingObjects::ScriptedLookAndFeel::callDefinedFunction(const Identifier&
 
 	if (HiseJavascriptEngine::isJavascriptFunction(f))
 	{
+        SimpleReadWriteLock::ScopedReadLock sl(lock);
+        
 		var thisObject(this);
 		var::NativeFunctionArgs arg(thisObject, args, numArgs);
 		auto engine = dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine();
@@ -1903,6 +1913,36 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawAlertBox(Graphics& g_, Aler
 	}
 
 	GlobalHiseLookAndFeel::drawAlertBox(g_, w, ta, tl);
+}
+
+void ScriptingObjects::ScriptedLookAndFeel::Laf::getIdealPopupMenuItemSize(const String &text, bool isSeparator, int standardMenuItemHeight, int &idealWidth, int &idealHeight)
+{
+    if (functionDefined("getIdealPopupMenuItemSize"))
+    {
+        auto obj = new DynamicObject();
+
+        obj->setProperty("text", text);
+        obj->setProperty("isSeparator", isSeparator);
+        obj->setProperty("standardMenuHeight", standardMenuItemHeight);
+        
+        var x = var(obj);
+
+        auto nObj = get()->callDefinedFunction("getIdealPopupMenuItemSize", &x, 1);
+
+        if (nObj.isArray())
+        {
+            idealWidth = (int)nObj[0];
+            idealHeight = (int)nObj[1];
+            return;
+        }
+        if(nObj.isInt() || nObj.isInt64() || nObj.isDouble())
+        {
+            idealHeight = (int)nObj;
+            return;
+        }
+    }
+    
+    GlobalHiseLookAndFeel::getIdealPopupMenuItemSize(text, isSeparator, standardMenuItemHeight, idealWidth, idealHeight);
 }
 
 hise::MarkdownLayout::StyleData ScriptingObjects::ScriptedLookAndFeel::Laf::getAlertWindowMarkdownStyleData()
@@ -2026,6 +2066,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawRotarySlider(Graphics &g_, 
 		obj->setProperty("text", s.getName());
 		obj->setProperty("area", ApiHelpers::getVarRectangle(s.getLocalBounds().toFloat()));
 
+		obj->setProperty("valueAsText", s.getTextFromValue(s.getValue()));
 		obj->setProperty("value", s.getValue());
 
 		NormalisableRange<double> range = NormalisableRange<double>(s.getMinimum(), s.getMaximum(), s.getInterval(), s.getSkewFactor());
@@ -2065,6 +2106,8 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawLinearSlider(Graphics &g, i
 		obj->setProperty("enabled", slider.isEnabled());
 		obj->setProperty("text", slider.getName());
 		obj->setProperty("area", ApiHelpers::getVarRectangle(slider.getLocalBounds().toFloat()));
+
+		obj->setProperty("valueAsText", slider.getTextFromValue(slider.getValue()));
 
 		obj->setProperty("valueSuffixString", slider.getTextFromValue(slider.getValue()));
 		obj->setProperty("suffix", slider.getTextValueSuffix());
