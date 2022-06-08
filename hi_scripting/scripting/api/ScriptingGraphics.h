@@ -480,6 +480,9 @@ namespace ScriptingObjects
 		/** Rotates the canvas around center `[x, y]` by the given amount in radian. */
 		void rotate(var angleInRadian, var center);
 
+        /** Flips the canvas at the center. */
+        void flip(bool horizontally, var totalArea);
+        
 		// ============================================================================================================
 
 		struct Wrapper;
@@ -607,6 +610,8 @@ namespace ScriptingObjects
             void drawHiseThumbnailPath(Graphics& g, HiseAudioThumbnail& th, bool areaIsEnabled, const Path& path) override;
             void drawHiseThumbnailRectList(Graphics& g, HiseAudioThumbnail& th, bool areaIsEnabled, const HiseAudioThumbnail::RectangleListType& rectList) override;
 
+            HiseAudioThumbnail::RenderOptions getThumbnailRenderOptions(HiseAudioThumbnail& th, const HiseAudioThumbnail::RenderOptions& defaultOptions) override;
+            
 			void drawThumbnailRuler(Graphics& g, HiseAudioThumbnail& te, int xPosition) override;
 
             void drawTextOverlay(Graphics& g, HiseAudioThumbnail& th, const String& text, Rectangle<float> area) override;

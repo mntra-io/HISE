@@ -1082,6 +1082,7 @@ struct ScriptingObjects::GraphicsObject::Wrapper
 	API_VOID_METHOD_WRAPPER_0(GraphicsObject, applySepia);
 	API_VOID_METHOD_WRAPPER_3(GraphicsObject, applyVignette);
 	API_METHOD_WRAPPER_2(GraphicsObject, applyShader);
+    API_VOID_METHOD_WRAPPER_2(GraphicsObject, flip);
 };
 
 ScriptingObjects::GraphicsObject::GraphicsObject(ProcessorWithScriptingContent *p, ConstScriptingObject* parent_) :
@@ -1123,6 +1124,7 @@ ScriptingObjects::GraphicsObject::GraphicsObject(ProcessorWithScriptingContent *
 	ADD_API_METHOD_0(desaturate);
 	ADD_API_METHOD_1(addNoise);
 	ADD_API_METHOD_3(applyMask);
+    ADD_API_METHOD_2(flip);
 
 	ADD_API_METHOD_3(applyHSL);
 	ADD_API_METHOD_1(applyGamma);
@@ -1646,6 +1648,26 @@ void ScriptingObjects::GraphicsObject::rotate(var angleInRadian, var center)
 	drawActionHandler.addDrawAction(new ScriptedDrawActions::addTransform(a));
 }
 
+void ScriptingObjects::GraphicsObject::flip(bool horizontally, var area)
+{
+    AffineTransform a;
+    auto r = getIntRectangleFromVar(area);
+    
+    if(horizontally)
+    {
+		a = AffineTransform(-1.0f,  0.0f, (float)r.getWidth(),
+                            0.0f,   1.0f, 0.0f);
+    }
+    else
+    {
+        a = AffineTransform(1.0f,  0.0f, 0.0f,
+                            0.0f, -1.0f, (float)r.getHeight());
+    }
+    
+    drawActionHandler.addDrawAction(new ScriptedDrawActions::addTransform(a));
+}
+
+
 Point<float> ScriptingObjects::GraphicsObject::getPointFromVar(const var& data)
 {
 	Point<float>&& f = ApiHelpers::getPointFromVar(data, &rectangleResult);
@@ -1752,6 +1774,7 @@ Array<Identifier> ScriptingObjects::ScriptedLookAndFeel::getAllFunctionNames()
 		"drawThumbnailPath",
 		"drawThumbnailRange",
 		"drawThumbnailRuler",
+        "getThumbnailRenderOptions",
 		"drawAhdsrBackground",
 		"drawAhdsrBall",
 		"drawAhdsrPath",
@@ -2679,7 +2702,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawHiseThumbnailPath(Graphics&
 
 void ScriptingObjects::ScriptedLookAndFeel::Laf::drawHiseThumbnailRectList(Graphics& g, HiseAudioThumbnail& th, bool areaIsEnabled, const HiseAudioThumbnail::RectangleListType& rectList)
 {
-	jassertfalse; // should never happen
+    HiseAudioThumbnail::LookAndFeelMethods::drawHiseThumbnailRectList(g, th, areaIsEnabled, rectList);
 }
 
 void ScriptingObjects::ScriptedLookAndFeel::Laf::drawThumbnailRuler(Graphics& g_, HiseAudioThumbnail& th, int xPosition)
@@ -2701,6 +2724,46 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawThumbnailRuler(Graphics& g_
 	}
 
 	HiseAudioThumbnail::LookAndFeelMethods::drawThumbnailRuler(g_, th, xPosition);
+}
+
+HiseAudioThumbnail::RenderOptions ScriptingObjects::ScriptedLookAndFeel::Laf::getThumbnailRenderOptions(HiseAudioThumbnail& th, const HiseAudioThumbnail::RenderOptions& defaultOptions)
+{
+    if (functionDefined("getThumbnailRenderOptions"))
+    {
+        auto obj = new DynamicObject();
+
+        obj->setProperty("displayMode", (int)defaultOptions.displayMode);
+        obj->setProperty("manualDownSampleFactor", defaultOptions.manualDownSampleFactor);
+        obj->setProperty("drawHorizontalLines", defaultOptions.drawHorizontalLines);
+        obj->setProperty("scaleVertically", defaultOptions.scaleVertically);
+        obj->setProperty("displayGain", defaultOptions.displayGain);
+        obj->setProperty("useRectList", defaultOptions.useRectList);
+        obj->setProperty("forceSymmetry", defaultOptions.forceSymmetry);
+
+        var x = var(obj);
+
+        auto nObj = get()->callDefinedFunction("getThumbnailRenderOptions", &x, 1);
+
+        if (auto no = nObj.getDynamicObject() != nullptr)
+        {
+            auto newOptions = defaultOptions;
+            
+            newOptions.displayMode = (HiseAudioThumbnail::DisplayMode)(int)nObj.getProperty("displayMode", (int)defaultOptions.displayMode);
+            newOptions.manualDownSampleFactor = nObj.getProperty("manualDownSampleFactor", defaultOptions.manualDownSampleFactor);
+            newOptions.drawHorizontalLines = nObj.getProperty("drawHorizontalLines", defaultOptions.drawHorizontalLines);
+            newOptions.scaleVertically = nObj.getProperty("scaleVertically", defaultOptions.scaleVertically);
+            newOptions.displayGain = nObj.getProperty("displayGain", defaultOptions.displayGain);
+            newOptions.useRectList = nObj.getProperty("useRectList", defaultOptions.useRectList);
+            newOptions.forceSymmetry = nObj.getProperty("forceSymmetry", defaultOptions.forceSymmetry);
+            
+            FloatSanitizers::sanitizeFloatNumber(newOptions.manualDownSampleFactor);
+            FloatSanitizers::sanitizeFloatNumber(newOptions.displayGain);
+            
+            return newOptions;
+        }
+    }
+
+    return defaultOptions;
 }
 
 void ScriptingObjects::ScriptedLookAndFeel::Laf::drawThumbnailRange(Graphics& g_, HiseAudioThumbnail& th, Rectangle<float> area, int areaIndex, Colour c, bool areaEnabled)
