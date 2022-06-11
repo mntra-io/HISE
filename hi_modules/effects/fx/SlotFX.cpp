@@ -505,7 +505,21 @@ bool HardcodedSwappableEffect::setEffect(const String& factoryId, bool /*unused*
 		asProcessor().parameterNames.clear();
 
 		for (int i = 0; i < opaqueNode->numParameters; i++)
+        {
+            parameterRanges.set(i, opaqueNode->parameters[i].toRange());
 			asProcessor().parameterNames.add(opaqueNode->parameters[i].getId());
+            
+            if(auto cp = asProcessor().getChildProcessor(i))
+            {
+                if(auto modChain = dynamic_cast<ModulatorChain*>(cp))
+                {
+                    auto rng = parameterRanges[i].rng;
+                    
+                    auto bipolar = rng.start < 0.0 && rng.end > 0.0;
+                    modChain->setMode(bipolar ? Modulation::PanMode : Modulation::GainMode, sendNotificationAsync);
+                }
+            }
+        }
 
 		effectUpdater.sendMessage(sendNotificationAsync, currentEffect, somethingChanged, opaqueNode->numParameters);
 
@@ -870,7 +884,21 @@ HardcodedMasterFX::HardcodedMasterFX(MainController* mc, const String& uid) :
 	MasterEffectProcessor(mc, uid),
 	HardcodedSwappableEffect(mc, false)
 {
+#if NUM_HARDCODED_FX_MODS
+	for (int i = 0; i < NUM_HARDCODED_FX_MODS; i++)
+	{
+		String p;
+		p << "P" << String(i + 1) << " Modulation";
+		modChains += { this, p };
+	}
+
 	finaliseModChains();
+
+	for (int i = 0; i < NUM_HARDCODED_FX_MODS; i++)
+		paramModulation[i] = modChains[i].getChain();
+#else
+	finaliseModChains();
+#endif
 
 	getMatrix().setNumAllowedConnections(NUM_MAX_CHANNELS);
 	connectionChanged();
@@ -878,7 +906,7 @@ HardcodedMasterFX::HardcodedMasterFX(MainController* mc, const String& uid) :
 
 HardcodedMasterFX::~HardcodedMasterFX()
 {
-
+	modChains.clear();
 }
 
 
@@ -946,6 +974,24 @@ juce::Path HardcodedMasterFX::getSpecialSymbol() const
 void HardcodedMasterFX::applyEffect(AudioSampleBuffer &b, int startSample, int numSamples)
 {
 	SimpleReadWriteLock::ScopedReadLock sl(lock);
+
+#if NUM_HARDCODED_FX_MODS
+	float modValues[NUM_HARDCODED_FX_MODS];
+
+	if (opaqueNode != nullptr)
+	{
+		int numParametersToModulate = jmin(NUM_HARDCODED_FX_MODS, opaqueNode->numParameters);
+
+		for (int i = 0; i < numParametersToModulate; i++)
+		{
+			auto mv = modChains[i].getOneModulationValue(startSample);
+
+			auto value = lastParameters[i] * mv;
+			opaqueNode->parameterFunctions[i](opaqueNode->parameterObjects[i], (double)value);
+		}
+	}
+
+#endif
 
 	processHardcoded(b, eventBuffer, startSample, numSamples);
 }
