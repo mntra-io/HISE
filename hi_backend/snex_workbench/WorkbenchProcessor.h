@@ -415,8 +415,6 @@ private:
 		EmbeddedDataFile
 	};
 
-	void writeDebugFileAndShowSolution();
-
 	CppFileLocationType getLocationType(const File& f) const;
 
 	DspNetwork* getNetwork();

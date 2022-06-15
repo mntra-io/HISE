@@ -392,7 +392,7 @@ juce::Array<snex::NamespacedIdentifier> ScriptnodeCallbacks::getIds(const Namesp
 	return ids;
 }
 
-juce::Array<snex::jit::FunctionData> ScriptnodeCallbacks::getAllPrototypes(Compiler* c, int numChannels)
+juce::Array<snex::jit::FunctionData> ScriptnodeCallbacks::getAllPrototypes(Compiler& c, int numChannels)
 {
 	Array<FunctionData> f;
 
@@ -404,52 +404,28 @@ juce::Array<snex::jit::FunctionData> ScriptnodeCallbacks::getAllPrototypes(Compi
 	return f;
 }
 
-snex::jit::FunctionData ScriptnodeCallbacks::getPrototype(Compiler* c, ID id, int numChannels)
+snex::jit::FunctionData ScriptnodeCallbacks::getPrototype(Compiler& c, ID id, int numChannels)
 {
 	FunctionData f;
-
-	ComplexType::Ptr p;
-	NamespacedIdentifier nid;
 
 	switch (id)
 	{
 	case PrepareFunction: 
-	{
 		f.id = NamespacedIdentifier("prepare");
 		f.returnType = TypeInfo(Types::ID::Void);
-
-		nid = NamespacedIdentifier("PrepareSpecs");
-
-		if (c != nullptr)
-			p = c->getComplexType(nid);
-		else
-			p = new StructType(nid, {});
-
-		f.addArgs("specs", TypeInfo(p, false, false));
+		f.addArgs("specs", TypeInfo(c.getComplexType(NamespacedIdentifier("PrepareSpecs"), {}), false, false));
 		break;
-	}
-		
 	case ProcessFunction:
 	{
 		f.id = NamespacedIdentifier("process");
 		f.returnType = TypeInfo(Types::ID::Void);
 
-		if (c != nullptr)
-		{
-			nid = NamespacedIdentifier("ProcessData");
-			TemplateParameter ct(numChannels);
-			ct.argumentId = nid.getChildId("NumChannels");
-			f.addArgs("data", TypeInfo(p, false, true));
-		}
-		else
-		{
-			TemplateParameter ct(NamespacedIdentifier("ProcessDataType"), {});
-			TypeInfo d(NamespacedIdentifier("ProcessDataType"), false, true);
+		NamespacedIdentifier pId("ProcessData");
 
-			f.addArgs("data", d);
-			f.templateParameters.add(ct);
-		}
-		
+		TemplateParameter ct(numChannels);
+
+		ct.argumentId = pId.getChildId("NumChannels");
+		f.addArgs("data", TypeInfo(c.getComplexType(pId, ct), false, true));
 		break;
 	}
 	case ResetFunction:
@@ -461,32 +437,20 @@ snex::jit::FunctionData ScriptnodeCallbacks::getPrototype(Compiler* c, ID id, in
 		f.id = NamespacedIdentifier("processFrame");
 		f.returnType = TypeInfo(Types::ID::Void);
 
-		p = new SpanType(TypeInfo(Types::ID::Float), numChannels);
-
-		if (c != nullptr)
-			c->registerExternalComplexType(p);
-		else
-		{
-			
-		}
-
-		f.addArgs("frame", TypeInfo(p, false, true));
 		
+
+		ComplexType::Ptr t = new SpanType(TypeInfo(Types::ID::Float), numChannels);
+
+		
+
+		f.addArgs("frame", TypeInfo(c.registerExternalComplexType(t), false, true));
 		break;
 	}
 	case HandleEventFunction:
 	{
 		f.id = NamespacedIdentifier("handleHiseEvent");
 		f.returnType = TypeInfo(Types::ID::Void);
-
-		nid = NamespacedIdentifier("HiseEvent");
-
-		if (c != nullptr)
-			p = c->getComplexType(nid, {});
-		else
-			p = new StructType(nid);
-
-		f.addArgs("e", TypeInfo(p, false, true));
+		f.addArgs("e", TypeInfo(c.getComplexType(NamespacedIdentifier("HiseEvent"), {}), false, true));
 		break;
 	}
 	case HandleModulation:
@@ -500,15 +464,7 @@ snex::jit::FunctionData ScriptnodeCallbacks::getPrototype(Compiler* c, ID id, in
 	{
 		f.id = NamespacedIdentifier("setExternalData");
 		f.returnType = Types::ID::Void;
-
-		nid = NamespacedIdentifier("ExternalData");
-
-		if (c != nullptr)
-			p = c->getComplexType(nid, {});
-		else
-			p = new StructType(nid);
-
-		f.addArgs("data", TypeInfo(p, true, true));
+		f.addArgs("data", TypeInfo(c.getComplexType(NamespacedIdentifier("ExternalData")), true, true));
 		f.addArgs("index", Types::ID::Integer);
 		break;
 	}

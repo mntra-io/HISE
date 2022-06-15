@@ -87,7 +87,7 @@ void SimpleSampleMapDisplay::rebuildMap()
 		p.addRoundedRectangle(a.reduced(1.0f), w * 0.3f);
 	}
 
-	SafeAsyncCall::repaint(this);
+	repaint();
 }
 
 void SimpleSampleMapDisplay::resized()

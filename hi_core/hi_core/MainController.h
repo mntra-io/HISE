@@ -1595,11 +1595,6 @@ public:
     {
         globalPitchFactor = pow(2, pitchFactorInSemiTones / 12.0);
     }
-
-	void setGlobalMidiPlaybackSpeed(double newGlobalPlaybackSpeed)
-	{
-		globalPlaybackSpeed = newGlobalPlaybackSpeed;
-	}
     
     /** This returns the global pitch factor. 
     *
@@ -1619,11 +1614,6 @@ public:
         return log2(globalPitchFactor) * 12.0;
     }
     
-	double getGlobalPlaybackSpeed() const
-	{
-		return globalPlaybackSpeed;
-	}
-
 	bool &getPluginParameterUpdateState() { return enablePluginParameterUpdate; }
 
 	const CriticalSection& getIteratorLock() const { return iteratorLock; }
@@ -1878,8 +1868,6 @@ private:
 	Atomic<int> presetLoadRampFlag;
 
 	AudioPlayHead::CurrentPositionInfo lastPosInfo;
-
-	double globalPlaybackSpeed = 1.0;
 
 	double fallbackBpm = -1.0;
 	double* hostBpmPointer = &fallbackBpm;

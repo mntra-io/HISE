@@ -1388,7 +1388,6 @@ public:
 			FlashActive,
 			ShowValueOverlay,
 			SliderPackIndex,
-			CallbackOnMouseUpOnly,
 			numProperties
 		};
 

@@ -287,11 +287,8 @@ int DynamicLibraryHostFactory::getWrapperType(int index) const
 bool DynamicLibraryHostFactory::isThirdPartyNode(int index) const
 {
 	if (projectDll != nullptr)
-	{
-		if(isPositiveAndBelow(index, getNumNodes()))
-			return projectDll->isThirdPartyNode(index);
-	}
-		
+		return projectDll->isThirdPartyNode(index);
+
 	return false;
 }
 
