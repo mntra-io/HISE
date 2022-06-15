@@ -127,11 +127,19 @@ static const unsigned char projectTemplate_jucer_lines[] =
 "      <CONFIGURATIONS>\r\n"
 "        <CONFIGURATION name=\"Debug\" osxSDK=\"default\" osxCompatibility=\"10.9 SDK\" osxArchitecture=\"%MACOS_ARCHITECTURE%\"\r\n"
 <<<<<<< HEAD
+<<<<<<< HEAD
 "                       isDebug=\"1\" optimisation=\"1\" enablePluginBinaryCopyStep=\"%COPY_PLUGIN%\" targetName=\"%NAME% Debug\" headerPath=\"\"\r\n"
 "                       libraryPath=\"%AAX_DEBUG_LIB%\" cppLibType=\"libc++\"/>\r\n"
 "        <CONFIGURATION name=\"Release\" osxSDK=\"default\" osxCompatibility=\"10.9 SDK\" osxArchitecture=\"%MACOS_ARCHITECTURE%\"\r\n"
 "                       isDebug=\"0\" optimisation=\"3\" enablePluginBinaryCopyStep=\"%COPY_PLUGIN%\" targetName=\"%NAME%\" headerPath=\"\"\r\n"
 "                       libraryPath=\"%AAX_RELEASE_LIB%\" cppLibType=\"libc++\" linkTimeOptimisation=\"1\"\r\n"
+=======
+"                       isDebug=\"1\" optimisation=\"1\" enablePluginBinaryCopyStep=\"%COPY_PLUGIN%\" targetName=\"%NAME% Debug\" headerPath=\"%IPP_HEADER%\"\r\n"
+"                       libraryPath=\"%IPP_LIBRARY%;%AAX_DEBUG_LIB%\" cppLibType=\"libc++\"/>\r\n"
+"        <CONFIGURATION name=\"Release\" osxSDK=\"default\" osxCompatibility=\"10.9 SDK\" osxArchitecture=\"%MACOS_ARCHITECTURE%\"\r\n"
+"                       isDebug=\"0\" optimisation=\"3\" enablePluginBinaryCopyStep=\"%COPY_PLUGIN%\" targetName=\"%NAME%\" headerPath=\"%IPP_HEADER%\"\r\n"
+"                       libraryPath=\"%IPP_LIBRARY%;%AAX_RELEASE_LIB%\" cppLibType=\"libc++\" linkTimeOptimisation=\"1\"\r\n"
+>>>>>>> parent of d8d97b404 (Added FFTW paths for MacOS)
 =======
 "                       isDebug=\"1\" optimisation=\"1\" enablePluginBinaryCopyStep=\"%COPY_PLUGIN%\" targetName=\"%NAME% Debug\" headerPath=\"%IPP_HEADER%\"\r\n"
 "                       libraryPath=\"%IPP_LIBRARY%;%AAX_DEBUG_LIB%\" cppLibType=\"libc++\"/>\r\n"
