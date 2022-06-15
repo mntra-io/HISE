@@ -1401,7 +1401,7 @@ struct ScriptingObjects::ScriptAudioFile::Wrapper
 };
 
 ScriptingObjects::ScriptAudioFile::ScriptAudioFile(ProcessorWithScriptingContent* pwsc, int index_, ExternalDataHolder* otherHolder) :
-	ScriptComplexDataReferenceBase(pwsc, 0, snex::ExternalData::DataType::AudioFile, otherHolder)
+	ScriptComplexDataReferenceBase(pwsc, index_, snex::ExternalData::DataType::AudioFile, otherHolder)
 {
 	ADD_API_METHOD_2(setRange);
 	ADD_API_METHOD_1(loadFile);
@@ -4678,13 +4678,14 @@ struct ScriptingObjects::ScriptedMidiPlayer::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setSequenceCallback);
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setAutomationHandlerConsumesControllerEvents);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, asMidiProcessor);
+	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setGlobalPlaybackRatio);
 	
 };
 
 ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingContent* p, MidiPlayer* player_):
 	MidiPlayerBaseType(player_),
 	ConstScriptingObject(p, 0),
-	updateCallback(p, var(), 0)
+	updateCallback(p, var(), 1)
 {
 	ADD_API_METHOD_0(getPlaybackPosition);
 	ADD_API_METHOD_1(setPlaybackPosition);
@@ -4717,6 +4718,7 @@ ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingC
 	ADD_API_METHOD_1(setAutomationHandlerConsumesControllerEvents);
 	ADD_API_METHOD_1(setSequenceCallback);
 	ADD_API_METHOD_0(asMidiProcessor);
+	ADD_API_METHOD_1(setGlobalPlaybackRatio);
 }
 
 ScriptingObjects::ScriptedMidiPlayer::~ScriptedMidiPlayer()
@@ -5139,9 +5141,10 @@ void ScriptingObjects::ScriptedMidiPlayer::setSequenceCallback(var updateFunctio
 {
 	if (HiseJavascriptEngine::isJavascriptFunction(updateFunction))
 	{
-		updateCallback = WeakCallbackHolder(getScriptProcessor(), updateFunction, 0);
-		updateCallback.setThisObject(this);
+		updateCallback = WeakCallbackHolder(getScriptProcessor(), updateFunction, 1);
 		updateCallback.incRefCount();
+
+		callUpdateCallback();
 	}
 }
 
@@ -5155,10 +5158,19 @@ juce::var ScriptingObjects::ScriptedMidiPlayer::asMidiProcessor()
 	return var();
 }
 
+void ScriptingObjects::ScriptedMidiPlayer::setGlobalPlaybackRatio(double globalRatio)
+{
+	getScriptProcessor()->getMainController_()->setGlobalMidiPlaybackSpeed(globalRatio);
+}
+
 void ScriptingObjects::ScriptedMidiPlayer::callUpdateCallback()
 {
 	if (updateCallback)
-		updateCallback.call(nullptr, 0);
+	{
+		var thisVar(this);
+
+		updateCallback.call(&thisVar, 1);
+	}
 }
 
 void ScriptingObjects::ScriptedMidiPlayer::sequenceLoaded(HiseMidiSequence::Ptr newSequence)
