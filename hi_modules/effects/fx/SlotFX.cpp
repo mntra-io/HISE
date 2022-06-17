@@ -887,7 +887,35 @@ juce::StringArray HardcodedSwappableEffect::getModuleList() const
 	return sa;
 }
 
-
+var HardcodedSwappableEffect::getParameterProperties() const
+{
+    Array<var> list;
+    
+    if(opaqueNode != nullptr)
+    {
+        for (int i = 0; i < opaqueNode->numParameters; i++)
+        {
+            auto key = opaqueNode->parameters[i].getId();
+            auto range = opaqueNode->parameters[i].toRange().rng;
+            auto defaultValue = opaqueNode->parameters[i].defaultValue;
+            
+            Identifier id(key);
+            
+            auto prop = new DynamicObject();
+            
+            prop->setProperty("text", key);
+            prop->setProperty("min", range.start);
+            prop->setProperty("max", range.end);
+            prop->setProperty("stepSize", range.interval);
+            prop->setProperty("middlePosition", range.convertFrom0to1(0.5));
+            prop->setProperty("defaultValue", defaultValue);
+            
+            list.add(var(prop));
+        }
+    }
+    
+    return var(list);
+}
 
 
 

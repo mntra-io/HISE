@@ -27,6 +27,10 @@ struct HotswappableProcessor
 
 	virtual Processor* getCurrentEffect() = 0;
 	virtual const Processor* getCurrentEffect() const = 0;
+    
+    virtual String getCurrentEffectId() const = 0;
+    
+    virtual var getParameterProperties() const = 0;
 };
 
 class HardcodedSwappableEffect : public HotswappableProcessor,
@@ -57,6 +61,8 @@ public:
 	bool swap(HotswappableProcessor* other) override;
 	bool isPolyphonic() const { return polyHandler.isEnabled(); }
 
+    String getCurrentEffectId() const override { return currentEffect; }
+    
 	Processor& asProcessor() { return *dynamic_cast<Processor*>(this); }
 	const Processor& asProcessor() const { return *dynamic_cast<const Processor*>(this); }
 
@@ -75,6 +81,8 @@ public:
 
 	bool hasHardcodedTail() const;
 
+    var getParameterProperties() const override;
+    
 protected:
 	
 	HardcodedSwappableEffect(MainController* mc, bool isPolyphonic);
@@ -427,6 +435,10 @@ public:
 		wrappedEffect->setKillBuffer(*killBuffer);
 	}
 	
+    var getParameterProperties() const override { return var(); };
+    
+    String getCurrentEffectId() const override { return isPositiveAndBelow(currentIndex, effectList.size()) ? effectList[currentIndex] : "No Effect"; }
+    
 	void handleHiseEvent(const HiseEvent &m) override;
 
 	void startMonophonicVoice() override;
