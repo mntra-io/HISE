@@ -3102,6 +3102,7 @@ ScriptingObjects::ScriptingEffect::FilterModeObject::FilterModeObject(const Proc
 	ADD_FILTER_CONSTANT(LadderFourPoleLP);
 	ADD_FILTER_CONSTANT(LadderFourPoleHP);
 	ADD_FILTER_CONSTANT(RingMod);
+	
 
 #undef ADD_FILTER_CONSTANT
 }
@@ -3117,6 +3118,7 @@ struct ScriptingObjects::ScriptingSlotFX::Wrapper
     API_VOID_METHOD_WRAPPER_0(ScriptingSlotFX, clear);
 	API_METHOD_WRAPPER_1(ScriptingSlotFX, swap);
 	API_METHOD_WRAPPER_0(ScriptingSlotFX, getCurrentEffect);
+	API_METHOD_WRAPPER_0(ScriptingSlotFX, getModuleList);
 };
 
 ScriptingObjects::ScriptingSlotFX::ScriptingSlotFX(ProcessorWithScriptingContent *p, EffectProcessor *fx) :
@@ -3143,6 +3145,7 @@ slotFX(fx)
 	ADD_API_METHOD_0(getCurrentEffect);
     ADD_API_METHOD_0(clear);
 	ADD_API_METHOD_1(swap);
+	ADD_API_METHOD_0(getModuleList);
 };
 
 
@@ -3229,6 +3232,21 @@ bool ScriptingObjects::ScriptingSlotFX::swap(var otherSlot)
 	}
     
     RETURN_IF_NO_THROW(false);
+}
+
+juce::var ScriptingObjects::ScriptingSlotFX::getModuleList()
+{
+	Array<var> list;
+
+	if (auto slot = getSlotFX())
+	{
+		auto sa = slot->getModuleList();
+		
+		for (const auto& s : sa)
+			list.add(var(s));
+	}
+
+	return var(list);
 }
 
 HotswappableProcessor* ScriptingObjects::ScriptingSlotFX::getSlotFX()
