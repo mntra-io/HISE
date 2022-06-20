@@ -72,11 +72,11 @@ static const unsigned char projectStandaloneTemplate_jucer_lines[] =
 "    <%VS_VERSION% targetFolder=\"Builds/%TARGET_FOLDER%/\" IPPLibrary=\"%IPP_WIN_SETTING%\" %ICON_FILE% extraDefs=\"%EXTRA_DEFINES_WIN%\" extraCompilerFlags=\"/bigobj /W0\">\r\n"
 "      <CONFIGURATIONS>\r\n"
 "        <CONFIGURATION name=\"Debug\" winWarningLevel=\"1\" generateManifest=\"1\" winArchitecture=\"x64\"\r\n"
-"                       libraryPath=\"%WIN_STATIC_LIB_FOLDER_D64%;C:/Program Files/Common Files/fftw3\" isDebug=\"1\" optimisation=\"1\" targetName=\"%NAME% Debug\"\r\n"
-"                       binaryPath=\"Compiled/\" headerPath=\"%ASIO_SDK_PATH%; C:/Program Files/Common Files/fftw3\" useRuntimeLibDLL=\"0\" prebuildCommand=\"%PREBUILD_COMMAND%\"/>\r\n"
+"                       libraryPath=\"%WIN_STATIC_LIB_FOLDER_D64%\" isDebug=\"1\" optimisation=\"1\" targetName=\"%NAME% Debug\"\r\n"
+"                       binaryPath=\"Compiled/\" headerPath=\"%ASIO_SDK_PATH%\" useRuntimeLibDLL=\"0\" prebuildCommand=\"%PREBUILD_COMMAND%\"/>\r\n"
 "        <CONFIGURATION name=\"Release\" winWarningLevel=\"1\" generateManifest=\"1\" winArchitecture=\"x64\"\r\n"
-"                       libraryPath=\"%WIN_STATIC_LIB_FOLDER_D64%;C:/Program Files/Common Files/fftw3\" isDebug=\"0\" optimisation=\"3\" targetName=\"%NAME%\"\r\n"
-"                       binaryPath=\"Compiled/\" headerPath=\"%ASIO_SDK_PATH%; C:/Program Files/Common Files/fftw3\" useRuntimeLibDLL=\"0\" prebuildCommand=\"%PREBUILD_COMMAND%\"/>\r\n"
+"                       libraryPath=\"%WIN_STATIC_LIB_FOLDER_D64%\" isDebug=\"0\" optimisation=\"3\" targetName=\"%NAME%\"\r\n"
+"                       binaryPath=\"Compiled/\" headerPath=\"%ASIO_SDK_PATH%\" useRuntimeLibDLL=\"0\" prebuildCommand=\"%PREBUILD_COMMAND%\"/>\r\n"
 "      </CONFIGURATIONS>\r\n"
 "      <MODULEPATHS>\r\n"
 "        <MODULEPATH id=\"juce_core\" path=\"%JUCE_PATH%\"/>\r\n"
@@ -231,7 +231,7 @@ static const unsigned char projectStandaloneTemplate_jucer_lines[] =
 "               ENABLE_PLOTTER=\"disabled\" ENABLE_SCRIPTING_SAFE_CHECKS=\"disabled\"\r\n"
 "               ENABLE_ALL_PEAK_METERS=\"disabled\" ENABLE_CONSOLE_OUTPUT=\"disabled\"\r\n"
 "               JUCE_ASIO=\"%USE_ASIO%\" JUCE_JACK=\"%USE_JACK%\" USE_SPLASH_SCREEN=\"%USE_SPLASH_SCREEN%\" HI_ENABLE_LEGACY_CPU_SUPPORT=\"%LEGACY_CPU_SUPPORT%\" HISE_INCLUDE_RLOTTIE=\"disabled\" HLAC_MEASURE_DECODING_PERFORMANCE=\"disabled\" HLAC_DEBUG_LOG=\"disabled\" HLAC_INCLUDE_TEST_SUITE=\"disabled\" STANDALONE_STREAMING=\"disabled\""
-"				JUCE_DSP_USE_INTEL_MKL=\"disabled\" JUCE_WEB_BROWSER=\"disabled\" JUCE_ENABLE_LIVE_CONSTANT_EDITOR=\"disabled\" JUCE_USE_CURL=\"enabled\" JUCE_DSP_USE_SHARED_FFTW=\"enabled\" JUCE_DSP_USE_STATIC_FFTW=\"disabled\" HISE_USE_CUSTOM_EXPANSION_TYPE=\"%USE_CUSTOM_EXPANSION_TYPE%\" />\r\n"
+"				JUCE_DSP_USE_INTEL_MKL=\"disabled\" JUCE_WEB_BROWSER=\"disabled\" JUCE_ENABLE_LIVE_CONSTANT_EDITOR=\"disabled\" JUCE_USE_CURL=\"enabled\" JUCE_DSP_USE_SHARED_FFTW=\"disabled\" JUCE_DSP_USE_STATIC_FFTW=\"disabled\" HISE_USE_CUSTOM_EXPANSION_TYPE=\"%USE_CUSTOM_EXPANSION_TYPE%\" />\r\n"
 "</JUCERPROJECT>\r\n";
 
 const char* projectStandaloneTemplate_jucer = (const char*)projectStandaloneTemplate_jucer_lines;
