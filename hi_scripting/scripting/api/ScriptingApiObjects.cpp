@@ -3102,6 +3102,7 @@ ScriptingObjects::ScriptingEffect::FilterModeObject::FilterModeObject(const Proc
 	ADD_FILTER_CONSTANT(LadderFourPoleLP);
 	ADD_FILTER_CONSTANT(LadderFourPoleHP);
 	ADD_FILTER_CONSTANT(RingMod);
+	
 
 #undef ADD_FILTER_CONSTANT
 }
@@ -3117,6 +3118,9 @@ struct ScriptingObjects::ScriptingSlotFX::Wrapper
     API_VOID_METHOD_WRAPPER_0(ScriptingSlotFX, clear);
 	API_METHOD_WRAPPER_1(ScriptingSlotFX, swap);
 	API_METHOD_WRAPPER_0(ScriptingSlotFX, getCurrentEffect);
+	API_METHOD_WRAPPER_0(ScriptingSlotFX, getModuleList);
+    API_METHOD_WRAPPER_0(ScriptingSlotFX, getParameterProperties);
+    API_METHOD_WRAPPER_0(ScriptingSlotFX, getCurrentEffectId);
 };
 
 ScriptingObjects::ScriptingSlotFX::ScriptingSlotFX(ProcessorWithScriptingContent *p, EffectProcessor *fx) :
@@ -3143,6 +3147,9 @@ slotFX(fx)
 	ADD_API_METHOD_0(getCurrentEffect);
     ADD_API_METHOD_0(clear);
 	ADD_API_METHOD_1(swap);
+	ADD_API_METHOD_0(getModuleList);
+    ADD_API_METHOD_0(getParameterProperties);
+    ADD_API_METHOD_0(getCurrentEffectId);
 };
 
 
@@ -3229,6 +3236,39 @@ bool ScriptingObjects::ScriptingSlotFX::swap(var otherSlot)
 	}
     
     RETURN_IF_NO_THROW(false);
+}
+
+juce::var ScriptingObjects::ScriptingSlotFX::getModuleList()
+{
+	Array<var> list;
+
+	if (auto slot = getSlotFX())
+	{
+		auto sa = slot->getModuleList();
+		
+		for (const auto& s : sa)
+			list.add(var(s));
+	}
+
+	return var(list);
+}
+
+String ScriptingObjects::ScriptingSlotFX::getCurrentEffectId()
+{
+    if (auto slot = getSlotFX())
+    {
+        return slot->getCurrentEffectId();
+    }
+    
+    return "";
+}
+
+var ScriptingObjects::ScriptingSlotFX::getParameterProperties()
+{
+    if(auto slot = getSlotFX())
+        return slot->getParameterProperties();
+    
+    return var();
 }
 
 HotswappableProcessor* ScriptingObjects::ScriptingSlotFX::getSlotFX()
@@ -4679,6 +4719,7 @@ struct ScriptingObjects::ScriptedMidiPlayer::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setAutomationHandlerConsumesControllerEvents);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, asMidiProcessor);
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setGlobalPlaybackRatio);
+	API_VOID_METHOD_WRAPPER_2(ScriptedMidiPlayer, setPlaybackCallback);
 	
 };
 
@@ -4719,6 +4760,7 @@ ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingC
 	ADD_API_METHOD_1(setSequenceCallback);
 	ADD_API_METHOD_0(asMidiProcessor);
 	ADD_API_METHOD_1(setGlobalPlaybackRatio);
+	ADD_API_METHOD_2(setPlaybackCallback);
 }
 
 ScriptingObjects::ScriptedMidiPlayer::~ScriptedMidiPlayer()
@@ -4776,6 +4818,8 @@ void ScriptingObjects::ScriptedMidiPlayer::timerCallback()
 		}
 	}
 }
+
+
 
 var ScriptingObjects::ScriptedMidiPlayer::getNoteRectangleList(var targetBounds)
 {
@@ -5145,6 +5189,18 @@ void ScriptingObjects::ScriptedMidiPlayer::setSequenceCallback(var updateFunctio
 		updateCallback.incRefCount();
 
 		callUpdateCallback();
+	}
+}
+
+void ScriptingObjects::ScriptedMidiPlayer::setPlaybackCallback(var newPlaybackCallback, bool synchronous)
+{
+	auto mp = getPlayer();
+
+	playbackUpdater = nullptr;
+
+	if (HiseJavascriptEngine::isJavascriptFunction(newPlaybackCallback))
+	{
+		playbackUpdater = new PlaybackUpdater(*this, newPlaybackCallback, synchronous);
 	}
 }
 
@@ -6805,5 +6861,44 @@ void ScriptingObjects::GlobalCableReference::connectToMacroControl(int macroInde
 	}
 }
 
+
+ScriptingObjects::ScriptedMidiPlayer::PlaybackUpdater::PlaybackUpdater(ScriptedMidiPlayer& parent_, var f, bool sync_) :
+	SimpleTimer(parent_.getScriptProcessor()->getMainController_()->getGlobalUIUpdater(), !sync_),
+	sync(sync_),
+	parent(parent_),
+	playbackCallback(parent.getScriptProcessor(), f, 2)
+{
+	if (auto mp = parent.getPlayer())
+		mp->addPlaybackListener(this);
+
+	playbackCallback.incRefCount();
+	playbackCallback.setThisObject(&parent);
+}
+
+ScriptingObjects::ScriptedMidiPlayer::PlaybackUpdater::~PlaybackUpdater()
+{
+	if (auto mp = parent.getPlayer())
+		mp->removePlaybackListener(this);
+}
+
+void ScriptingObjects::ScriptedMidiPlayer::PlaybackUpdater::timerCallback()
+{
+	if (dirty)
+	{
+		playbackCallback.call(args, 2);
+		dirty = false;
+	}
+}
+
+void ScriptingObjects::ScriptedMidiPlayer::PlaybackUpdater::playbackChanged(int timestamp, MidiPlayer::PlayState newState)
+{
+	args[0] = var(timestamp);
+	args[1] = var((int)newState);
+
+	if (sync)
+		playbackCallback.callSync(args, 2, nullptr);
+	else
+		dirty = true;
+}
 
 } // namespace hise

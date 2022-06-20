@@ -263,7 +263,7 @@ struct HardcodedMasterEditor : public ProcessorEditorBody
 	{
 		getEffect()->effectUpdater.addListener(*this, update, true);
 
-		auto networkList = getEffect()->getListOfAvailableNetworks();
+		auto networkList = getEffect()->getModuleList();
 
 		selector.addItem("No network", 1);
 		selector.addItemList(networkList, 2);
@@ -462,7 +462,7 @@ bool HardcodedSwappableEffect::setEffect(const String& factoryId, bool /*unused*
 	if (factoryId == currentEffect)
 		return true;
 
-	auto idx = getListOfAvailableNetworks().indexOf(factoryId);
+	auto idx = getModuleList().indexOf(factoryId);
 
 	ScopedPointer<OpaqueNode> newNode;
 	listeners.clear();
@@ -494,10 +494,20 @@ bool HardcodedSwappableEffect::setEffect(const String& factoryId, bool /*unused*
 
 		{
 			SimpleReadWriteLock::ScopedWriteLock sl(lock);
+            
+            // Init the default values
+            for (int i = 0; i < newNode->numParameters; i++)
+            {
+                auto defaultValue = newNode->parameters[i].defaultValue;
+                newNode->parameterFunctions[i](newNode->parameterObjects[i], defaultValue);
+            }
+            
 			std::swap(newNode, opaqueNode);
 
 			for (int i = 0; i < opaqueNode->numParameters; i++)
+            {
 				lastParameters[i] = opaqueNode->parameters[i].defaultValue;
+            }
 
 			checkHardcodedChannelCount();
 		}		
@@ -703,9 +713,8 @@ void HardcodedSwappableEffect::restoreHardcodedData(const ValueTree& v)
 
 ValueTree HardcodedSwappableEffect::writeHardcodedData(ValueTree& v) const
 {
-	if (factory->getNumNodes() == 0)
+	if (factory->getNumNodes() == 0 && treeWhenNotLoaded.isValid())
 	{
-		jassert(treeWhenNotLoaded.isValid());
 		return treeWhenNotLoaded;
 	}
 
@@ -861,8 +870,11 @@ int HardcodedSwappableEffect::getNumDataObjects(ExternalData::DataType t) const
 	}
 }
 
-juce::StringArray HardcodedSwappableEffect::getListOfAvailableNetworks() const
+juce::StringArray HardcodedSwappableEffect::getModuleList() const
 {
+	if (factory == nullptr)
+		return {};
+
 	jassert(factory != nullptr);
 
 	StringArray sa;
@@ -873,10 +885,37 @@ juce::StringArray HardcodedSwappableEffect::getListOfAvailableNetworks() const
 		sa.add(factory->getId(i));
 
 	return sa;
-
 }
 
-
+var HardcodedSwappableEffect::getParameterProperties() const
+{
+    Array<var> list;
+    
+    if(opaqueNode != nullptr)
+    {
+        for (int i = 0; i < opaqueNode->numParameters; i++)
+        {
+            auto key = opaqueNode->parameters[i].getId();
+            auto range = opaqueNode->parameters[i].toRange().rng;
+            auto defaultValue = opaqueNode->parameters[i].defaultValue;
+            
+            Identifier id(key);
+            
+            auto prop = new DynamicObject();
+            
+            prop->setProperty("text", key);
+            prop->setProperty("min", range.start);
+            prop->setProperty("max", range.end);
+            prop->setProperty("stepSize", range.interval);
+            prop->setProperty("middlePosition", range.convertFrom0to1(0.5));
+            prop->setProperty("defaultValue", defaultValue);
+            
+            list.add(var(prop));
+        }
+    }
+    
+    return var(list);
+}
 
 
 

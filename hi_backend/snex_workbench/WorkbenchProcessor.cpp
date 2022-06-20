@@ -779,6 +779,16 @@ DspNetworkCompileExporter::DspNetworkCompileExporter(Component* e, BackendProces
     getComboBoxComponent("build")->setText("Release", dontSendNotification);
 #endif
     
+	if (getNetwork() == nullptr)
+	{
+		if (PresetHandler::showYesNoWindow("No DSP Network detected", "You need an active DspNetwork for the compilation process.  \n> Press OK to create a Script FX with an empty embedded Network"))
+		{
+			raw::Builder builder(bp);
+			auto jmp = builder.create<JavascriptMasterEffect>(bp->getMainSynthChain(), raw::IDs::Chains::FX);
+			jmp->getOrCreate("internal_dsp");
+		}
+	}
+
 	if (auto n = getNetwork())
 		n->createAllNodesOnce();
 
@@ -830,7 +840,7 @@ void DspNetworkCompileExporter::writeDebugFileAndShowSolution()
     auto debugExecutable = File(hisePath).getChildFile("projects/standalone/Builds/");
     
 #if JUCE_WINDOWS
-    debugExecutable = debugExectuable.getChildFile("VisualStudio2017/x64/Debug/App/HISE Debug.exe");
+    debugExecutable = debugExecutable.getChildFile("VisualStudio2017/x64/Debug/App/HISE Debug.exe");
     solutionFolder = solutionFolder.getChildFile("VisualStudio2017");
     auto solutionFile = solutionFolder.getChildFile(projectName).withFileExtension("sln");
     
@@ -858,7 +868,9 @@ void DspNetworkCompileExporter::writeDebugFileAndShowSolution()
 
 	userFile.replaceWithText(fileContent);
     
-    if (PresetHandler::showYesNoWindow("Quit HISE", "Do you want to quit HISE and show VS solution for debugging the DLL?  \n> Double click on the solution file, then run the VS debugger and it will open HISE with the ability to set VS breakpoints in your C++ nodes"))
+	auto hasThirdPartyFiles = includedThirdPartyFiles.isEmpty();
+
+    if (hasThirdPartyFiles && PresetHandler::showYesNoWindow("Quit HISE", "Do you want to quit HISE and show VS solution for debugging the DLL?  \n> Double click on the solution file, then run the VS debugger and it will open HISE with the ability to set VS breakpoints in your C++ nodes"))
     {
         solutionFile.revealToUser();
         JUCEApplication::quit();
@@ -1089,11 +1101,41 @@ void DspNetworkCompileExporter::run()
 
 		for (auto tpf : thirdPartyFiles)
 		{
+			includedThirdPartyFiles.insert(0, tpf);
+
+#if 0
 			auto target = sourceDir.getChildFile(tpf.getFileName());
+
+			if (target.existsAsFile())
+			{
+				auto sourceContent = tpf.loadFileAsString();
+				auto targetContent = target.loadFileAsString();
+
+				if (sourceContent.compare(targetContent) != 0)
+				{
+					auto sourceTime = tpf.getLastModificationTime();
+					auto targetTime = target.getLastModificationTime();
+
+					if (targetTime > sourceTime)
+					{
+						errorMessage << "A newer version of the file " << tpf.getFileName() << " is already in the target folder.  \n> This file will get overriden by the ";
+						ok = ErrorCodes::SanityCheckFailed;
+						return;
+
+					}
+
+					
+				}
+			}
+
 			tpf.copyFileTo(target);
 			includedThirdPartyFiles.insert(0, target);
+#endif
+
+			
 		}
 
+#if 0
 		auto srcDir = BackendDllManager::getThirdPartyFiles(getMainController(), true).getFirst();
 
 		if (srcDir.isDirectory())
@@ -1108,7 +1150,8 @@ void DspNetworkCompileExporter::run()
 
 			srcDir.copyDirectoryTo(targetSrc);
 			srcDir.copyDirectoryTo(additionalSrc);
-		}		
+		}	
+#endif
 	}
 
 	if (!externalSamples.isEmpty())
@@ -1377,6 +1420,10 @@ void DspNetworkCompileExporter::createIncludeFile(const File& sourceDir)
 
     auto fileList = sourceDir.findChildFiles(File::findFiles, false, "*.h");
 
+	auto thirdPartyFiles = getFolder(BackendDllManager::FolderSubType::ThirdParty).findChildFiles(File::findFiles, false, "*.h");
+
+	fileList.addArray(thirdPartyFiles);
+
 	for (auto& f : fileList)
 	{
 		if (getLocationType(f) == EmbeddedDataFile)
@@ -1399,7 +1446,15 @@ void DspNetworkCompileExporter::createIncludeFile(const File& sourceDir)
 				somethingFound = true;
 			}
 
-			cppgen::Include m(i, sourceDir, f);
+			cppgen::Base dummyInclude(cppgen::Base::OutputType::NoProcessing);
+			{
+				dummyInclude.addComment("This just references the real file", cppgen::Base::CommentType::RawWithNewLine);
+				cppgen::Include m(dummyInclude, sourceDir, f);
+			}
+			
+			auto fInDir = sourceDir.getChildFile(f.getFileName());
+			fInDir.replaceWithText(dummyInclude.toString());
+			cppgen::Include m2(i, sourceDir, fInDir);
 		}
 	}
 
