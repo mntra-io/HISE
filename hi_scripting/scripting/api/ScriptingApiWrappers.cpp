@@ -129,6 +129,7 @@ struct ScriptingApi::Content::Wrapper
 	static var contains(const var::NativeFunctionArgs& args);
 	static var createPath(const var::NativeFunctionArgs& args);
 	static var createShader(const var::NativeFunctionArgs& args);
+	static var createMarkdownRenderer(const var::NativeFunctionArgs& args);
 };
 
 var ScriptingApi::Content::Wrapper::addButton (const var::NativeFunctionArgs& args)
@@ -938,6 +939,20 @@ var ScriptingApi::Content::Wrapper::createShader(const var::NativeFunctionArgs& 
 
 	return var();
 }
+
+
+juce::var ScriptingApi::Content::Wrapper::createMarkdownRenderer(const var::NativeFunctionArgs& args)
+{
+	if (ScriptingApi::Content* thisObject = GET_OBJECT(Content))
+	{
+		CHECK_ARGUMENTS("createMarkdownRenderer()", 0);
+
+		return thisObject->createMarkdownRenderer();
+	}
+
+	return var();
+}
+
 
 var ScriptingApi::Content::Wrapper::createScreenshot(const var::NativeFunctionArgs& args)
 {
