@@ -4466,7 +4466,7 @@ ScriptingObjects::ScriptingMessageHolder::ScriptingMessageHolder(ProcessorWithSc
 
 int ScriptingObjects::ScriptingMessageHolder::getNoteNumber() const { return (int)e.getNoteNumber(); }
 var ScriptingObjects::ScriptingMessageHolder::getControllerNumber() const { return (int)e.getControllerNumber(); }
-var ScriptingObjects::ScriptingMessageHolder::getControllerValue() const { return (int)e.getControllerNumber(); }
+var ScriptingObjects::ScriptingMessageHolder::getControllerValue() const { return (int)e.getControllerValue(); }
 int ScriptingObjects::ScriptingMessageHolder::getChannel() const { return (int)e.getChannel(); }
 void ScriptingObjects::ScriptingMessageHolder::setChannel(int newChannel) { e.setChannel(newChannel); }
 void ScriptingObjects::ScriptingMessageHolder::setNoteNumber(int newNoteNumber) { e.setNoteNumber(newNoteNumber); }
@@ -5265,6 +5265,7 @@ juce::Array<juce::Identifier> ApiHelpers::getGlobalApiClasses()
 		"Engine",
 		"Console",
 		"Content",
+        "Colours",
 		"Sampler",
 		"Synth",
 		"Math",
@@ -5275,6 +5276,31 @@ juce::Array<juce::Identifier> ApiHelpers::getGlobalApiClasses()
 	};
 	
 	return ids;
+}
+
+void ApiHelpers::loadPathFromData(Path& p, var data)
+{
+	if (data.isString())
+	{
+		juce::MemoryBlock mb;
+		mb.fromBase64Encoding(data.toString());
+		p.clear();
+		p.loadPathFromData(mb.getData(), mb.getSize());
+	}
+	if (data.isArray())
+	{
+		p.clear();
+		Array<unsigned char> pathData;
+		Array<var> *varData = data.getArray();
+		const int numElements = varData->size();
+
+		pathData.ensureStorageAllocated(numElements);
+
+		for (int i = 0; i < numElements; i++)
+			pathData.add(static_cast<unsigned char>((int)varData->getUnchecked(i)));
+
+		p.loadPathFromData(pathData.getRawDataPointer(), numElements);
+	}
 }
 
 juce::PathStrokeType ApiHelpers::createPathStrokeType(var strokeType)
