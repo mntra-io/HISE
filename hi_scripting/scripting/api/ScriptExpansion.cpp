@@ -43,7 +43,8 @@ struct ScriptUserPresetHandler::Wrapper
 	API_METHOD_WRAPPER_1(ScriptUserPresetHandler, isOldVersion);
 	API_VOID_METHOD_WRAPPER_0(ScriptUserPresetHandler, clearAttachedCallbacks);
 	API_VOID_METHOD_WRAPPER_3(ScriptUserPresetHandler, attachAutomationCallback);
-	API_VOID_METHOD_WRAPPER_2(ScriptUserPresetHandler, updateAutomationValues);
+	API_VOID_METHOD_WRAPPER_3(ScriptUserPresetHandler, updateAutomationValues);
+	API_VOID_METHOD_WRAPPER_1(ScriptUserPresetHandler, setUseUndoForPresetLoading);
 };
 
 ScriptUserPresetHandler::ScriptUserPresetHandler(ProcessorWithScriptingContent* pwsc) :
@@ -64,7 +65,8 @@ ScriptUserPresetHandler::ScriptUserPresetHandler(ProcessorWithScriptingContent* 
 	ADD_API_METHOD_3(setUseCustomUserPresetModel);
 	ADD_API_METHOD_3(attachAutomationCallback);
 	ADD_API_METHOD_0(clearAttachedCallbacks);
-	ADD_API_METHOD_2(updateAutomationValues);
+	ADD_API_METHOD_3(updateAutomationValues);
+	ADD_API_METHOD_1(setUseUndoForPresetLoading);
 }
 
 ScriptUserPresetHandler::~ScriptUserPresetHandler()
@@ -73,6 +75,11 @@ ScriptUserPresetHandler::~ScriptUserPresetHandler()
 	
 
 	getMainController()->getUserPresetHandler().removeListener(this);
+}
+
+void ScriptUserPresetHandler::setUseUndoForPresetLoading(bool shouldUseUndoManager)
+{
+	getMainController()->getUserPresetHandler().setAllowUndoAtUserPresetLoad(shouldUseUndoManager);
 }
 
 void ScriptUserPresetHandler::setPreCallback(var presetCallback)
@@ -231,22 +238,96 @@ void ScriptUserPresetHandler::clearAttachedCallbacks()
 	attachedCallbacks.clear();
 }
 
-void ScriptUserPresetHandler::updateAutomationValues(var data, bool sendMessage)
+struct AutomationValueUndoAction: public UndoableAction
 {
-	if (auto obj = data.getDynamicObject())
-	{
-		for (auto& nv : obj->getProperties())
-		{
-			if (auto cData = getMainController()->getUserPresetHandler().getCustomAutomationData(Identifier(nv.name)))
-			{
-				float value = nv.value;
-				FloatSanitizers::sanitizeFloatNumber(value);
+    AutomationValueUndoAction(ScriptUserPresetHandler* s, var newData_, bool sendMessage_):
+      newData(newData_),
+      sendMessage(sendMessage_),
+      suph(s)
+    {
+        auto& h = suph->getMainController()->getUserPresetHandler();
+        
+        if(auto obj = newData.getDynamicObject())
+        {
+            auto od = new DynamicObject();
+            
+            for(auto& nv: obj->getProperties())
+            {
+                if(auto a = h.getCustomAutomationData(Identifier(nv.name)))
+                {
+                    od->setProperty(nv.name, a->lastValue);
+                }
+            }
+            
+            oldData = var(od);
+        }
+    }
+    
+    bool undo() override
+    {
+        if(suph != nullptr)
+        {
+            suph->updateAutomationValues(oldData, sendMessage, false);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    bool perform() override
+    {
+        if(suph != nullptr)
+        {
+            suph->updateAutomationValues(newData, sendMessage, false);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    var oldData;
+    var newData;
+    bool sendMessage;
+    WeakReference<ScriptUserPresetHandler> suph;
+};
 
-				if (sendMessage)
-					cData->call(value, sendMessage);	
-			}
+void ScriptUserPresetHandler::updateAutomationValues(var data, bool sendMessage, bool useUndoManager)
+{
+	auto& uph = getMainController()->getUserPresetHandler();
+
+	if (data.isInt() || data.isInt64())
+	{
+		auto preferredProcessorIndex = (int)data;
+
+		// just refresh the values from the current processor states
+		for (int i = 0; i < uph.getNumCustomAutomationData(); i++)
+		{
+			uph.getCustomAutomationData(i)->updateFromProcessorConnection(preferredProcessorIndex);
 		}
+
+		return;
 	}
+
+    if(!useUndoManager)
+    {
+        if (auto obj = data.getDynamicObject())
+        {
+            for (auto& nv : obj->getProperties())
+            {
+                if (auto cData = uph.getCustomAutomationData(Identifier(nv.name)))
+                {
+                    float value = nv.value;
+                    FloatSanitizers::sanitizeFloatNumber(value);
+
+                    cData->call(value, sendMessage);
+                }
+            }
+        }
+    }
+    else
+    {
+        getMainController()->getControlUndoManager()->perform(new AutomationValueUndoAction(this, data, sendMessage));
+    }
 }
 
 var ScriptUserPresetHandler::convertToJson(const ValueTree& d)
@@ -285,7 +366,6 @@ var ScriptUserPresetHandler::convertToJson(const ValueTree& d)
 			for (int i = 0; i < c.getNumProperties(); i++)
 			{
 				auto id = c.getPropertyName(i);
-
 				auto value = c[id];
 
 				if (id == Identifier("value"))

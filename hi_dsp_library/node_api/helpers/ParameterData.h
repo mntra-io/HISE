@@ -138,6 +138,7 @@ struct RangeHelpers
 namespace parameter
 {
 
+
 #define PARAMETER_SPECS(parameterType, parameterAmount) static constexpr int size = parameterAmount; static constexpr ParameterType type = parameterType; static constexpr bool isRange() { return false; };
 
 enum class ParameterType
@@ -147,6 +148,36 @@ enum class ParameterType
 	List,
 	Clone,
 	CloneChain
+};
+
+template <typename T, int P> struct inner
+{
+    PARAMETER_SPECS(ParameterType::Single, 1);
+
+    inner(T& obj_) :
+        obj(&obj_)
+    {}
+
+    void call(double v)
+    {
+        jassert(isConnected());
+        callStatic(obj, v);
+    }
+
+    bool isConnected() const noexcept
+    {
+        return true;
+    }
+
+    static void callStatic(void* obj_, double v)
+    {
+        auto f = T::template setParameterStatic<P>;
+        f(obj_, v);
+    }
+
+    void* getObjectPtr() { return obj; }
+
+    void* obj;
 };
 
 /** This class wraps one of the other classes into an opaque pointer and is used by the data class. */
@@ -233,6 +264,7 @@ struct pod
 struct data
 {
 	data();
+	~data() { parameterNames.clear(); }
 	data(const String& id_);;
 	data(const String& id_, InvertableParameterRange r);
 	data withRange(InvertableParameterRange r);
@@ -249,6 +281,12 @@ struct data
 		return info.toRange();
 	}
 	
+	template <typename T, int P> void setParameterCallbackWithIndex(T* obj)
+	{
+		callback = parameter::inner<T, P>(*obj);
+		info.index = P;
+	}
+
 	void setSkewForCentre(double midPoint)
 	{
 		auto r = info.toRange();

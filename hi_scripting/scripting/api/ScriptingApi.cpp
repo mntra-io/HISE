@@ -932,6 +932,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_0(Engine, getClipboardContent);
 	API_VOID_METHOD_WRAPPER_1(Engine, copyToClipboard);
 	API_METHOD_WRAPPER_1(Engine, decodeBase64ValueTree);
+	API_VOID_METHOD_WRAPPER_2(Engine, renderAudio);
 };
 
 
@@ -1063,6 +1064,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_0(isHISE);
 	ADD_API_METHOD_0(reloadAllSamples);
 	ADD_API_METHOD_1(decodeBase64ValueTree);
+	ADD_API_METHOD_2(renderAudio);
 }
 
 
@@ -1657,6 +1659,231 @@ var ScriptingApi::Engine::createFixObjectFactory(var layoutData)
 juce::var ScriptingApi::Engine::createLicenseUnlocker()
 {
 	return var(new ScriptUnlocker::RefObject(getScriptProcessor()));
+}
+
+struct AudioRenderer : public Thread,
+					   public ControlledObject
+{
+	static constexpr int NumThrowAwayBuffers = 4;
+
+	AudioRenderer(ProcessorWithScriptingContent* pwsc, var eventList_, var finishCallback_):
+		Thread("AudioExportThread"),
+		ControlledObject(pwsc->getMainController_()),
+
+		finishCallback(pwsc, finishCallback_, 1)
+	{
+		finishCallback.incRefCount();
+		finishCallback.setHighPriority();
+		
+		if (auto a = eventList_.getArray())
+		{
+			for (const auto& e : *a)
+			{
+				if (auto me = dynamic_cast<ScriptingObjects::ScriptingMessageHolder*>(e.getObject()))
+				{
+					events.addEvent(me->getMessageCopy());
+				}
+			}
+		}
+
+		if (!events.isEmpty())
+		{
+			if (bufferSize = getMainController()->getMainSynthChain()->getLargestBlockSize())
+			{
+				numSamplesToRender = (int)events.getEvent(events.getNumUsed() - 1).getTimeStamp();
+
+				// we'll trim it later
+				numActualSamples = 0;
+
+				auto leftOver = numSamplesToRender % bufferSize;
+
+				if (leftOver != 0)
+				{
+					// pad to blocksize
+					//numSamplesToRender += (bufferSize - leftOver);
+				}
+
+				numChannelsToRender = getMainController()->getMainSynthChain()->getMatrix().getNumSourceChannels();
+
+				events.subtractFromTimeStamps(-bufferSize * NumThrowAwayBuffers);
+
+				events.template alignEventsToRaster<HISE_EVENT_RASTER>(numSamplesToRender);
+
+				for (int i = 0; i < numChannelsToRender; i++)
+					channels.add(new VariantBuffer(numSamplesToRender));
+
+				Thread::startThread(Thread::realtimeAudioPriority);
+			}
+		}
+	}
+
+	~AudioRenderer()
+	{
+		stopThread(1000);
+		cleanup();
+	}
+
+	void callUpdateCallback(bool isFinished, double progress)
+	{
+		if (finishCallback)
+		{
+			Array<var> finalChannels;
+
+			for (auto& c : channels)
+				finalChannels.add(c.get());
+
+			var args(new DynamicObject());
+			
+			args.getDynamicObject()->setProperty("channels", finalChannels);
+			args.getDynamicObject()->setProperty("finished", isFinished);
+			args.getDynamicObject()->setProperty("progress", progress);
+
+			getMainController()->getKillStateHandler().removeThreadIdFromAudioThreadList();
+			finishCallback.call(&args, 1);
+
+			if(!isFinished)
+				getMainController()->getKillStateHandler().addThreadIdToAudioThreadList();
+		}
+	}
+
+	bool renderAudio()
+	{
+		SuspendHelpers::ScopedTicket st(getMainController());
+
+		callUpdateCallback(false, 0.0);
+
+		while (getMainController()->getKillStateHandler().isAudioRunning())
+		{
+			if (threadShouldExit())
+				return false;
+
+			Thread::wait(400);
+		}
+
+		getMainController()->getKillStateHandler().addThreadIdToAudioThreadList();
+
+		jassert(!getMainController()->getKillStateHandler().isAudioRunning());
+
+		getMainController()->getKillStateHandler().setAudioExportThread(getCurrentThreadId());
+
+		getMainController()->getKillStateHandler().addThreadIdToAudioThreadList();
+		dynamic_cast<AudioProcessor*>(getMainController())->setNonRealtime(true);
+		getMainController()->getSampleManager().handleNonRealtimeState();
+		
+		{
+			LockHelpers::SafeLock sl(getMainController(), LockHelpers::AudioLock);
+
+			int numTodo = numSamplesToRender;
+			int pos = 0;
+
+			int numThrowAway = NumThrowAwayBuffers;
+
+			AudioSampleBuffer nirvana(numChannelsToRender, bufferSize);
+
+			auto startTime = Time::getMillisecondCounter();
+
+			
+
+			while (numTodo > 0)
+			{
+				if (threadShouldExit())
+					return false;
+
+				int numThisTime = jmin<int>(bufferSize, numTodo);
+
+				AudioSampleBuffer ab = getChunk(pos, numThisTime);
+				HiseEventBuffer thisBuffer;
+				events.moveEventsBelow(thisBuffer, pos + numThisTime);
+				thisBuffer.subtractFromTimeStamps(pos);
+
+				MidiBuffer mb;
+
+				for (const auto& e : thisBuffer)
+					mb.addEvent(e.toMidiMesage(), e.getTimeStamp());
+
+				auto& bufferToUse = numThrowAway > 0 ? nirvana : ab;
+
+				dynamic_cast<AudioProcessor*>(getMainController())->processBlock(bufferToUse, mb);
+
+				if (numThrowAway > 0)
+				{
+					--numThrowAway;
+					events.subtractFromTimeStamps(numThisTime);
+				}
+				else
+				{
+					pos += numThisTime;
+					numTodo -= numThisTime;
+				}
+
+				auto now = Time::getMillisecondCounter();
+
+				if (now - startTime > 90)
+				{
+					auto p = (double)numTodo / (double)numSamplesToRender;
+					callUpdateCallback(false, 1.0 - p);
+					startTime = now;
+					Thread::wait(60);
+				}
+			}
+
+			MidiBuffer emptyBuffer;
+
+			for (int i = 0; i < 50; i++)
+			{
+				dynamic_cast<AudioProcessor*>(getMainController())->processBlock(nirvana, emptyBuffer);
+			}
+		}
+
+		getMainController()->getKillStateHandler().removeThreadIdFromAudioThreadList();
+		dynamic_cast<AudioProcessor*>(getMainController())->setNonRealtime(false);
+		getMainController()->getSampleManager().handleNonRealtimeState();
+		return true;
+	}
+
+	void run() override
+	{
+		if (!renderAudio())
+		{
+			cleanup();
+			return;
+		}
+		
+		callUpdateCallback(true, 1.0);
+
+		cleanup();
+	}
+
+	void cleanup()
+	{
+		getMainController()->getKillStateHandler().setAudioExportThread(nullptr);
+		channels.clear();
+		memset(splitData, 0, sizeof(float*) * NUM_MAX_CHANNELS);
+		events.clear();
+	}
+
+	AudioSampleBuffer getChunk(int startSample, int numSamples)
+	{
+		for (int i = 0; i < numChannelsToRender; i++)
+			splitData[i] = channels[i]->buffer.getWritePointer(0, startSample);
+
+		return AudioSampleBuffer(splitData, numChannelsToRender, numSamples);
+	}
+
+	Array<VariantBuffer::Ptr> channels;
+
+	HiseEventBuffer events;
+	WeakCallbackHolder finishCallback;
+	int numSamplesToRender = 0;
+	int numChannelsToRender = 0;
+	int numActualSamples = 0;
+	float* splitData[NUM_MAX_CHANNELS];
+	int bufferSize = 0;
+};
+
+void ScriptingApi::Engine::renderAudio(var eventList, var updateCallback)
+{
+	currentExportThread = new AudioRenderer(getScriptProcessor(), eventList, updateCallback);
 }
 
 var ScriptingApi::Engine::createFFT()
@@ -5737,16 +5964,16 @@ ApiClass(139)
 	addConstant("yellow", (int64)0xffffff00);
 	addConstant("yellowgreen", (int64)0xff9acd32);
 
-	ADD_API_METHOD_2(withAlpha);
-	ADD_API_METHOD_2(withHue);
-	ADD_API_METHOD_2(withBrightness);
-	ADD_API_METHOD_2(withSaturation);
-	ADD_API_METHOD_2(withMultipliedAlpha);
-	ADD_API_METHOD_2(withMultipliedBrightness);
-	ADD_API_METHOD_2(withMultipliedSaturation);
-	ADD_API_METHOD_3(mix);
-	ADD_API_METHOD_1(toVec4);
-	ADD_API_METHOD_1(fromVec4);
+	ADD_INLINEABLE_API_METHOD_2(withAlpha);
+	ADD_INLINEABLE_API_METHOD_2(withHue);
+	ADD_INLINEABLE_API_METHOD_2(withBrightness);
+	ADD_INLINEABLE_API_METHOD_2(withSaturation);
+	ADD_INLINEABLE_API_METHOD_2(withMultipliedAlpha);
+	ADD_INLINEABLE_API_METHOD_2(withMultipliedBrightness);
+	ADD_INLINEABLE_API_METHOD_2(withMultipliedSaturation);
+	ADD_INLINEABLE_API_METHOD_3(mix);
+	ADD_INLINEABLE_API_METHOD_1(toVec4);
+	ADD_INLINEABLE_API_METHOD_1(fromVec4);
 }
 
 int ScriptingApi::Colours::withAlpha(int colour, float alpha)

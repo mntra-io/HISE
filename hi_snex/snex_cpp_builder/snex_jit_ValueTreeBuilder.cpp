@@ -822,14 +822,6 @@ void ValueTreeBuilder::parseContainerParameters(Node::Ptr c)
 	auto pTree = c->nodeTree.getChildWithName(PropertyIds::Parameters);
 	auto numParameters = pTree.getNumChildren();
 
-    if(c->isRootNode() && numParameters > OpaqueNode::NumMaxParameters)
-    {
-        Error e;
-        e.v = c->nodeTree;
-        e.errorMessage = "Too many parameters in the root node.\n> If you need that many parameters, raise the `OpaqueNode::NumMaxParameter` constant in `hi_dsp_library/node_api/nodes/OpaqueNode.h` and recompile HISE.";
-        throw e;
-    }
-    
 	Namespace n(*this, c->scopedId.getIdentifier().toString() + "_parameters", !ValueTreeIterator::hasRealParameters(c->nodeTree));
 
 	if(numParameters == 0)
@@ -2880,6 +2872,8 @@ Node::Ptr ValueTreeBuilder::SnexNodeBuilder::parse()
 	p = getNodePath(n->nodeTree);
 	classId = ValueTreeIterator::getSnexCode(n->nodeTree);
 
+	
+
 	if (classId.isEmpty())
 	{
 		Error e;
@@ -2907,9 +2901,13 @@ Node::Ptr ValueTreeBuilder::SnexNodeBuilder::parseWrappedSnexNode()
 	Node::Ptr wn = new Node(parent, n->scopedId.id, p);
 	wn->nodeTree = n->nodeTree;
 	
-	parent << code;
-	parent.addEmptyLine();
-
+	if (!parent.definedSnexClasses.contains(classId))
+	{
+		parent << code;
+		parent.addEmptyLine();
+		parent.definedSnexClasses.add(classId);
+	}
+		
 	if (CustomNodeProperties::nodeHasProperty(wn->nodeTree, PropertyIds::IsPolyphonic))
 		wn->addTemplateIntegerArgument("NV", true);
 

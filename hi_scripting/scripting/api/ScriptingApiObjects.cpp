@@ -205,6 +205,7 @@ struct ScriptingObjects::ScriptFile::Wrapper
 	API_METHOD_WRAPPER_0(ScriptFile, loadAsString);
 	API_METHOD_WRAPPER_0(ScriptFile, loadAsObject);
 	API_METHOD_WRAPPER_0(ScriptFile, loadAsAudioFile);
+	API_METHOD_WRAPPER_0(ScriptFile, getNonExistentSibling);
 	API_METHOD_WRAPPER_0(ScriptFile, deleteFileOrDirectory);
 	API_METHOD_WRAPPER_1(ScriptFile, loadEncryptedObject);
 	API_METHOD_WRAPPER_1(ScriptFile, rename);
@@ -264,6 +265,7 @@ ScriptingObjects::ScriptFile::ScriptFile(ProcessorWithScriptingContent* p, const
 	ADD_API_METHOD_1(loadEncryptedObject);
 	ADD_API_METHOD_1(rename);
 	ADD_API_METHOD_0(show);
+	ADD_API_METHOD_0(getNonExistentSibling);
 	ADD_API_METHOD_3(extractZipFile);
 	ADD_API_METHOD_0(getNumZippedItems);
 	ADD_API_METHOD_2(setReadOnly);
@@ -317,6 +319,11 @@ int64 ScriptingObjects::ScriptFile::getBytesFreeOnVolume()
 bool ScriptingObjects::ScriptFile::setExecutePermission(bool shouldBeExecutable)
 {
 	return f.setExecutePermission(shouldBeExecutable);
+}
+
+juce::var ScriptingObjects::ScriptFile::getNonExistentSibling()
+{
+	return var(new ScriptFile(getScriptProcessor(), f.getNonexistentSibling(false)));
 }
 
 bool ScriptingObjects::ScriptFile::startAsProcess(String parameters)
@@ -4465,14 +4472,43 @@ ScriptingObjects::ScriptingMessageHolder::ScriptingMessageHolder(ProcessorWithSc
 }
 
 int ScriptingObjects::ScriptingMessageHolder::getNoteNumber() const { return (int)e.getNoteNumber(); }
-var ScriptingObjects::ScriptingMessageHolder::getControllerNumber() const { return (int)e.getControllerNumber(); }
-var ScriptingObjects::ScriptingMessageHolder::getControllerValue() const { return (int)e.getControllerValue(); }
+var ScriptingObjects::ScriptingMessageHolder::getControllerNumber() const 
+{ 
+	if (e.isPitchWheel())
+		return 129;
+
+	if (e.isAftertouch())
+		return 128;
+
+	return (int)e.getControllerNumber(); 
+}
+var ScriptingObjects::ScriptingMessageHolder::getControllerValue() const 
+{ 
+	if (e.isPitchWheel())
+		return e.getPitchWheelValue();
+	else
+		return (int)e.getControllerValue(); 
+}
 int ScriptingObjects::ScriptingMessageHolder::getChannel() const { return (int)e.getChannel(); }
 void ScriptingObjects::ScriptingMessageHolder::setChannel(int newChannel) { e.setChannel(newChannel); }
 void ScriptingObjects::ScriptingMessageHolder::setNoteNumber(int newNoteNumber) { e.setNoteNumber(newNoteNumber); }
 void ScriptingObjects::ScriptingMessageHolder::setVelocity(int newVelocity) { e.setVelocity((uint8)newVelocity); }
-void ScriptingObjects::ScriptingMessageHolder::setControllerNumber(int newControllerNumber) { e.setControllerNumber(newControllerNumber);}
-void ScriptingObjects::ScriptingMessageHolder::setControllerValue(int newControllerValue) { e.setControllerValue(newControllerValue); }
+void ScriptingObjects::ScriptingMessageHolder::setControllerNumber(int newControllerNumber) 
+{ 
+	if (newControllerNumber == 128)
+		e.setType(HiseEvent::Type::Aftertouch);
+	else if (newControllerNumber == 129)
+		e.setType(HiseEvent::Type::PitchBend);
+	else
+		e.setControllerNumber(newControllerNumber);
+}
+void ScriptingObjects::ScriptingMessageHolder::setControllerValue(int newControllerValue) 
+{ 
+	if (e.isPitchWheel())
+		e.setPitchWheelValue(newControllerValue);
+	else
+		e.setControllerValue(newControllerValue); 
+}
 
 void ScriptingObjects::ScriptingMessageHolder::setType(int type)
 {
@@ -4500,7 +4536,7 @@ void ScriptingObjects::ScriptingMessageHolder::addToTimestamp(int deltaSamples) 
 void ScriptingObjects::ScriptingMessageHolder::setStartOffset(int offset) { e.setStartOffset((uint16)offset); }
 bool ScriptingObjects::ScriptingMessageHolder::isNoteOn() const { return e.isNoteOn(); }
 bool ScriptingObjects::ScriptingMessageHolder::isNoteOff() const { return e.isNoteOff(); }
-bool ScriptingObjects::ScriptingMessageHolder::isController() const { return e.isController(); }
+bool ScriptingObjects::ScriptingMessageHolder::isController() const { return e.isController() || e.isPitchWheel() || e.isAftertouch(); }
 
 String ScriptingObjects::ScriptingMessageHolder::dump() const
 {
@@ -4720,7 +4756,7 @@ struct ScriptingObjects::ScriptedMidiPlayer::Wrapper
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, asMidiProcessor);
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setGlobalPlaybackRatio);
 	API_VOID_METHOD_WRAPPER_2(ScriptedMidiPlayer, setPlaybackCallback);
-	
+	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setUseGlobalUndoManager);
 };
 
 ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingContent* p, MidiPlayer* player_):
@@ -4761,6 +4797,7 @@ ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingC
 	ADD_API_METHOD_0(asMidiProcessor);
 	ADD_API_METHOD_1(setGlobalPlaybackRatio);
 	ADD_API_METHOD_2(setPlaybackCallback);
+	ADD_API_METHOD_1(setUseGlobalUndoManager);
 }
 
 ScriptingObjects::ScriptedMidiPlayer::~ScriptedMidiPlayer()
@@ -4893,6 +4930,14 @@ void ScriptingObjects::ScriptedMidiPlayer::setRepaintOnPositionChange(var should
 		else
 			stopTimer();
 	}
+}
+
+void ScriptingObjects::ScriptedMidiPlayer::setUseGlobalUndoManager(bool shouldUseGlobalUndoManager)
+{
+	if (shouldUseGlobalUndoManager)
+		getPlayer()->setExternalUndoManager(getScriptProcessor()->getMainController_()->getControlUndoManager());
+	else
+		getPlayer()->setExternalUndoManager(nullptr);
 }
 
 void ScriptingObjects::ScriptedMidiPlayer::connectToPanel(var panel)
