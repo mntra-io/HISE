@@ -5325,6 +5325,7 @@ juce::Array<juce::Identifier> ApiHelpers::getGlobalApiClasses()
 
 void ApiHelpers::loadPathFromData(Path& p, var data)
 {
+	
 	if (data.isString())
 	{
 		juce::MemoryBlock mb;
@@ -5332,7 +5333,7 @@ void ApiHelpers::loadPathFromData(Path& p, var data)
 		p.clear();
 		p.loadPathFromData(mb.getData(), mb.getSize());
 	}
-	if (data.isArray())
+	else if (data.isArray())
 	{
 		p.clear();
 		Array<unsigned char> pathData;
@@ -5345,6 +5346,10 @@ void ApiHelpers::loadPathFromData(Path& p, var data)
 			pathData.add(static_cast<unsigned char>((int)varData->getUnchecked(i)));
 
 		p.loadPathFromData(pathData.getRawDataPointer(), numElements);
+	}
+	else if (auto sp = dynamic_cast<ScriptingObjects::PathObject*>(data.getObject()))
+	{
+		p = sp->getPath();
 	}
 }
 

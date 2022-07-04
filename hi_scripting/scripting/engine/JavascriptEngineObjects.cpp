@@ -583,11 +583,14 @@ struct HiseJavascriptEngine::RootObject::StringClass : public DynamicObject
 		setMethod("parseAsJSON", parseAsJSON);
 		setMethod("trim", trim);
 		setMethod("concat", concat);
+		setMethod("encrypt", encrypt);
+		setMethod("decrypt", decrypt);
+		setMethod("contains", contains);
 	}
 
 	static Identifier getClassName()  { static const Identifier i("String"); return i; }
 
-	
+	static var contains(Args a)		 { return a.thisObject.toString().contains(getString(a, 0)); }
 	static var fromCharCode(Args a)  { return String::charToString(getInt(a, 0)); }
 	static var substring(Args a)     { return a.thisObject.toString().substring(getInt(a, 0), getInt(a, 1)); }
 	static var indexOf(Args a)       { return a.thisObject.toString().indexOf(getString(a, 0)); }
@@ -651,6 +654,44 @@ struct HiseJavascriptEngine::RootObject::StringClass : public DynamicObject
 		return var(result.joinIntoString(" ", 0, -1));
 	}
 
+	static var encrypt(Args a)
+	{
+		const String str(a.thisObject.toString());
+		const String key(getString(a, 0));
+
+		auto data = key.getCharPointer().getAddress();
+		auto size = jlimit(0, 72, key.length());
+
+		BlowFish bf(data, size);
+
+		MemoryOutputStream mos;
+		mos.writeString(str);
+		mos.flush();
+		
+		auto out = mos.getMemoryBlock();
+
+		bf.encrypt(out);
+
+		return out.toBase64Encoding();
+	}
+
+	static var decrypt(Args a)
+	{
+		const String encStr(a.thisObject.toString());
+		const String key(getString(a, 0));
+
+		auto data = key.getCharPointer().getAddress();
+		auto size = jlimit(0, 72, key.length());
+
+		BlowFish bf(data, size);
+
+		MemoryBlock in;
+		
+		in.fromBase64Encoding(encStr);
+		bf.decrypt(in);
+
+		return in.toString();
+	}
 };
 
 #define Array Array<var>
@@ -689,6 +730,9 @@ public:
 	/** Converts a string to lowercase letters. */
 	String toLowerCase() { return String(); }
 
+	/** Checks if the string contains the given substring. */
+	bool contains(String otherString) { return false; }
+
 	/** Converts a string to uppercase letters. */
 	String toUpperCase() { return String(); }
 	
@@ -700,6 +744,12 @@ public:
 
 	/** Joins two or more strings, and returns a new joined strings. */
 	String concat(var stringlist) { return String(); }
+
+	/** Encrypt a string using Blowfish encryption. */
+	String encrypt(var key) { return String(); }
+
+	/** Decrypt a string from Blowfish encryption. */
+	String decrypt(var key) { return String(); }
 };
 
 #if JUCE_MSVC
