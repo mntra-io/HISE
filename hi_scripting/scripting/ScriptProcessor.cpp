@@ -1562,8 +1562,10 @@ void JavascriptProcessor::stuffAfterCompilation(const SnippetResult& result)
 
 	mainController->getScriptComponentEditBroadcaster()->clearSelection(sendNotification);
 
-	if (lastCompileWasOK)
+	if (lastCompileWasOK && lastOptimisationReport.isNotEmpty())
 	{
+		debugToConsole(dynamic_cast<Processor*>(this), lastOptimisationReport);
+
 		String x;
 		mergeCallbacksToScript(x);
 	}

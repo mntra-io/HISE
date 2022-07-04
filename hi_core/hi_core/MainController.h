@@ -610,6 +610,8 @@ public:
 
 			void call(float newValue, bool sendToListeners=true);
 
+			void updateFromProcessorConnection(int preferredIndex);
+
 			const int index;
 			Identifier id;
 			float lastValue = 0.0f;
@@ -788,6 +790,8 @@ public:
 		void loadCustomValueTree(const ValueTree& presetData);
 
 		StringArray getCustomAutomationIds() const;
+
+		int getNumCustomAutomationData() const { return customAutomationData.size(); }
 
 		CustomAutomationData::Ptr getCustomAutomationData(const Identifier& id);
 
@@ -1090,6 +1094,7 @@ public:
 			MessageThread = 0,
 			SampleLoadingThread,
 			AudioThread,
+			AudioExportThread,
 			ScriptingThread,
 			numTargetThreads,
 			UnknownThread,
@@ -1136,9 +1141,16 @@ public:
 		/** This can be set by the Internal Preloader. */
 		void setSampleLoadingThreadId(void* newId);
 
+		void setAudioExportThread(void* threadId)
+		{
+			threadIds[TargetThread::AudioExportThread] = threadId;
+		}
+
 		TargetThread getCurrentThread() const;
 
 		void addThreadIdToAudioThreadList();
+
+		void removeThreadIdFromAudioThreadList();
 
 		bool test() const noexcept override;
 

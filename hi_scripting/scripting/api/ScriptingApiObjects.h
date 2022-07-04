@@ -298,6 +298,9 @@ namespace ScriptingObjects
 		/** Changes the execute-permissions of a file. */
 		bool setExecutePermission(bool shouldBeExecutable);
 
+		/** Returns a sibling file that doesn't exist. */
+		var getNonExistentSibling();
+
 		/** Launches the file as a process. */
 		bool startAsProcess(String parameters);
 		
@@ -2318,6 +2321,9 @@ namespace ScriptingObjects
 		
 			Otherwise it will only be updated when the sequence changes. */
 		void setRepaintOnPositionChange(var shouldRepaintPanel);
+
+		/** If enabled, it uses the global undo manager for all edits (So you can use Engine.undo()). */
+		void setUseGlobalUndoManager(bool shouldUseGlobalUndoManager);
 
 		/** Connect this to the panel and it will be automatically updated when something changes. */
 		void connectToPanel(var panel);

@@ -733,13 +733,13 @@ void ScriptingApi::Content::ScriptComponent::set(String propertyName, var newVal
 {
 	Identifier propertyId = Identifier(propertyName);
 
-	handleScriptPropertyChange(propertyId);
-
-	if (!defaultValues.contains(propertyId))
+	if (!propertyIds.contains(propertyId))
 	{
-		logErrorAndContinue("the property does not exist");
+		reportScriptError("the property doesn't exist");
 		RETURN_VOID_IF_NO_THROW();
 	}
+
+	handleScriptPropertyChange(propertyId);
 
 	setScriptObjectPropertyWithChangeMessage(propertyId, newValue, parent->allowGuiCreation ? dontSendNotification : sendNotification);
 }
@@ -3154,6 +3154,7 @@ struct ScriptingApi::Content::ScriptPanel::Wrapper
 	API_METHOD_WRAPPER_0(ScriptPanel, getAnimationData);
 	API_METHOD_WRAPPER_0(ScriptPanel, isVisibleAsPopup);
 	API_VOID_METHOD_WRAPPER_1(ScriptPanel, setIsModalPopup);
+	API_METHOD_WRAPPER_3(ScriptPanel, startExternalFileDrag);
 };
 
 ScriptingApi::Content::ScriptPanel::ScriptPanel(ProcessorWithScriptingContent *base, Content* /*parentContent*/, Identifier panelName, int x, int y, int , int ) :
@@ -3260,8 +3261,7 @@ void ScriptingApi::Content::ScriptPanel::init()
 	ADD_API_METHOD_0(getAnimationData);
 	ADD_API_METHOD_1(setAnimation);
 	ADD_API_METHOD_1(setAnimationFrame);
-
-	
+	ADD_API_METHOD_3(startExternalFileDrag);
 }
 
 
@@ -4093,6 +4093,58 @@ int ScriptingApi::Content::ScriptPanel::getNumChildElements() const
 	return cachedList.size();
 }
 
+bool ScriptingApi::Content::ScriptPanel::startExternalFileDrag(var fileToDrag, bool moveOriginal, var finishCallback)
+{
+	StringArray files;
+
+	auto addToArray = [&](var v)
+	{
+		if (v.isString())
+			files.add(v.toString());
+
+		if (auto fObj = dynamic_cast<ScriptingObjects::ScriptFile*>(v.getObject()))
+			files.add(fObj->f.getFullPathName());
+	};
+
+	if (fileToDrag.isArray())
+	{
+		for (const auto& f : *fileToDrag.getArray())
+			addToArray(f);
+	}
+	else
+		addToArray(fileToDrag);
+
+	if (files.isEmpty())
+		return false;
+
+	WeakReference<ProcessorWithScriptingContent> sp = getScriptProcessor();
+
+	std::function<void()> f;
+
+
+	if (HiseJavascriptEngine::isJavascriptFunction(finishCallback))
+	{
+		f = [sp, finishCallback]()
+		{
+			WeakCallbackHolder cb(sp, finishCallback, 0);
+			cb.callSync(nullptr, 0);
+		};
+	}
+
+    auto f2 = [files, f]()
+    {
+        DragAndDropContainer::performExternalDragDropOfFiles(files, false, nullptr, f);
+    };
+    
+#if JUCE_WINDOWS
+    f2();
+#else
+    MessageManager::callAsync(f2);
+#endif
+    
+    return true;
+}
+
 ScriptCreatedComponentWrapper * ScriptingApi::Content::ScriptedViewport::createComponentWrapper(ScriptContentComponent *content, int index)
 {
 	return new ScriptCreatedComponentWrappers::ViewportWrapper(content, this, index);
@@ -4496,6 +4548,8 @@ colour(Colour(0xff777777))
 	setMethod("getScreenBounds", Wrapper::getScreenBounds);
 	setMethod("getCurrentTooltip", Wrapper::getCurrentTooltip);
 	setMethod("createLocalLookAndFeel", Wrapper::createLocalLookAndFeel);
+	setMethod("isMouseDown", Wrapper::isMouseDown);
+	setMethod("getComponentUnderMouse", Wrapper::getComponentUnderMouse);
 }
 
 ScriptingApi::Content::~Content()
@@ -5428,6 +5482,27 @@ juce::var ScriptingApi::Content::createMarkdownRenderer()
 	return var(new ScriptingObjects::MarkdownObject(getScriptProcessor()));
 }
 
+int ScriptingApi::Content::isMouseDown()
+{
+	auto mods = Desktop::getInstance().getMainMouseSource().getCurrentModifiers();
+
+	if (mods.isLeftButtonDown())
+		return 1;
+	if (mods.isRightButtonDown())
+		return 2;
+
+	return 0;
+}
+
+String ScriptingApi::Content::getComponentUnderMouse()
+{
+	if (auto c = Desktop::getInstance().getMainMouseSource().getComponentUnderMouse())
+	{
+		return c->getComponentID();
+	}
+
+	return "";
+}
 
 #undef ADD_TO_TYPE_SELECTOR
 #undef ADD_AS_SLIDER_TYPE
