@@ -1590,6 +1590,10 @@ BatchReencoder::BatchReencoder(ModulatorSampler* s) :
 	if (GET_HISE_SETTING(s, HiseSettings::Project::SupportFullDynamicsHLAC))
 		getComboBoxComponent("normalise")->setSelectedItemIndex(2, dontSendNotification);
 
+    addComboBox("splitsize", { "1500 MB", "1700 MB", "2000 MB" }, "Split size");
+
+    getComboBoxComponent("splitsize")->setSelectedItemIndex(1, dontSendNotification);
+    
 	addProgressBarComponent(wholeProgress);
 
 	addBasicComponents(true);
