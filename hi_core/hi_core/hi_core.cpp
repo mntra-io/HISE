@@ -51,9 +51,6 @@
 #include "xmmintrin.h"
 #endif
 
-
-#include "DepentUtilityFunctions.cpp"
-
 #include "UtilityClasses.cpp"
 #include "DebugLogger.cpp"
 #include "ThreadWithQuasiModalProgressWindow.cpp"
@@ -69,7 +66,6 @@
 #include "UserPresetHandler.cpp"
 #include "KillStateHandler.cpp"
 #include "PresetHandler.cpp"
-#include "SampleExporter.cpp"
 #include "GlobalAsyncModuleHandler.cpp"
 #include "Popup.cpp"
 #include "Console.cpp"

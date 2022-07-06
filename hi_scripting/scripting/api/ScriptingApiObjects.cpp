@@ -2533,21 +2533,7 @@ bool ScriptingObjects::ScriptingModulator::isBypassed() const
 
 void ScriptingObjects::ScriptingModulator::doubleClickCallback(const MouseEvent &, Component* componentToNotify)
 {
-#if USE_BACKEND
-	if (objectExists() && !objectDeleted())
-	{
-		auto *editor = GET_BACKEND_ROOT_WINDOW(componentToNotify);
-
-		Processor *p = ProcessorHelpers::getFirstProcessorWithName(editor->getMainSynthChain(), mod->getId());
-
-		if (p != nullptr)
-		{
-			editor->getMainPanel()->setRootProcessorWithUndo(p);
-		}
-	}
-#else 
 	ignoreUnused(componentToNotify);
-#endif
 }
 
 Component* ScriptingObjects::ScriptingModulator::createPopupComponent(const MouseEvent& e, Component* t)
@@ -5956,6 +5942,8 @@ ScriptingObjects::ScriptBackgroundTask::ScriptBackgroundTask(ProcessorWithScript
 	currentTask(p, var(), 1),
 	finishCallback(p, var(), 2)
 {
+	dynamic_cast<JavascriptProcessor*>(p)->getScriptEngine()->preCompileListeners.addListener(*this, recompiled, false);
+
 	ADD_API_METHOD_1(sendAbortSignal);
 	ADD_API_METHOD_0(shouldAbort);
 	ADD_API_METHOD_2(setProperty);
@@ -5969,6 +5957,11 @@ ScriptingObjects::ScriptBackgroundTask::ScriptBackgroundTask(ProcessorWithScript
 	ADD_API_METHOD_1(setStatusMessage);
 	ADD_API_METHOD_0(getStatusMessage);
 	ADD_API_METHOD_1(setForwardStatusToLoadingThread);
+}
+
+void ScriptingObjects::ScriptBackgroundTask::recompiled(ScriptBackgroundTask& task, bool unused)
+{
+	task.sendAbortSignal(true);
 }
 
 void ScriptingObjects::ScriptBackgroundTask::sendAbortSignal(bool blockUntilStopped)

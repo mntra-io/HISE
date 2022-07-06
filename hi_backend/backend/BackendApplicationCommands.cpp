@@ -150,7 +150,6 @@ void BackendCommandTarget::getAllCommands(Array<CommandID>& commands)
 		MenuToolsResolveMissingSamples,
 		MenuToolsDeleteMissingSamples,
 		MenuToolsCheckAllSampleMaps,
-		MenuToolsCollectExternalFiles,
 		MenuToolsCheckUnusedImages,
 		MenuToolsGetMissingSampleList,
 		MenuToolsRedirectScriptFolder,
@@ -172,8 +171,6 @@ void BackendCommandTarget::getAllCommands(Array<CommandID>& commands)
 		MenuViewReset,
         MenuViewFullscreen,
         MenuViewRotate,
-		MenuViewBack,
-		MenuViewForward,
 		MenuViewEnableGlobalLayoutMode,
 		MenuViewAddFloatingWindow,
 		MenuViewAddInterfacePreview,
@@ -183,10 +180,6 @@ void BackendCommandTarget::getAllCommands(Array<CommandID>& commands)
 		MenuViewShowPluginPopupPreview,
         MenuViewIncreaseCodeFontSize,
         MenuViewDecreaseCodeFontSize,
-        MenuAddView,
-        MenuDeleteView,
-        MenuRenameView,
-        MenuViewSaveCurrentView,
         MenuToolsSanityCheck,
 		MenuHelpShowAboutPage,
         MenuHelpCheckVersion,
@@ -510,10 +503,6 @@ void BackendCommandTarget::getCommandInfo(CommandID commandID, ApplicationComman
 		setCommandTarget(result, "Import archived samples", true, false, 'X', false);
 		result.categoryName = "Tools";
 		break;
-	case MenuToolsCollectExternalFiles:
-		setCommandTarget(result, "Collect external files into Project folder", GET_PROJECT_HANDLER(bpe->getMainSynthChain()).isActive(), false, 'X', false);
-		result.categoryName = "Tools";
-		break;
 	case MenuToolsShowDspNetworkDllInfo:
 		setCommandTarget(result, "Show DSP Network DLL info", true, false, 'X', false);
 		result.categoryName = "Tools";
@@ -591,15 +580,7 @@ void BackendCommandTarget::getCommandInfo(CommandID commandID, ApplicationComman
         setCommandTarget(result, "Toggle Fullscreen", true, bpe->isFullScreenMode(), 'X', false);
 		result.categoryName = "View";
         break;
-	case MenuViewBack:
-		setCommandTarget(result, "Back: " + bpe->mainEditor->getViewUndoManager()->getUndoDescription(), bpe->mainEditor->getViewUndoManager()->canUndo(), false, 'X', false);
-		result.categoryName = "View";
-		break;
-	case MenuViewForward:
-		setCommandTarget(result, "Forward: " + bpe->mainEditor->getViewUndoManager()->getRedoDescription(), bpe->mainEditor->getViewUndoManager()->canRedo(), false, 'X', false);
-		result.categoryName = "View";
-		break;
-    case MenuViewRotate:
+	case MenuViewRotate:
         setCommandTarget(result, "Vertical Layout", true, bpe->isRotated(), 'X', false);
         break;
 	case MenuViewEnableGlobalLayoutMode:
@@ -633,19 +614,7 @@ void BackendCommandTarget::getCommandInfo(CommandID commandID, ApplicationComman
     case MenuViewDecreaseCodeFontSize:
         setCommandTarget(result, "Decrease code font size", true, false, 'X', false);
         break;
-    case MenuAddView:
-        setCommandTarget(result, "Add new view", true, false, 'X', false);
-        break;
-    case MenuDeleteView:
-        setCommandTarget(result, "Delete current view", viewActive(), false, 'X', false);
-        break;
-    case MenuRenameView:
-        setCommandTarget(result, "Rename current view", viewActive(), false, 'X', false);
-        break;
-    case MenuViewSaveCurrentView:
-        setCommandTarget(result, "Save current view", viewActive(), false, 'X', false);
-        break;
-	case MenuViewShowSelectedProcessorInPopup:
+    case MenuViewShowSelectedProcessorInPopup:
 		setCommandTarget(result, "Show Processor in full screen", dynamic_cast<ProcessorEditor*>(currentCopyPasteTarget.get()) != nullptr, false, 'X', false);
 		result.addDefaultKeypress(KeyPress::F11Key, ModifierKeys::noModifiers);
 		break;
@@ -738,7 +707,6 @@ bool BackendCommandTarget::perform(const InvocationInfo &info)
 	case MenuToolsValidateUserPresets:	Actions::validateUserPresets(bpe); return true;
 	case MenuToolsResolveMissingSamples:Actions::resolveMissingSamples(bpe); return true;
 	case MenuToolsGetMissingSampleList:	Actions::copyMissingSampleListToClipboard(bpe); return true;
-	case MenuToolsCollectExternalFiles:	Actions::collectExternalFiles(bpe); return true;
 	case MenuToolsCreateUIDataFromDesktop: Actions::createUIDataFromDesktop(bpe); updateCommands(); return true;
 	case MenuToolsCheckDeviceSanity:	Actions::checkDeviceSanity(bpe); return true;
 	case MenuToolsCheckUnusedImages:	Actions::checkUnusedImages(bpe); return true;
@@ -760,10 +728,8 @@ bool BackendCommandTarget::perform(const InvocationInfo &info)
 	case MenuToolsApplySampleMapProperties: Actions::applySampleMapProperties(bpe); return true;
 	case MenuToolsConvertSVGToPathData:	Actions::convertSVGToPathData(bpe); return true;
     case MenuViewFullscreen:            Actions::toggleFullscreen(bpe); updateCommands(); return true;
-	case MenuViewBack:					bpe->mainEditor->getViewUndoManager()->undo(); updateCommands(); return true;
 	case MenuViewReset:				    bpe->resetInterface(); updateCommands(); return true;
-	case MenuViewForward:				bpe->mainEditor->getViewUndoManager()->redo(); updateCommands(); return true;
-    case MenuViewRotate:
+	case MenuViewRotate:
         bpe->toggleRotate();
         updateCommands();
         return true;
@@ -803,10 +769,6 @@ bool BackendCommandTarget::perform(const InvocationInfo &info)
 	case MenuExportSampleDataForInstaller: Actions::exportSampleDataForInstaller(bpe); return true;
 	case MenuExportCompileFilesInPool:	Actions::exportCompileFilesInPool(bpe); return true;
 	case MenuViewResetLookAndFeel:		Actions::resetLookAndFeel(bpe); return true;
-    case MenuAddView:                   Actions::addView(bpe); updateCommands();return true;
-    case MenuDeleteView:                Actions::deleteView(bpe); updateCommands();return true;
-    case MenuRenameView:                Actions::renameView(bpe); updateCommands();return true;
-    case MenuViewSaveCurrentView:       Actions::saveView(bpe); updateCommands(); return true;
     case MenuToolsClearConsole:         owner->getConsoleHandler().clearConsole(); return true;
 	case MenuHelpShowAboutPage:			Actions::showAboutPage(bpe); return true;
     case MenuHelpCheckVersion:          Actions::checkVersion(bpe); return true;
@@ -1014,7 +976,6 @@ PopupMenu BackendCommandTarget::getMenuForIndex(int topLevelMenuIndex, const Str
 		ADD_DESKTOP_ONLY(MenuToolsCheckAllSampleMaps);
 		ADD_DESKTOP_ONLY(MenuToolsApplySampleMapProperties);
 		ADD_DESKTOP_ONLY(MenuToolsImportArchivedSamples);
-		ADD_DESKTOP_ONLY(MenuToolsCollectExternalFiles);
 		ADD_DESKTOP_ONLY(MenuToolsCheckUnusedImages);
 		ADD_DESKTOP_ONLY(MenuToolsForcePoolSearch);
 		
@@ -1167,21 +1128,7 @@ void BackendCommandTarget::menuItemSelected(int menuItemID, int topLevelMenuInde
             
         Actions::openFileFromXml(bpe, presetToLoad);
     }
-    
-	else if (menuItemID >= MenuViewOffset && menuItemID < (int)MenuViewOffset + 200)
-	{
-		ViewInfo *info = owner->synthChain->getViewInfo(menuItemID - MenuViewOffset);
-
-		if (info != nullptr)
-		{
-			info->restore();
-
-			bpe->mainEditor->setRootProcessor(info->getRootProcessor());
-
-			owner->synthChain->setCurrentViewInfo(menuItemID - MenuViewOffset);
-		}
-	}
-	else if (menuItemID >= MenuToolsDeviceSimulatorOffset && menuItemID < (MenuToolsDeviceSimulatorOffset + 50))
+    else if (menuItemID >= MenuToolsDeviceSimulatorOffset && menuItemID < (MenuToolsDeviceSimulatorOffset + 50))
 	{
 		HiseDeviceSimulator::DeviceType newDevice = (HiseDeviceSimulator::DeviceType)(menuItemID - (int)MenuToolsDeviceSimulatorOffset);
 
@@ -1720,35 +1667,6 @@ void BackendCommandTarget::Actions::resetLookAndFeel(BackendRootWindow* bpe)
 	bpe->owner->resetLookAndFeelToDefault(bpe);
 }
 
-void BackendCommandTarget::Actions::addView(BackendRootWindow *bpe)
-{
-    String view = PresetHandler::getCustomName("View");
-    
-    ViewInfo *info = new ViewInfo(bpe->owner->synthChain, bpe->mainEditor->currentRootProcessor, view);
-    
-    bpe->owner->synthChain->addViewInfo(info);
-}
-
-void BackendCommandTarget::Actions::deleteView(BackendRootWindow *bpe)
-{
-    bpe->owner->synthChain->removeCurrentViewInfo();
-}
-
-void BackendCommandTarget::Actions::renameView(BackendRootWindow *bpe)
-{
-    String view = PresetHandler::getCustomName("View");
-    
-    bpe->owner->synthChain->getCurrentViewInfo()->setViewName(view);
-}
-
-void BackendCommandTarget::Actions::saveView(BackendRootWindow *bpe)
-{
-    String view = bpe->owner->synthChain->getCurrentViewInfo()->getViewName();
-    
-    ViewInfo *info = new ViewInfo(bpe->owner->synthChain, bpe->mainEditor->currentRootProcessor, view);
-    
-    bpe->owner->synthChain->replaceCurrentViewInfo(info);
-}
 
 void BackendCommandTarget::Actions::closeAllChains(BackendRootWindow *bpe)
 {
@@ -1847,12 +1765,6 @@ void BackendCommandTarget::Actions::toggleCompileScriptsOnPresetLoad(BackendRoot
 }
 
 
-void BackendCommandTarget::Actions::collectExternalFiles(BackendRootWindow * bpe)
-{
-	ExternalResourceCollector *resource = new ExternalResourceCollector(bpe->getBackendProcessor());
-
-	resource->setModalBaseWindowComponent(bpe);
-}
 
 
 void BackendCommandTarget::Actions::exportFileAsSnippet(BackendProcessor* bp)
