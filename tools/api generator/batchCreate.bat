@@ -75,6 +75,7 @@ xcopy "xml\classhise_1_1_scripting_objects_1_1_scripted_midi_player.xml" "xml\se
 xcopy "xml\classhise_1_1_scripting_objects_1_1_timer_object.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_objects_1_1_script_download_object.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_objects_1_1_script_background_task.xml" "xml\selection"
+xcopy "xml\structhise_1_1_scripting_objects_1_1_script_builder.xml" "xml\selection"
 
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_button.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_combo_box.xml" "xml\selection"
@@ -86,10 +87,9 @@ xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_scripted_plotter.xml" "x
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_image.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_panel.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_slider_pack.xml" "xml\selection"
-xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_scripted_viewport" "xml\selection"
+xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_scripted_viewport.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_floating_tile.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_audio_waveform.xml" "xml\selection"
-
 
 xcopy "xml\classhise_1_1_script_user_preset_handler.xml" "xml\selection"
 
@@ -189,6 +189,7 @@ ren "xml\selection\classscriptnode_1_1_node_base_1_1_parameter.xml" "Parameter.x
 
 ren "xml\selection\structhise_1_1_scripting_objects_1_1_global_cable_reference.xml" "GlobalCable.xml"
 ren "xml\selection\structhise_1_1_scripting_objects_1_1_global_routing_manager_reference.xml" "GlobalRoutingManager.xml"
+ren "xml\selection\structhise_1_1_scripting_objects_1_1_script_builder.xml" "Builder.xml"
 
 ren "xml\selection\structhise_1_1fixobj_1_1_array.xml" "FixObjectArray.xml"
 ren "xml\selection\structhise_1_1fixobj_1_1_factory.xml" "FixObjectFactory.xml"

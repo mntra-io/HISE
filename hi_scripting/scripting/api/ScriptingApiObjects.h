@@ -432,6 +432,8 @@ namespace ScriptingObjects
 			return new TaskViewer(this);
 		}
 
+		static void recompiled(ScriptBackgroundTask& task, bool unused);
+
 		// ==================================================================================== Start of API Methods
 
 		/** Signal that this thread should exit. */
@@ -633,6 +635,47 @@ namespace ScriptingObjects
 		WindowType currentWindowType = WindowType::Rectangle;
 		double overlap = 0.0;
 		int maxNumSamples = 0;
+	};
+
+	struct ScriptBuilder : public ConstScriptingObject
+	{
+		ScriptBuilder(ProcessorWithScriptingContent* p);
+
+		~ScriptBuilder();
+
+		// ============================================================================================= API
+
+		/** Creates a module and returns the build index (0=master container). */
+		int create(var type, var id, int rootBuildIndex, int chainIndex);
+
+		/** Connects the script processor to an external script. */
+		bool connectToScript(int buildIndex, String relativePath);
+
+		/** Returns a typed reference for the module with the given build index. */
+		var get(int buildIndex, String interfaceType);
+
+		/** Set multiple attributes for the given module at once using a JSON object. */
+		void setAttributes(int buildIndex, var attributeValues);
+
+		/** WARNING: Clears all child sound generators, effects and MIDI processor (except for this one obviously). */
+		void clear();
+
+		/** Sends a rebuild message. Call this after you've created all the processors to make sure that the patch browser is updated accordingly. */
+		void flush();
+
+		// ============================================================================================= API
+
+		Identifier getObjectName() const override { return "Builder"; }
+
+	private:
+
+		bool flushed = true;
+
+		struct Wrapper;
+
+		Array<WeakReference<Processor>> createdModules;
+
+		void createJSONConstants();
 	};
 
 	struct ScriptDownloadObject : public ConstScriptingObject,
@@ -1384,7 +1427,9 @@ namespace ScriptingObjects
 
 		// ============================================================================================================
 
-		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("Modulator"); }
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("Modulator"); }
+
+		Identifier getObjectName() const override { return getClassName(); }
 		bool objectDeleted() const override { return mod.get() == nullptr; }
 		bool objectExists() const override { return mod != nullptr;	}
 
@@ -1519,7 +1564,9 @@ namespace ScriptingObjects
 		ScriptingEffect(ProcessorWithScriptingContent *p, EffectProcessor *fx);
 		~ScriptingEffect() {};
 
-		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("Effect"); }
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("Effect"); }
+
+		Identifier getObjectName() const override { return getClassName(); }
 		bool objectDeleted() const override { return effect.get() == nullptr; }
 		bool objectExists() const override { return effect != nullptr; }
 
@@ -1615,7 +1662,9 @@ namespace ScriptingObjects
 		ScriptingSlotFX(ProcessorWithScriptingContent *p, EffectProcessor *fx);
 		~ScriptingSlotFX() {};
 
-		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("SlotFX"); }
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("SlotFX"); }
+
+		Identifier getObjectName() const override { return getClassName(); }
 		bool objectDeleted() const override { return slotFX.get() == nullptr; }
 		bool objectExists() const override { return slotFX != nullptr; }
 
@@ -1679,7 +1728,9 @@ namespace ScriptingObjects
 		ScriptRoutingMatrix(ProcessorWithScriptingContent *p, Processor *processor);
 		~ScriptRoutingMatrix() {};
 
-		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("RoutingMatrix"); }
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("RoutingMatrix"); }
+
+		Identifier getObjectName() const override { return getClassName(); }
 		bool objectDeleted() const override { return rp.get() == nullptr; }
 		bool objectExists() const override { return rp != nullptr; }
 
@@ -1691,6 +1742,9 @@ namespace ScriptingObjects
 		void doubleClickCallback(const MouseEvent &, Component*) override {};
 
 		// ============================================================================================================ 
+
+		/** Sets the amount of channels (if the matrix is resizeable). */
+		void setNumChannels(int numSourceChannels);
 
 		/** adds a connection to the given channels. */
 		bool addConnection(int sourceIndex, int destinationIndex);
@@ -1732,7 +1786,9 @@ namespace ScriptingObjects
 		ScriptingSynth(ProcessorWithScriptingContent *p, ModulatorSynth *synth_);
 		~ScriptingSynth() {};
 
-		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("ChildSynth"); };
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("ChildSynth"); }
+
+		Identifier getObjectName() const override { return getClassName(); };
 		bool objectDeleted() const override { return synth.get() == nullptr; };
 		bool objectExists() const override { return synth != nullptr; };
 
@@ -1830,7 +1886,9 @@ namespace ScriptingObjects
 		ScriptingMidiProcessor(ProcessorWithScriptingContent *p, MidiProcessor *mp_);;
 		~ScriptingMidiProcessor() {};
 
-		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("MidiProcessor"); }
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("MidiProcessor"); }
+
+		Identifier getObjectName() const override { return getClassName(); }
 		bool objectDeleted() const override { return mp.get() == nullptr; }
 		bool objectExists() const override { return mp != nullptr; }
 
@@ -1910,7 +1968,9 @@ namespace ScriptingObjects
 		ScriptingAudioSampleProcessor(ProcessorWithScriptingContent *p, Processor *sampleProcessor);
 		~ScriptingAudioSampleProcessor() {};
 
-		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("AudioSampleProcessor"); };
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("AudioSampleProcessor"); }
+
+		Identifier getObjectName() const override { return getClassName(); };
 		bool objectDeleted() const override { return audioSampleProcessor.get() == nullptr; }
 		bool objectExists() const override { return audioSampleProcessor != nullptr; }
 
@@ -1977,7 +2037,9 @@ namespace ScriptingObjects
 
 		ScriptSliderPackProcessor(ProcessorWithScriptingContent* p, ExternalDataHolder* h);
 
-		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("SliderPackProcessor"); };
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("SliderPackProcessor"); }
+
+		Identifier getObjectName() const override { return getClassName(); };
 		bool objectDeleted() const override { return sp.get() == nullptr; }
 		bool objectExists() const override { return sp.get() != nullptr; }
 
@@ -2030,7 +2092,9 @@ namespace ScriptingObjects
 		ScriptingTableProcessor(ProcessorWithScriptingContent *p, ExternalDataHolder *tableProcessor);
 		~ScriptingTableProcessor() {};
 
-		Identifier getObjectName() const override {	RETURN_STATIC_IDENTIFIER("TableProcessor"); };
+		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("TableProcessor"); }
+
+		Identifier getObjectName() const override { return getClassName(); };
 		bool objectDeleted() const override { return tableProcessor.get() == nullptr; }
 		bool objectExists() const override { return tableProcessor != nullptr; }
 
@@ -2284,16 +2348,13 @@ namespace ScriptingObjects
 		ScriptedMidiPlayer(ProcessorWithScriptingContent* p, MidiPlayer* player_);
 		~ScriptedMidiPlayer();
 
-		
 		static Identifier getClassName() { RETURN_STATIC_IDENTIFIER("MidiPlayer"); };
-
-		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("MidiPlayer"); }
+		Identifier getObjectName() const override { return getClassName(); }
 
 		String getDebugValue() const override;
 
 		void sequenceLoaded(HiseMidiSequence::Ptr newSequence) override;
-		void trackIndexChanged() override;
-		void sequenceIndexChanged() override;
+		
 		void sequencesCleared() override;
 
 		void timerCallback() override;
