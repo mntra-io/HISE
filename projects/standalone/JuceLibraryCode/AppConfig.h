@@ -26,12 +26,12 @@
 /*
   ==============================================================================
 
-   In accordance with the terms of the JUCE 6 End-Use License Agreement, the
+   In accordance with the terms of the JUCE 7 End-Use License Agreement, the
    JUCE Code in SECTION A cannot be removed, changed or otherwise rendered
    ineffective unless you have a JUCE Indie or Pro license, or are using JUCE
    under the GPL v3 license.
 
-   End User License Agreement: www.juce.com/juce-6-licence
+   End User License Agreement: www.juce.com/juce-7-licence
 
   ==============================================================================
 */
@@ -46,7 +46,7 @@
 
 #define JUCE_USE_DARK_SPLASH_SCREEN 1
 
-#define JUCE_PROJUCER_VERSION 0x60104
+#define JUCE_PROJUCER_VERSION 0x70000
 
 //==============================================================================
 #define JUCE_MODULE_AVAILABLE_hi_backend                  1
@@ -123,7 +123,7 @@
 #endif
 
 #ifndef    USE_IPP
- #define   USE_IPP 0
+ #define   USE_IPP 1
 #endif
 
 #ifndef    USE_VDSP_FFT
@@ -140,6 +140,10 @@
 
 #ifndef    FORCE_INPUT_CHANNELS
  //#define FORCE_INPUT_CHANNELS 0
+#endif
+
+#ifndef    HISE_DEACTIVATE_OVERLAY
+ //#define HISE_DEACTIVATE_OVERLAY 0
 #endif
 
 #ifndef    HISE_MIDIFX_PLUGIN

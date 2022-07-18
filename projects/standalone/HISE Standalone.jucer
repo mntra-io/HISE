@@ -144,7 +144,7 @@
     <VS2017 targetFolder="Builds/VisualStudio2017" smallIcon="ho3qQy" bigIcon="ho3qQy"
             useIPP="Sequential" IPPLibrary="Sequential" windowsTargetPlatformVersion="10.0.16299.0"
             extraDefs="USE_IPP=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=20000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1"
-            extraCompilerFlags="/bigobj /W0">
+            extraCompilerFlags="/bigobj /W0" IPP1ALibrary="true">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" winWarningLevel="2" generateManifest="1" winArchitecture="x64"
                        isDebug="1" optimisation="1" targetName="HISE Debug" headerPath="../../../../tools/SDK/ASIOSDK2.3/common"
@@ -266,7 +266,7 @@
     <MODULE id="juce_product_unlocking" showAllCode="1" useLocalCopy="0"
             useGlobalPath="0"/>
   </MODULES>
-  <JUCEOPTIONS USE_IPP="0" USE_BACKEND="1" USE_FRONTEND="0" USE_RAW_FRONTEND="0"
+  <JUCEOPTIONS USE_IPP="1" USE_BACKEND="1" USE_FRONTEND="0" USE_RAW_FRONTEND="0"
                IS_STANDALONE_APP="1" USE_COPY_PROTECTION="0" HI_EXPORT_DSP_LIBRARY="0"
                JUCE_LOAD_CURL_SYMBOLS_LAZILY="1" HI_SUPPORT_FULL_DYNAMICS_HLAC="1"
                ENABLE_PLOTTER="1" ENABLE_SCRIPTING_SAFE_CHECKS="1" ENABLE_SCRIPTING_BREAKPOINTS="1"
