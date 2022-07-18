@@ -55,7 +55,7 @@ void UserPresetHelpers::saveUserPreset(ModulatorSynthChain *chain, const String&
 #else
 
     File userPresetDir;
-    
+
     try
     {
         userPresetDir = FrontendHandler::getUserPresetDirectory();
@@ -68,15 +68,15 @@ void UserPresetHelpers::saveUserPreset(ModulatorSynthChain *chain, const String&
 
 #endif
 
-	
+
 	File presetFile = File(targetFile);
-	
+
     String existingNote;
 	StringArray existingTags;
-    
+
 #if CONFIRM_PRESET_OVERWRITE
 
-	if (presetFile.existsAsFile() && PresetHandler::showYesNoWindow("Confirm overwrite", "Do you want to overwrite the preset (Press cancel to create a new user preset?"))
+	if (presetFile.existsAsFile() && PresetHandler::showYesNoWindow("Overwrite Preset", "Do you want to overwrite the current preset? To create a new preset instead, you can do so in the preset browser."))
 	{
         existingNote = PresetBrowser::DataBaseHelpers::getNoteFromXml(presetFile);
         existingTags = PresetBrowser::DataBaseHelpers::getTagsFromXml(presetFile);
@@ -95,7 +95,7 @@ void UserPresetHelpers::saveUserPreset(ModulatorSynthChain *chain, const String&
 	}
 
 #endif
-	
+
 	if (!presetFile.existsAsFile())
 	{
 		auto preset = createUserPreset(chain);
@@ -239,11 +239,11 @@ juce::ValueTree UserPresetHelpers::createModuleStateTree(ModulatorSynthChain* ch
 void UserPresetHelpers::loadUserPreset(ModulatorSynthChain *chain, const File &fileToLoad)
 {
 	auto xml = XmlDocument::parse(fileToLoad);
-    
+
     if(xml != nullptr)
     {
 		ValueTree parent = ValueTree::fromXml(*xml);
-        
+
 		chain->getMainController()->getDebugLogger().logMessage("### Loading user preset " + fileToLoad.getFileNameWithoutExtension() + "\n");
 
         if (parent.isValid())
@@ -316,7 +316,7 @@ void UserPresetHelpers::restoreModuleStates(ModulatorSynthChain* chain, const Va
 
 #if !USE_MIDI_AUTOMATION_MIGRATION
 Identifier UserPresetHelpers::getAutomationIndexFromOldVersion(const String& /*oldVersion*/, int /*oldIndex*/)
-{	
+{
 	jassertfalse;
 
 	// This just returns the an empty Identifier. If you want to use this function, define USE_MIDI_AUTOMATION_MIGRATION
@@ -381,9 +381,9 @@ File UserPresetHelpers::getUserPresetFile(ModulatorSynthChain *chain, const Stri
 
 	ignoreUnused(chain);
 
-    
+
     File userPresetDir;
-    
+
     try
     {
         userPresetDir = FrontendHandler::getUserPresetDirectory();
@@ -393,8 +393,8 @@ File UserPresetHelpers::getUserPresetFile(ModulatorSynthChain *chain, const Stri
         chain->getMainController()->sendOverlayMessage(DeactiveOverlay::State::CriticalCustomErrorMessage, s);
         return File();
     }
-    
-    
+
+
 	return userPresetDir.getChildFile(fileNameWithoutExtension + ".preset");
 #endif
 }
@@ -420,7 +420,7 @@ ValueTree parseUserPreset(const File& f)
 	jassertfalse;
 
 	return {};
-	
+
 }
 
 ValueTree UserPresetHelpers::collectAllUserPresets(ModulatorSynthChain* chain, FileHandlerBase* currentExpansion)
@@ -428,7 +428,7 @@ ValueTree UserPresetHelpers::collectAllUserPresets(ModulatorSynthChain* chain, F
 	ValueTree v("UserPresets");
 
 	auto presetRoot = GET_PROJECT_HANDLER(chain).getSubDirectory(ProjectHandler::SubDirectories::UserPresets);
-	
+
 	if (currentExpansion != nullptr)
 		presetRoot = currentExpansion->getSubDirectory(FileHandlerBase::UserPresets);
 
@@ -478,7 +478,7 @@ ValueTree UserPresetHelpers::collectAllUserPresets(ModulatorSynthChain* chain, F
 			if (np.isValid())
 				b.addChild(np, -1, nullptr);
 		}
-			
+
 		b.setProperty("isDirectory", true, nullptr);
 		v.addChild(b, -1, nullptr);
 	}
@@ -586,7 +586,7 @@ void PresetHandler::saveProcessorAsPreset(Processor *p, const String &directoryP
 		debugToConsole(p, "Save " + p->getId() + " to " + directory.getFullPathName());
 
 		ValueTree v = p->exportAsValueTree();
-        
+
         v.setProperty("BuildVersion", BUILD_SUB_VERSION, nullptr);
 
 		FullInstrumentExpansion::setNewDefault(p->getMainController(), v);
@@ -607,7 +607,7 @@ String PresetHandler::getProcessorNameFromClipboard(const FactoryType *t)
 	auto xml = XmlDocument::parse(x);
 
 	if(xml == nullptr) return String();
-	
+
 #if USE_OLD_FILE_FORMAT
 
 	bool isProcessor = true;
@@ -621,7 +621,7 @@ String PresetHandler::getProcessorNameFromClipboard(const FactoryType *t)
 #endif
 
 	String id = xml->getStringAttribute("ID");
-	
+
 	if(!isProcessor || type == String() || id == String()) return String();
 
 	if (t->allowType(type)) return id;
@@ -646,7 +646,7 @@ String PresetHandler::getCustomName(const String &typeName, const String& thisMe
 	String message;
 
     const bool useCustomMessage = thisMessage.isNotEmpty();
-    
+
 	if (!useCustomMessage)
 	{
 		message << "Enter the unique Name for the ";
@@ -675,20 +675,20 @@ String PresetHandler::getCustomName(const String &typeName, const String& thisMe
 	nameWindow->addButton("Cancel", 0, KeyPress(KeyPress::escapeKey));
 
 #if HISE_IOS
-    
+
     const int x = nameWindow->getX();
     const int y = jmax<int>(10, nameWindow->getY() - 150);
-    
+
     nameWindow->setTopLeftPosition(x, y);
-    
+
 #endif
-    
+
 	nameWindow->getTextEditor("Name")->setSelectAllWhenFocused(true);
 	nameWindow->getTextEditor("Name")->grabKeyboardFocusAsync();
 
 	if(nameWindow->runModalLoop()) return nameWindow->getTextEditorContents("Name");
 	else return String();
-    
+
 };
 
 bool PresetHandler::showYesNoWindow(const String &title, const String &message, PresetHandler::IconType type)
@@ -707,24 +707,24 @@ bool PresetHandler::showYesNoWindow(const String &title, const String &message, 
 
 #if HISE_IOS
     return NativeMessageBox::showOkCancelBox(AlertWindow::AlertIconType::NoIcon, title, message);
-    
+
 #else
 
 	MessageManagerLock mm;
 
 	ScopedPointer<LookAndFeel> laf = createAlertWindowLookAndFeel();
 	ScopedPointer<MessageWithIcon> comp = new MessageWithIcon(type, laf, message);
-	
+
 	ScopedPointer<AlertWindow> nameWindow = new AlertWindow(title, "", AlertWindow::AlertIconType::NoIcon);
 
 	nameWindow->setLookAndFeel(laf);
 	nameWindow->addCustomComponent(comp);
-	
+
 	nameWindow->addButton("OK", 1, KeyPress(KeyPress::returnKey));
 	nameWindow->addButton("Cancel", 0, KeyPress(KeyPress::escapeKey));
 
 	return (nameWindow->runModalLoop() == 1);
-    
+
 #endif
 };
 
@@ -806,9 +806,9 @@ void ProjectHandler::createNewProject(File &workingDirectory, Component* )
 		while (workingDirectory.getNumberOfChildFiles(File::findFilesAndDirectories) != 0)
 		{
 			PresetHandler::showMessageWindow("Directory already exists", "The directory is not empty. Try another one...", PresetHandler::IconType::Warning);
-            
+
             FileChooser fc("Create new project directory");
-            
+
             if (fc.browseForDirectory())
             {
                 workingDirectory = fc.getResult();
@@ -826,7 +826,7 @@ void ProjectHandler::createNewProject(File &workingDirectory, Component* )
 
 		subDirectory.createDirectory();
 
-		
+
 
 	}
 
@@ -843,7 +843,7 @@ juce::Result ProjectHandler::setWorkingProject(const File &workingDirectory, boo
 
 	if (!isValidProjectFolder(workingDirectory))
 	{
-		return Result::fail(workingDirectory.getFullPathName() + "is not a valid project folder");	
+		return Result::fail(workingDirectory.getFullPathName() + "is not a valid project folder");
 	}
 
 	currentWorkDirectory = workingDirectory;
@@ -932,7 +932,7 @@ bool ProjectHandler::isValidProjectFolder(const File &file) const
 	const bool isDirectory = file.exists() && file.isDirectory();
 
 	if (!isDirectory) return false;
-	
+
 	for (int i = 0; i < (int)SubDirectories::numSubDirectories; i++)
 	{
 		File sub = file.getChildFile(getIdentifier((SubDirectories)i));
@@ -1092,13 +1092,13 @@ juce::String ProjectHandler::getPrivateKeyFromFile(const File& f)
 
 void ProjectHandler::checkActiveProject()
 {
-	
+
 }
 
 juce::File ProjectHandler::getAppDataRoot()
 {
 	const File::SpecialLocationType appDataDirectoryToUse = File::userApplicationDataDirectory;
-    
+
 #if JUCE_IOS
 	return File::getSpecialLocation(appDataDirectoryToUse).getChildFile("Application Support/");
 #elif JUCE_MAC
@@ -1157,7 +1157,7 @@ juce::String FrontendHandler::checkSampleReferences(MainController* mc, bool ret
 
     StringArray existingFiles;
     StringArray missingFiles;
-    
+
 	const File sampleLocation = getSampleLocationForCompiledPlugin();
 
 	sampleLocation.findChildFiles(sampleList, File::findFiles, true);
@@ -1165,7 +1165,7 @@ juce::String FrontendHandler::checkSampleReferences(MainController* mc, bool ret
 	String falseName;
 
     int numCorrectSampleMaps = 0;
-    
+
 	auto pool = mc->getCurrentSampleMapPool();
 
 	Array<PooledSampleMap> sampleMaps;
@@ -1260,9 +1260,9 @@ juce::File FrontendHandler::getEmbeddedResourceDirectory() const
 #else
     return getRootFolder();
 #endif
-    
+
 }
-    
+
 juce::File FrontendHandler::getSubDirectory(SubDirectories directory) const
 {
 	switch (directory)
@@ -1280,7 +1280,7 @@ juce::File FrontendHandler::getSubDirectory(SubDirectories directory) const
 	case hise::FileHandlerBase::numSubDirectories:
 	case hise::FileHandlerBase::MidiFiles:
 		jassertfalse;
-		break; 
+		break;
 	case hise::FileHandlerBase::UserPresets:
 		return getRootFolder().getChildFile("User Presets");
 	case hise::FileHandlerBase::Samples:
@@ -1296,32 +1296,32 @@ juce::File FrontendHandler::getSubDirectory(SubDirectories directory) const
 File FrontendHandler::getSampleLocationForCompiledPlugin()
 {
 #if USE_FRONTEND
-    
+
 #if HISE_IOS
-    
+
     File f = getResourcesFolder().getChildFile("Samples/");
-    
-    
+
+
     return f;
-    
+
 #endif
-    
-    
-    
+
+
+
 	File appDataDir = getAppDataDirectory();
 
 	// The installer should take care of creating the app data directory...
 	jassert(appDataDir.isDirectory());
-	
+
 #if JUCE_MAC && ENABLE_APPLE_SANDBOX
-    
+
     auto resourceDir = appDataDir.getChildFile("Resources/");
     if(!resourceDir.isDirectory())
     {
         resourceDir.createDirectory();
     }
-    
-    
+
+
     File childFile = ProjectHandler::getLinkFile(resourceDir);
 #else
     File childFile = ProjectHandler::getLinkFile(appDataDir);
@@ -1357,7 +1357,7 @@ File FrontendHandler::getSampleLocationForCompiledPlugin()
 #endif
 	}
 
-	
+
 
 #else
 	return File();
@@ -1475,7 +1475,7 @@ String FrontendHandler::getLicenseKeyExtension()
 void FrontendHandler::setSampleLocation(const File &newLocation)
 {
 #if USE_FRONTEND
-	
+
 	if (newLocation.isDirectory())
 		newLocation.createDirectory();
 
@@ -1500,14 +1500,14 @@ File FrontendHandler::getSampleLinkFile()
 	jassert(appDataDir.isDirectory());
 
 #if JUCE_MAC && ENABLE_APPLE_SANDBOX
-    
+
     auto resourceDir = appDataDir.getChildFile("Resources/");
     if(!resourceDir.isDirectory())
     {
         resourceDir.createDirectory();
     }
-    
-    
+
+
     File childFile = ProjectHandler::getLinkFile(resourceDir);
 #else
 	File childFile = ProjectHandler::getLinkFile(appDataDir);
@@ -1522,51 +1522,51 @@ File FrontendHandler::getSampleLinkFile()
 File FrontendHandler::getUserPresetDirectory()
 {
 #if HISE_IOS
-    
+
     NSString *appGroupID = [NSString stringWithUTF8String: getAppGroupId().toUTF8()];
-    
+
     NSFileManager* fm = [NSFileManager defaultManager];
     NSURL *containerURL = [fm containerURLForSecurityApplicationGroupIdentifier:appGroupID];
-    
+
     if(containerURL == nullptr)
     {
         // Oops, the App Group ID was not valid
         jassertfalse;
     }
-    
+
     String tmp = ([containerURL.relativeString UTF8String]);
     File resourcesRoot(tmp.substring(6));
-    
+
     File userPresetDirectory = resourcesRoot.getChildFile("UserPresets");
-    
+
     if(!userPresetDirectory.isDirectory())
     {
         File factoryPresets = File::getSpecialLocation(File::SpecialLocationType::currentApplicationFile).getChildFile("UserPresets/");
-        
-        
+
+
         if(!factoryPresets.isDirectory())
            throw String("Please start the Standalone app once to copy the user presets to the shared location");
-        
+
         jassert(factoryPresets.isDirectory());
-        
+
         userPresetDirectory.createDirectory();
-        
+
         factoryPresets.copyDirectoryTo(userPresetDirectory);
-        
-        
-        
+
+
+
     }
-    
+
     return userPresetDirectory;
-    
+
 #else
-    
-    
+
+
 	File presetDir = getAppDataDirectory().getChildFile("User Presets");
-	
+
 
 	return presetDir;
-    
+
 #endif
 }
 
@@ -1576,7 +1576,7 @@ File FrontendHandler::getAdditionalAudioFilesDirectory()
 #if USE_BACKEND
     return File();
 #else
-    
+
 #if USE_RELATIVE_PATH_FOR_AUDIO_FILES
 	File searchDirectory = getAppDataDirectory().getChildFile("AudioFiles");
 
@@ -1751,7 +1751,7 @@ void PresetHandler::checkProcessorIdsForDuplicates(Processor *rootProcessor, boo
 				}
 			}
 		}
-	} 
+	}
 	while (duplicatesFound);
 }
 
@@ -1777,26 +1777,26 @@ File PresetHandler::getDirectory(Processor *p)
 PopupMenu PresetHandler::getAllSavedPresets(int minIndex, Processor *p)
 {
     PopupMenu m;
-	
+
 #if HISE_IOS
-    
+
 #else
-	
+
 	File directoryToScan = PresetHandler::getDirectory(p);
-	
+
     for(auto f: RangedDirectoryIterator(directoryToScan, false, "*", File::TypesOfFileToFind::findFilesAndDirectories))
     {
         File directory = f.getFile();
-        
+
         if (directory.isDirectory())
         {
             PopupMenu sub;
-            
+
             for(auto pf: RangedDirectoryIterator(directory, false, "*.hip", File::TypesOfFileToFind::findFiles))
                 sub.addItem(minIndex++, pf.getFile().getFileNameWithoutExtension());
-            
+
             m.addSubMenu(directory.getFileName(), sub, true);
-            
+
         }
         else if (directory.hasFileExtension(".hip"))
         {
@@ -1805,20 +1805,20 @@ PopupMenu PresetHandler::getAllSavedPresets(int minIndex, Processor *p)
     }
 
 #endif
-    
+
 	return m;
 }
 
 File PresetHandler::getPresetFileFromMenu(int menuIndexDelta, Processor *parent)
 {
 	File directory = getDirectory(parent);
-	
+
 	int i = 0;
 
     for(auto de: RangedDirectoryIterator(directory, false, "*", File::TypesOfFileToFind::findFilesAndDirectories))
     {
         auto fileToCheck = de.getFile();
-        
+
         if (fileToCheck.isDirectory())
         {
             for(auto pf: RangedDirectoryIterator(fileToCheck, false, "*.hip", File::TypesOfFileToFind::findFiles))
@@ -1827,14 +1827,14 @@ File PresetHandler::getPresetFileFromMenu(int menuIndexDelta, Processor *parent)
                 i++;
             }
         }
-        
+
         else if (fileToCheck.hasFileExtension(".hip"))
         {
             if (i == menuIndexDelta) return fileToCheck;
             i++;
         }
     }
-	
+
 
 	return File();
 }
@@ -1855,7 +1855,7 @@ Processor *PresetHandler::createProcessorFromPreset(int menuIndexDelta, Processo
 		return nullptr;
 	}
 
-	
+
 }
 
 
@@ -1883,10 +1883,10 @@ Processor* PresetHandler::createProcessorFromClipBoard(Processor *parent)
 		};
 
 		String name = v.getProperty("ID", "Unnamed");
-		
+
 		Identifier type = v.getProperty("Type", String()).toString();
 		FactoryType *t = dynamic_cast<Chain*>(parent)->getFactoryType();
-		
+
 		// Look in every processor when inserting from clipboard.
 
 		const bool validType = type.isValid();
@@ -1901,7 +1901,7 @@ Processor* PresetHandler::createProcessorFromClipBoard(Processor *parent)
 		Processor *p = MainController::createProcessor(t, type.toString(), name);
 		p->restoreFromValueTree(v);
 
-		
+
 		debugToConsole(p, name + " added from Clipboard.");
 
 		return p;
@@ -2026,22 +2026,22 @@ Processor *PresetHandler::loadProcessorFromFile(File fileName, Processor *parent
 		return nullptr;
 	};
 
-	Processor *p = MainController::createProcessor(dynamic_cast<Chain*>(parent)->getFactoryType(), 
-																			String(v.getType()), 
+	Processor *p = MainController::createProcessor(dynamic_cast<Chain*>(parent)->getFactoryType(),
+																			String(v.getType()),
 																			name);
 #else
-	Processor *p = MainController::createProcessor(dynamic_cast<Chain*>(parent)->getFactoryType(), 
-																			Identifier(v.getProperty("Type", String())).toString(), 
+	Processor *p = MainController::createProcessor(dynamic_cast<Chain*>(parent)->getFactoryType(),
+																			Identifier(v.getProperty("Type", String())).toString(),
 																			name);
 #endif
 
-	
+
 
 	if(p != nullptr)
 	{
 		p->restoreFromValueTree(v);
-		
-		
+
+
 
 		debugToConsole(parent, fileName.getFileNameWithoutExtension() + " was loaded");
 		return p;
@@ -2051,7 +2051,7 @@ Processor *PresetHandler::loadProcessorFromFile(File fileName, Processor *parent
 		debugToConsole(parent, "Error with loading " +  fileName.getFileNameWithoutExtension());
 
 		return nullptr;
-	}	
+	}
 }
 
 
@@ -2066,7 +2066,7 @@ void PresetHandler::buildProcessorDataBase(Processor *root)
 	if (f.existsAsFile()) return;
 
 	ScopedPointer<XmlElement> xml = new XmlElement("Parameters");
-	
+
 
 	ScopedPointer<FactoryType> t = new ModulatorSynthChainFactoryType(NUM_POLYPHONIC_VOICES, root);
 
@@ -2098,7 +2098,7 @@ void PresetHandler::buildProcessorDataBase(Processor *root)
 
 XmlElement * PresetHandler::buildFactory(FactoryType *t, const String &factoryName)
 {
-	
+
 	XmlElement *xml = new XmlElement(factoryName);
 
 	for (int j = 0; j < t->getNumProcessors(); j++)
@@ -2117,8 +2117,8 @@ XmlElement * PresetHandler::buildFactory(FactoryType *t, const String &factoryNa
 
 			child->setAttribute(Identifier("id" + String(i)), id.toString());
 		}
-        
-        
+
+
 
 		xml->addChildElement(child);
 	}
@@ -2255,7 +2255,7 @@ void PresetHandler::checkMetaParameters(Processor* p)
 					newValue = Random::getSystemRandom().nextInt({ 1, max });
 				}
 
-				
+
 
 				auto index = content->getComponentIndex(id);
 				values->setProperty(id, newValue);
@@ -2286,7 +2286,7 @@ void PresetHandler::checkMetaParameters(Processor* p)
 
 	}
 
-	
+
 }
 
 void PresetHandler::writeSampleMapsToValueTree(ValueTree &sampleMapTree, ValueTree &preset)
@@ -2318,11 +2318,11 @@ void PresetHandler::writeSampleMapsToValueTree(ValueTree &sampleMapTree, ValueTr
 AboutPage::AboutPage()
 {
 #if USE_BACKEND
-    
-    
-    
+
+
+
 #endif
-    
+
     addAndMakeVisible(checkUpdateButton = new TextButton("Check Updates"));
 };
 
@@ -2382,7 +2382,7 @@ void AboutPage::refreshText()
 
 	Font normal = GLOBAL_FONT().withHeight(15.0f);
 	Font bold = GLOBAL_BOLD_FONT().withHeight(15.0f);
-	
+
 
 #if USE_BACKEND
 
@@ -2420,7 +2420,7 @@ void AboutPage::refreshText()
 
 #if USE_COPY_PROTECTION
 
-	
+
 
 #endif
 
@@ -2569,7 +2569,7 @@ String FileHandlerBase::getFileNameCrossPlatform(String pathName, bool includePa
 		if (includeParentDirectory)
 			return f.getRelativePathFrom(f.getParentDirectory()).replace("\\", "/");
 		else
-			return f.getFileName();	
+			return f.getFileName();
 	}
 
 	if (isAbsolutePathCrossPlatform(pathName))
@@ -2592,7 +2592,7 @@ String FileHandlerBase::getFileNameCrossPlatform(String pathName, bool includePa
 		// Most likely a Pool reference...
 		return pathName.fromFirstOccurrenceOf("}", false, false);
 	}
-	
+
 	return pathName;
 }
 
@@ -2644,7 +2644,7 @@ void FileHandlerBase::createLinkFileInFolder(const File& source, const File& tar
 void FileHandlerBase::createLinkFileToGlobalSampleFolder(const String& suffix)
 {
 	auto linkFile = getLinkFile(getRootFolder().getChildFile(getIdentifier(Samples)));
-	
+
 	if (!linkFile.existsAsFile())
 		linkFile.create();
 
@@ -2679,9 +2679,9 @@ juce::String FileHandlerBase::getWildcardForFiles(SubDirectories directory)
 	case hise::FileHandlerBase::XMLPresetBackups:		return "*.xml";
 	case hise::FileHandlerBase::MidiFiles:				return "*.mid;*.MID";
 	case hise::FileHandlerBase::DspNetworks:			return "*.xml";
-	case hise::FileHandlerBase::Binaries:				
+	case hise::FileHandlerBase::Binaries:
 	case hise::FileHandlerBase::AdditionalSourceCode:
-	case hise::FileHandlerBase::numSubDirectories:		
+	case hise::FileHandlerBase::numSubDirectories:
 	default:											return "*.*";
 	}
 }
@@ -2800,7 +2800,7 @@ juce::Result FileHandlerBase::updateSampleMapIds(bool silentMode)
 							{
 								f.moveFileTo(newFileName);
 
-								
+
 
 								if(!silentMode)
 									PresetHandler::showMessageWindow("Sample file renamed", "The sample with the name " + f.getFileName() + " was renamed to " + newFileName.getFileName(), PresetHandler::IconType::Info);
@@ -3046,7 +3046,7 @@ MessageWithIcon::MessageWithIcon(PresetHandler::IconType type, LookAndFeel* laf,
 		s = laf_->getAlertWindowMarkdownStyleData();
 		image = laf_->createIcon(type);
 	}
-		
+
 	r.setStyleData(s);
 
 	auto w = jmin(s.f.getStringWidthFloat(message) + 30.0f, 600.0f);
@@ -3103,11 +3103,11 @@ juce::Image MessageWithIcon::LookAndFeelMethods::createIcon(PresetHandler::IconT
 	case PresetHandler::IconType::Warning: return ImageCache::getFromMemory(BinaryData::infoWarning_png, BinaryData::infoWarning_pngSize);
 	case PresetHandler::IconType::Question: return ImageCache::getFromMemory(BinaryData::infoQuestion_png, BinaryData::infoQuestion_pngSize);
 	case PresetHandler::IconType::Error: return ImageCache::getFromMemory(BinaryData::infoError_png, BinaryData::infoError_pngSize);
-	case PresetHandler::IconType::numIconTypes: 
+	case PresetHandler::IconType::numIconTypes:
 	default:
 		jassertfalse;
-		return Image(); 
-		
+		return Image();
+
 	}
 }
 
