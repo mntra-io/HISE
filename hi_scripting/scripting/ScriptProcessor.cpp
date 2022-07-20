@@ -1821,6 +1821,8 @@ Result JavascriptThreadPool::executeQueue(const Task::Type& t, PendingCompilatio
 	{
 		CompilationTask ct;
 
+		ScopedLock sl(getLookAndFeelRenderLock());
+
 		allowSleep = true;
 
 		while (compilationQueue.pop(ct))
@@ -1833,10 +1835,11 @@ Result JavascriptThreadPool::executeQueue(const Task::Type& t, PendingCompilatio
 			killVoicesAndExtendTimeOut(ct.getFunction().getProcessor());
 
 			r = ct.call();
-			pendingCompilations.addIfNotAlreadyThere(ct.getFunction().getProcessor());
-		}
 
-		
+			pendingCompilations.addIfNotAlreadyThere(ct.getFunction().getProcessor());
+
+			wait(100);
+		}
 
 		return r;
 	}

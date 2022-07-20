@@ -875,6 +875,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_2(Engine, matchesRegex);
 	API_METHOD_WRAPPER_2(Engine, getRegexMatches);
 	API_METHOD_WRAPPER_2(Engine, doubleToString);
+	API_METHOD_WRAPPER_4(Engine, getStringWidth);
 	API_METHOD_WRAPPER_1(Engine, intToHexString);
 	API_METHOD_WRAPPER_0(Engine, getOS);
 	API_METHOD_WRAPPER_0(Engine, getSystemStats);
@@ -1008,6 +1009,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_2(getRegexMatches);
 	ADD_API_METHOD_2(doubleToString);
 	ADD_API_METHOD_1(intToHexString);
+	ADD_API_METHOD_4(getStringWidth);
 	ADD_API_METHOD_1(getMasterPeakLevel);
 	ADD_API_METHOD_0(getOS);
 	ADD_API_METHOD_0(getSystemStats);
@@ -2872,6 +2874,13 @@ String ScriptingApi::Engine::doubleToString(double value, int digits)
 String ScriptingApi::Engine::intToHexString(int value)
 {
     return String::toHexString(value);
+}
+
+float ScriptingApi::Engine::getStringWidth(String text, String fontName, float fontSize, float fontSpacing)
+{
+	auto f = getScriptProcessor()->getMainController_()->getFontFromString(fontName, fontSize).withExtraKerningFactor(fontSpacing);
+
+	return f.getStringWidthFloat(text);
 }
 
 void ScriptingApi::Engine::quit()

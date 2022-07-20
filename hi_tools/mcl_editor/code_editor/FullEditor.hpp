@@ -32,6 +32,20 @@ namespace TextEditorSettings
     DECLARE_ID(AutoAutocomplete);
     DECLARE_ID(FixWeirdTab);
 }
+
+namespace TextEditorShortcuts
+{
+	DECLARE_ID(show_fold_map);
+	DECLARE_ID(show_autocomplete);
+	DECLARE_ID(goto_definition);
+	DECLARE_ID(show_search);
+	DECLARE_ID(show_full_search);
+	DECLARE_ID(breakpoint_resume);
+	DECLARE_ID(show_search_replace);
+	DECLARE_ID(add_autocomplete_template);
+	DECLARE_ID(clear_autocomplete_templates);
+}
+
 #undef DECLARE_ID
 
 
@@ -161,6 +175,8 @@ struct FullEditor: public Component,
 	{
 		editor.gutter.setBreakpointsEnabled(shouldBeEnabled);
 	}
+
+	static void initKeyPresses(Component* root);
 
 	static mcl::FoldableLineRange::List createMarkdownLineRange(const CodeDocument& doc);
 
