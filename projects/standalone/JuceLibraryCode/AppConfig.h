@@ -142,6 +142,10 @@
  //#define FORCE_INPUT_CHANNELS 0
 #endif
 
+#ifndef    HISE_DEACTIVATE_OVERLAY
+ //#define HISE_DEACTIVATE_OVERLAY 0
+#endif
+
 #ifndef    HISE_MIDIFX_PLUGIN
  //#define HISE_MIDIFX_PLUGIN 0
 #endif
