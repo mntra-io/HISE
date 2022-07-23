@@ -2038,7 +2038,11 @@ public:
 			setValue((int)getScriptObjectProperty(defaultValue));
 		}
 
+		void setValue(var newValue) override;
+
 		// ============================================================================ API Methods
+
+
 
 		/** Turns this viewport into a table with the given metadata. This can only be done in the onInit callback. */
 		void setTableMode(var tableMetadata);
@@ -2051,6 +2055,9 @@ public:
 
 		/** Set a function that is notified for all user interaction with the table. */
 		void setTableCallback(var callbackFunction);
+
+		/** Specify the event types that should trigger a setValue() callback. */
+		void setEventTypesForValueCallback(var eventTypeList);
 
 		// ============================================================================ API Methods
 
@@ -2354,6 +2361,8 @@ public:
 	ScriptComponent * getComponentWithName(const Identifier &componentName);
 	const ScriptComponent * getComponentWithName(const Identifier &componentName) const;
 	int getComponentIndex(const Identifier &componentName) const;
+
+	StringArray getMacroNames();
 
 	bool hasComponent(const ScriptComponent* sc) const { return components.indexOf(sc) != -1; };
 
