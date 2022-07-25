@@ -448,13 +448,29 @@ namespace ScriptingObjects
 		var args[2];
 	};
 
-	struct ScriptBroadcaster : public ConstScriptingObject
+	struct ScriptBroadcaster : public ConstScriptingObject,
+							   public WeakCallbackHolder::CallableObject,
+							   private Timer
 	{
 		ScriptBroadcaster(ProcessorWithScriptingContent* p, const var& defaultValue);;
 
 		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("Broadcaster"); }
 
 		Component* createPopupComponent(const MouseEvent& e, Component* parent) override;
+
+		Result call(HiseJavascriptEngine* engine, const var::NativeFunctionArgs& args, var* returnValue) override;
+
+		int getNumChildElements() const override { return defaultValues.size(); }
+
+		DebugInformationBase* getChildElement(int index) override;
+
+		bool isAutocompleteable() const override { return false; }
+
+		void timerCallback() override
+		{
+			sendMessage(pendingData, false);
+			stopTimer();
+		}
 
 		// =============================================================================== API Methods
 
@@ -467,22 +483,41 @@ namespace ScriptingObjects
 		/** Sends a message to all listeners. the length of args must match the default value list. if isSync is false, then it will be deferred. */
 		void sendMessage(var args, bool isSync);
 
+		/** Sends a message to all listeners with a delay. */
+		void sendMessageWithDelay(var args, int delayInMilliseconds);
+
 		/** Resets the state. */
 		void reset();
 
 		/** Returns the current value. */
 		var getCurrentValue() const;
 		
+		/** Registers this broadcaster to be called when one of the properties of the given components change. */
+		void attachToComponentProperties(var componentIds, var propertyIds);
+
+		/** Registers this broadcaster to be called when the value of the given components change. */
+		void attachToComponentValue(var componentIds);
+
+		/** Registers this broadcaster to be notified for mouse events for the given components. */
+		void attachToComponentMouseEvents(var componentIds, var callbackLevel);
+
 		// ===============================================================================
 
 	private:
+
+		var pendingData;
+
+		Array<Identifier> argumentIds;
+
+		SimpleReadWriteLock lastValueLock;
+
+		String sourceType;
 
 		uint32 lastMessageTime = 0;
 
 		bool triggerBreakpoint = false;
 
 		struct Display;
-
 		static var getArg(const var& v, int idx);
 
 		Result sendInternal(const Array<var>& args);
@@ -495,6 +530,11 @@ namespace ScriptingObjects
 		var keepers;
 
 		struct Wrapper;
+
+		struct ScriptComponentPropertyEvent;
+		OwnedArray<ScriptComponentPropertyEvent> eventSources;
+		
+		struct ProcessorBypassEvent;
 
 		struct Item
 		{
@@ -517,6 +557,8 @@ namespace ScriptingObjects
 		};
 
 		OwnedArray<Item> items;
+
+		Result lastResult;
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptBroadcaster);
 	};
