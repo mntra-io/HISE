@@ -450,6 +450,7 @@ namespace ScriptingObjects
 
 	struct ScriptBroadcaster : public ConstScriptingObject,
 							   public WeakCallbackHolder::CallableObject,
+							   public AssignableDotObject,
 							   private Timer
 	{
 		ScriptBroadcaster(ProcessorWithScriptingContent* p, const var& defaultValue);;
@@ -464,7 +465,7 @@ namespace ScriptingObjects
 
 		DebugInformationBase* getChildElement(int index) override;
 
-		bool isAutocompleteable() const override { return false; }
+		bool isAutocompleteable() const override { return true; }
 
 		void timerCallback() override
 		{
@@ -489,9 +490,6 @@ namespace ScriptingObjects
 		/** Resets the state. */
 		void reset();
 
-		/** Returns the current value. */
-		var getCurrentValue() const;
-		
 		/** Registers this broadcaster to be called when one of the properties of the given components change. */
 		void attachToComponentProperties(var componentIds, var propertyIds);
 
@@ -501,9 +499,18 @@ namespace ScriptingObjects
 		/** Registers this broadcaster to be notified for mouse events for the given components. */
 		void attachToComponentMouseEvents(var componentIds, var callbackLevel);
 
+		/** Registers this broadcaster to be notified when a button of a radio group is clicked. */
+		void attachToRadioGroup(int radioGroupIndex);
+
 		// ===============================================================================
 
+		bool assign(const Identifier& id, const var& newValue) override;
+
+		var getDotProperty(const Identifier& id) const override;
+
 	private:
+
+		void handleDebugStuff();
 
 		var pendingData;
 
@@ -534,6 +541,8 @@ namespace ScriptingObjects
 		struct ScriptComponentPropertyEvent;
 		OwnedArray<ScriptComponentPropertyEvent> eventSources;
 		
+		var radioButtons;
+
 		struct ProcessorBypassEvent;
 
 		struct Item
