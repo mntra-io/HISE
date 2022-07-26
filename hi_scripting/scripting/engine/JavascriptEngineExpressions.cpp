@@ -16,7 +16,17 @@ struct HiseJavascriptEngine::RootObject::UnqualifiedName : public Expression
 {
 	UnqualifiedName(const CodeLocation& l, const Identifier& n, bool isFunction) noexcept : Expression(l), name(n), allowUnqualifiedDefinition(isFunction) {}
 
-	var getResult(const Scope& s) const override  { return s.findSymbolInParentScopes(name); }
+	var getResult(const Scope& s) const override  
+	{ 
+		static const Identifier this_("this");
+
+		auto v = s.findSymbolInParentScopes(name); 
+
+		if (v.isUndefined() && name == this_)
+			return s.root->getLocalThisObject();
+
+		return v;
+	}
 
 	Statement* getChildStatement(int) override { return nullptr; };
 
@@ -65,11 +75,15 @@ struct HiseJavascriptEngine::RootObject::ConstReference : public Expression
 
 	var getResult(const Scope& /*s*/) const override
 	{
-		return ns->constObjects.getValueAt(index);
+		if(ns != nullptr)
+			return ns->constObjects.getValueAt(index);
+
+		return var();
 	}
 
 	bool isConstant() const override
 	{
+		jassert(ns != nullptr);
 		auto v = ns->constObjects.getValueAt(index);
 
 		// objects and arrays are not constant...
@@ -83,9 +97,8 @@ struct HiseJavascriptEngine::RootObject::ConstReference : public Expression
 
 	Statement* getChildStatement(int) override { return nullptr; };
 
-	JavascriptNamespace* ns;
+	WeakReference<JavascriptNamespace> ns;
 	int index;
-
 };
 
 
@@ -498,6 +511,7 @@ struct HiseJavascriptEngine::RootObject::ArrayDeclaration : public Expression
 //==============================================================================
 struct HiseJavascriptEngine::RootObject::FunctionObject : public DynamicObject,
 														  public DebugableObject,
+														  public WeakCallbackHolder::CallableObject,
 														  public CyclicReferenceCheckBase
 {
 	FunctionObject() noexcept{}

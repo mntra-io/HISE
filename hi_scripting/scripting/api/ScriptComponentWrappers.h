@@ -282,6 +282,8 @@ public:
 		DropShadower shadow;
 	};
 
+	struct AdditionalMouseCallback;
+
 	/** Don't forget to deregister the listener here. */
 	virtual ~ScriptCreatedComponentWrapper();;
 
@@ -422,7 +424,7 @@ private:
 
 	const int index;
 
-	
+	ScopedPointer<AdditionalMouseCallback> mouseCallback;
 	
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ScriptCreatedComponentWrapper)
 	JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptCreatedComponentWrapper);
@@ -662,7 +664,8 @@ public:
 	};
 
 
-	class ViewportWrapper : public ScriptCreatedComponentWrapper
+	class ViewportWrapper : public ScriptCreatedComponentWrapper,
+							public juce::ScrollBar::Listener
 	{
 	public:
 
@@ -683,6 +686,10 @@ public:
 		static void tableUpdated(ViewportWrapper& w, int index);
 
 	private:
+
+		void scrollBarMoved(ScrollBar* scrollBarThatHasMoved,
+			double newRangeStart) override;
+
 
 		void updateItems(ScriptingApi::Content::ScriptedViewport * vpc);
 		void updateColours();
@@ -727,6 +734,8 @@ public:
 		Mode mode;
 
 		ScriptTableListModel::Ptr tableModel;
+
+		Component::SafePointer<juce::Viewport> vp;
 
 		ScopedPointer<ColumnListBoxModel> model;
 		ScopedPointer<LookAndFeel> slaf;

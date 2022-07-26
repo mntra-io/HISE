@@ -411,6 +411,13 @@ bool ScriptingObjects::ScriptFile::writeAsXmlFile(var jsonDataToBeXmled, String 
 {
 	ScopedPointer<XmlElement> xml = new XmlElement(tagName);
 
+	auto v = ValueTreeConverters::convertDynamicObjectToValueTree(jsonDataToBeXmled, Identifier(tagName));
+
+	auto s = v.createXml()->createDocument("");
+
+	return writeString(s);
+
+#if 0
 	if (auto obj = jsonDataToBeXmled.getDynamicObject())
 	{
 		for (const auto& p : obj->getProperties())
@@ -426,6 +433,7 @@ bool ScriptingObjects::ScriptFile::writeAsXmlFile(var jsonDataToBeXmled, String 
 
 	auto content = xml->createDocument("");
 	return writeString(content);
+#endif
 }
 
 
@@ -436,22 +444,8 @@ juce::var ScriptingObjects::ScriptFile::loadFromXmlFile()
 
 	if (auto xml = XmlDocument::parse(s))
 	{
-		DynamicObject::Ptr p = new DynamicObject();
-
-		for (int i = 0; i < xml->getNumAttributes(); i++)
-		{
-			auto id = xml->getAttributeName(i);
-			auto sv = xml->getStringAttribute(id);
-
-			if (sv.containsOnly("1234567890"))
-				p->setProperty(Identifier(id), sv.getIntValue());
-			else if (sv.containsOnly("1234567890."))
-				p->setProperty(Identifier(id), sv.getDoubleValue());
-			else
-				p->setProperty(Identifier(id), sv);
-		}
-
-		return var(p.get());
+		auto v = ValueTree::fromXml(*xml);
+		return ValueTreeConverters::convertValueTreeToDynamicObject(v);
 	}
 
 	return var();
@@ -1614,8 +1608,6 @@ var ScriptingObjects::ScriptRingBuffer::createPath(var dstArea, var sourceRange,
 
 	if (SimpleRingBuffer::Ptr buffer = getRingBuffer())
 	{
-		
-
 		auto maxSize = hToUse = getRingBuffer()->getReadBuffer().getNumSamples();
 
 		if (hToUse == -1)
@@ -1626,7 +1618,7 @@ var ScriptingObjects::ScriptRingBuffer::createPath(var dstArea, var sourceRange,
 
 		SimpleReadWriteLock::ScopedReadLock sl(buffer->getDataLock());
 
-		sp->getPath() = getRingBuffer()->getPropertyObject()->createPath(s_range, valueRange, dst);
+		sp->getPath() = getRingBuffer()->getPropertyObject()->createPath(s_range, valueRange, dst, startValue);
 	}
 
 	return var(sp);
@@ -4379,8 +4371,8 @@ void ScriptingObjects::TimerObject::stopTimer()
 void ScriptingObjects::TimerObject::setTimerCallback(var callbackFunction)
 {
 	tc = WeakCallbackHolder(getScriptProcessor(), callbackFunction, 0);
-	tc.setThisObject(this);
 	tc.incRefCount();
+	tc.setThisObject(this);
 }
 
 
@@ -7084,6 +7076,7 @@ struct ScriptingObjects::ScriptBuilder::Wrapper
 {
 	API_METHOD_WRAPPER_4(ScriptBuilder, create);
 	API_METHOD_WRAPPER_2(ScriptBuilder, get);
+	API_METHOD_WRAPPER_1(ScriptBuilder, getExisting);
 	API_VOID_METHOD_WRAPPER_2(ScriptBuilder, setAttributes);
 	API_VOID_METHOD_WRAPPER_0(ScriptBuilder, clear);
 	API_VOID_METHOD_WRAPPER_0(ScriptBuilder, flush);
@@ -7100,6 +7093,7 @@ ScriptingObjects::ScriptBuilder::ScriptBuilder(ProcessorWithScriptingContent* p)
 	ADD_API_METHOD_0(clear);
 	ADD_API_METHOD_4(create);
 	ADD_API_METHOD_2(get);
+	ADD_API_METHOD_1(getExisting);
 	ADD_API_METHOD_2(setAttributes);
 	ADD_API_METHOD_0(flush);
 	ADD_API_METHOD_2(connectToScript);
@@ -7264,6 +7258,25 @@ juce::var ScriptingObjects::ScriptBuilder::get(int buildIndex, String interfaceT
 
 	}
 	return var();
+}
+
+int ScriptingObjects::ScriptBuilder::getExisting(String processorId)
+{
+	for (auto p : createdModules)
+	{
+		if (p->getId() == processorId)
+			return createdModules.indexOf(p);
+	}
+
+	auto pToAdd = ProcessorHelpers::getFirstProcessorWithName(getScriptProcessor()->getMainController_()->getMainSynthChain(), processorId);
+
+	if (pToAdd == nullptr)
+	{
+		reportScriptError("Can't find processor with ID " + processorId);
+	}
+
+	createdModules.add(pToAdd);
+	return createdModules.size() - 1;
 }
 
 void ScriptingObjects::ScriptBuilder::setAttributes(int buildIndex, var attributeValues)
@@ -7508,6 +7521,747 @@ void ScriptingObjects::ScriptErrorHandler::sendErrorForHighestState()
 ScriptingObjects::ScriptErrorHandler::~ScriptErrorHandler()
 {
 	getScriptProcessor()->getMainController_()->removeOverlayListener(this);
+}
+
+struct ScriptingObjects::ScriptBroadcaster::Wrapper
+{
+	API_METHOD_WRAPPER_2(ScriptBroadcaster, addListener);
+	API_METHOD_WRAPPER_1(ScriptBroadcaster, removeListener);
+	API_VOID_METHOD_WRAPPER_0(ScriptBroadcaster, reset);
+	API_METHOD_WRAPPER_0(ScriptBroadcaster, getCurrentValue);
+	API_VOID_METHOD_WRAPPER_2(ScriptBroadcaster, sendMessage);
+	API_VOID_METHOD_WRAPPER_2(ScriptBroadcaster, sendMessageWithDelay);
+	API_VOID_METHOD_WRAPPER_2(ScriptBroadcaster, attachToComponentProperties);
+	API_VOID_METHOD_WRAPPER_2(ScriptBroadcaster, attachToComponentMouseEvents);
+	API_VOID_METHOD_WRAPPER_1(ScriptBroadcaster, attachToComponentValue);
+};
+
+struct ScriptingObjects::ScriptBroadcaster::Display: public Component,
+													 public ComponentForDebugInformation,
+													 public PooledUIUpdater::SimpleTimer,
+													 public Label::Listener,
+													 public PathFactory
+{
+	static constexpr int HeaderHeight = 28;
+	static constexpr int RowHeight = 28;
+	static constexpr int Width = 400;
+
+	Display(ScriptBroadcaster* sb) :
+		ComponentForDebugInformation(sb, dynamic_cast<ApiProviderBase::Holder*>(sb->getScriptProcessor())),
+		SimpleTimer(sb->getScriptProcessor()->getMainController_()->getGlobalUIUpdater()),
+		resetButton("reset", nullptr, *this),
+		breakpointButton("breakpoint", nullptr, *this),
+		input()
+	{
+		setName(getTitle());
+		rebuild(*sb);
+
+		resetButton.onClick = [this]()
+		{
+			if (auto obj = getObject<ScriptBroadcaster>())
+			{
+				obj->reset();
+			}
+		};
+
+		breakpointButton.setToggleModeWithColourChange(true);
+
+		breakpointButton.onClick = [this]()
+		{
+			if (auto obj = getObject<ScriptBroadcaster>())
+			{
+				obj->triggerBreakpoint = breakpointButton.getToggleState();
+			}
+		};
+
+		addAndMakeVisible(resetButton);
+		addAndMakeVisible(breakpointButton);
+
+		input.setColour(TextEditor::ColourIds::textColourId, Colours::black);
+		input.setColour(Label::ColourIds::backgroundColourId, Colours::white.withAlpha(0.35f));
+		input.setColour(TextEditor::ColourIds::focusedOutlineColourId, Colour(SIGNAL_COLOUR));
+		input.setColour(Label::ColourIds::outlineWhenEditingColourId, Colour(SIGNAL_COLOUR));
+		input.setColour(TextEditor::ColourIds::outlineColourId, Colours::black.withAlpha(0.8f));
+		input.setColour(TextEditor::ColourIds::highlightColourId, Colour(SIGNAL_COLOUR));
+		input.setFont(GLOBAL_BOLD_FONT());
+
+		input.setEditable(true, true);
+		addAndMakeVisible(input);
+		input.setFont(GLOBAL_MONOSPACE_FONT());
+		input.addListener(this);
+	};
+
+	String getTextEditorAsCode() const
+	{
+		String c = "[";
+		c << input.getText() << "]";
+		return c;
+	}
+
+	
+
+	void labelTextChanged(Label*) override
+	{
+		auto c = getTextEditorAsCode();
+
+		auto r = Result::ok();
+
+		juce::JavascriptEngine engine;
+		auto values = engine.evaluate(c, &r);
+
+		if (r.wasOk())
+		{
+			if (auto obj = getObject<ScriptBroadcaster>())
+			{
+				try
+				{
+					obj->sendMessage(values, false);
+				}
+				catch (String& message)
+				{
+					r = Result::fail(message);
+				}
+			}
+		}
+
+		if (!r.wasOk())
+			PresetHandler::showMessageWindow("Error at evaluating input", r.getErrorMessage(), PresetHandler::IconType::Error);
+	}
+
+	void updateTextEditor(ScriptBroadcaster& b)
+	{
+		if (input.isBeingEdited())
+			return;
+
+		auto t = JSON::toString(var(b.lastValues), true);
+		input.setText(t.fromFirstOccurrenceOf("[", false, false).upToLastOccurrenceOf("]", false, false), dontSendNotification);
+	}
+
+	struct Row : public Component
+	{
+		Row(Item* i, Display& parent, JavascriptProcessor* jp_) :
+			item(i),
+			jp(jp_),
+			gotoButton("workspace", nullptr, parent),
+			powerButton("enable", nullptr, parent)
+		{
+			gotoButton.onClick = [this]()
+			{
+				if(item != nullptr)
+					DebugableObject::Helpers::gotoLocation(nullptr, jp, item->location);
+			};
+
+			powerButton.onClick = [this]()
+			{
+				if(item != nullptr)
+					item->enabled = powerButton.getToggleState();
+			};
+
+			powerButton.setToggleModeWithColourChange(true);
+			powerButton.setToggleStateAndUpdateIcon(i->enabled);
+
+			addAndMakeVisible(gotoButton);
+			addAndMakeVisible(powerButton);
+		}
+
+		String getText() const
+		{
+			if (item == nullptr)
+				return "Dangling";
+
+			auto o = item->obj;
+
+			if (o.isString())
+				return o.toString();
+
+			if (auto d = o.getDynamicObject())
+				return JSON::toString(o, true);
+
+			if (auto d = dynamic_cast<DebugableObjectBase*>(o.getObject()))
+				return d->getDebugName();
+
+			return {};
+		}
+
+		void paint(Graphics& g) override
+		{
+			g.setColour(Colours::white.withAlpha(0.1f));
+			
+			auto b = getLocalBounds().toFloat().reduced(1.0f);
+
+			g.fillRoundedRectangle(b, 3.0f);
+			g.drawRoundedRectangle(b, 3.0f, 1.0f);
+
+			g.setFont(GLOBAL_MONOSPACE_FONT());
+			g.setColour(Colours::white.withAlpha(.7f));
+
+			b.removeFromLeft(RowHeight);
+
+			g.drawText(getText(), b.reduced(10.0f, 0.0f), Justification::left);
+		}
+
+		void resized() override
+		{
+			powerButton.setBounds(getLocalBounds().removeFromLeft(RowHeight).reduced(3));
+			gotoButton.setBounds(getLocalBounds().removeFromRight(RowHeight).reduced(3));
+		}
+
+		JavascriptProcessor* jp;
+		HiseShapeButton gotoButton;
+		HiseShapeButton powerButton;
+		WeakReference<Item> item;
+	};
+
+	void rebuild(ScriptBroadcaster& b)
+	{
+		rows.clear();
+
+		auto jp = dynamic_cast<JavascriptProcessor*>(b.getScriptProcessor());
+
+		for (auto i : b.items)
+		{
+			rows.add(new Row(i, *this, jp));
+			addAndMakeVisible(rows.getLast());
+		}
+
+		setSize(Width, HeaderHeight + RowHeight * rows.size() + 32);
+		resized();
+	}
+
+	void resized() override
+	{
+		auto b = getLocalBounds();
+
+		auto top = b.removeFromTop(HeaderHeight);
+
+		resetButton.setBounds(top.removeFromLeft(HeaderHeight).reduced(4));
+		breakpointButton.setBounds(top.removeFromLeft(HeaderHeight).reduced(4));
+
+		for (auto r : rows)
+			r->setBounds(b.removeFromTop(RowHeight));
+
+		b.removeFromTop(5);
+
+		currentLabel = b.removeFromLeft(95).toFloat();
+		b.removeFromLeft(5);
+
+		input.setBounds(b);
+	}
+
+	Path createPath(const String& url) const override
+	{
+		Path p;
+
+		LOAD_PATH_IF_URL("workspace", ColumnIcons::openWorkspaceIcon);
+		LOAD_PATH_IF_URL("reset", ColumnIcons::resetIcon);
+		LOAD_PATH_IF_URL("breakpoint", ColumnIcons::breakpointIcon);
+		LOAD_PATH_IF_URL("enable", HiBinaryData::ProcessorEditorHeaderIcons::bypassShape);
+
+		return p;
+	}
+
+	void timerCallback() override
+	{
+		if (auto obj = getObject<ScriptBroadcaster>())
+		{
+			if ((rows.size() != obj->items.size()) || lastOne == nullptr)
+			{
+				rebuild(*obj.obj);
+			}
+
+			lastOne = obj.obj;
+
+			updateTextEditor(*obj.obj);
+
+			if (obj->lastMessageTime != lastTime)
+				alpha = 1.0f;
+			else
+				alpha *= 0.8f;
+
+			lastTime = obj->lastMessageTime;
+
+			repaint();
+		}
+	}
+
+	void paint(Graphics& g) override
+	{
+		auto b = getLocalBounds().removeFromTop(HeaderHeight);
+
+		g.setColour(Colours::white.withAlpha(alpha * 0.3f));
+		g.fillRect(b);
+
+		g.setColour(Colours::white.withAlpha(0.8f));
+		g.setFont(GLOBAL_BOLD_FONT());
+		g.drawText("Current Value: ", currentLabel, Justification::right);
+
+		if (auto obj = getObject<ScriptBroadcaster>())
+		{
+			if (obj->sourceType.isNotEmpty())
+				g.drawText("Source: " + obj->sourceType, b.toFloat(), Justification::centred);
+		}
+	}
+
+	OwnedArray<Row> rows;
+
+	WeakReference<ScriptBroadcaster> lastOne;
+
+	Rectangle<float> currentLabel;
+	Label input;
+
+	uint32 lastTime = 0;
+	float alpha = 0.0f;
+
+	HiseShapeButton resetButton;
+	HiseShapeButton breakpointButton;
+};
+
+ScriptingObjects::ScriptBroadcaster::ScriptBroadcaster(ProcessorWithScriptingContent* p, const var& defaultValue):
+	ConstScriptingObject(p, 0),
+	lastResult(Result::ok())
+{
+	ADD_API_METHOD_2(addListener);
+	ADD_API_METHOD_1(removeListener);
+	ADD_API_METHOD_0(reset);
+	ADD_API_METHOD_2(sendMessage);
+	ADD_API_METHOD_0(getCurrentValue);
+	ADD_API_METHOD_2(attachToComponentProperties);
+	ADD_API_METHOD_2(attachToComponentMouseEvents);
+	ADD_API_METHOD_1(attachToComponentValue);
+	
+	if (auto obj = defaultValue.getDynamicObject())
+	{
+		for (const auto& p : obj->getProperties())
+		{
+			defaultValues.add(p.value);
+			argumentIds.add(p.name);
+		}
+	}
+	else if (defaultValue.isArray())
+		defaultValues.addArray(*defaultValue.getArray());
+	else
+		defaultValues.add(defaultValue);
+
+	lastValues.addArray(defaultValues);
+
+	Array<var> k;
+	k.add(lastValues);
+	k.add(defaultValues);
+	keepers = var(k);
+}
+
+Component* ScriptingObjects::ScriptBroadcaster::createPopupComponent(const MouseEvent& e, Component* parent)
+{
+	return new Display(this);
+}
+
+Result ScriptingObjects::ScriptBroadcaster::call(HiseJavascriptEngine* engine, const var::NativeFunctionArgs& args, var* returnValue)
+{
+	if (args.numArguments == defaultValues.size())
+	{
+		Array<var> argArray;
+
+		for (int i = 0; i < args.numArguments; i++)
+			argArray.add(args.arguments[i]);
+
+		try
+		{
+			bool shouldBeSync = sourceType.isEmpty();
+
+			sendMessage(var(argArray), shouldBeSync);
+			return lastResult;
+		}
+		catch (String& s)
+		{
+			return Result::fail(s);
+		}
+	}
+
+	return Result::fail("argument amount mismatch. Expected: " + String(defaultValues.size()));
+}
+
+hise::DebugInformationBase* ScriptingObjects::ScriptBroadcaster::getChildElement(int index)
+{
+	Identifier id;
+
+	if (isPositiveAndBelow(index, argumentIds.size()))
+		id = argumentIds[index];
+	else
+		id = Identifier("arg" + String(index));
+
+	WeakReference<ScriptBroadcaster> safeThis(this);
+
+	return new LambdaValueInformation([index, safeThis]()
+	{
+		var x;
+			
+		if (safeThis != nullptr)
+		{
+			SimpleReadWriteLock::ScopedReadLock sl(safeThis->lastValueLock);
+			x = safeThis->lastValues[index];
+		}
+
+		return x;
+			
+	}, id, {}, (DebugInformation::Type)getTypeNumber(), getLocation());
+}
+
+bool ScriptingObjects::ScriptBroadcaster::addListener(var object, var function)
+{
+	ScopedPointer<Item> ni = new Item(getScriptProcessor(), defaultValues.size(), object, function);
+
+	if (items.contains(ni))
+		return false;
+
+	
+
+	auto r = ni->callSync(lastValues);
+
+	if (!r.wasOk())
+		reportScriptError(r.getErrorMessage());
+
+	items.add(ni.release());
+
+	return true;
+}
+
+bool ScriptingObjects::ScriptBroadcaster::removeListener(var objectToRemove)
+{
+	for (auto i : items)
+	{
+		if (i->obj == objectToRemove)
+		{
+			items.removeObject(i);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void ScriptingObjects::ScriptBroadcaster::sendMessage(var args, bool isSync)
+{
+#if USE_BACKEND
+	lastMessageTime = Time::getMillisecondCounter();
+
+	if (triggerBreakpoint)
+	{
+		reportScriptError("There you go...");
+	}
+#endif
+
+	if ((args.isArray() && args.size() != defaultValues.size()) || (!args.isArray() && defaultValues.size() != 1))
+	{
+		String e;
+		e << "argument amount mismatch. Expected: " << String(defaultValues.size());
+		reportScriptError(e);
+	}
+
+	bool somethingChanged = false;
+
+	Array<var> newValues;
+
+	for (int i = 0; i < defaultValues.size(); i++)
+	{
+		auto v = getArg(args, i);
+		somethingChanged |= lastValues[i] != v;
+
+		newValues.add(v);
+	}
+
+	if (somethingChanged)
+	{
+		{
+			SimpleReadWriteLock::ScopedWriteLock sl(lastValueLock);
+			lastValues.swapWith(newValues);
+		}
+
+		if (isSync)
+			lastResult = sendInternal(lastValues);
+		else
+		{
+			WeakReference<ScriptBroadcaster> safeThis(this);
+
+			auto& pool = getScriptProcessor()->getMainController_()->getJavascriptThreadPool();
+			
+			auto f = [safeThis](JavascriptProcessor* jp)
+			{
+				if (safeThis == nullptr)
+					return Result::fail("dangling listener");
+
+				return safeThis->sendInternal(safeThis->lastValues);
+			};
+
+			pool.addJob(JavascriptThreadPool::Task::HiPriorityCallbackExecution,
+						dynamic_cast<JavascriptProcessor*>(getScriptProcessor()),	
+						f);
+		}
+	}
+}
+
+void ScriptingObjects::ScriptBroadcaster::sendMessageWithDelay(var args, int delayInMilliseconds)
+{
+#if USE_BACKEND
+	if (triggerBreakpoint)
+	{
+		reportScriptError("There you go...");
+	}
+#endif
+
+	pendingData = args;
+	startTimer(delayInMilliseconds);
+}
+
+void ScriptingObjects::ScriptBroadcaster::reset()
+{
+	auto ok = sendInternal(defaultValues);
+
+	if (!ok.wasOk())
+		reportScriptError(ok.getErrorMessage());
+}
+
+juce::var ScriptingObjects::ScriptBroadcaster::getCurrentValue() const
+{
+	if (lastValues.size() == 1)
+		return lastValues[0];
+
+	return var(lastValues);
+}
+
+Array<ScriptingApi::Content::ScriptComponent*> getComponentsFromVar(ProcessorWithScriptingContent* p, var componentIds)
+{
+	using ScriptComp = ScriptingApi::Content::ScriptComponent;
+
+	Array<ScriptComp*> list;
+
+	auto content = p->getScriptingContent();
+
+	auto getComponentFromSingleVar = [&](const var& v)
+	{
+		ScriptComp* p = nullptr;
+
+		if (v.isString())
+			p = content->getComponentWithName(Identifier(v.toString()));
+
+		else if (v.isObject())
+			p = dynamic_cast<ScriptComp*>(v.getObject());
+
+		return p;
+	};
+
+	if (componentIds.isArray())
+	{
+		for (auto& v : *componentIds.getArray())
+			list.add(getComponentFromSingleVar(v));
+	}
+	else
+		list.add(getComponentFromSingleVar(componentIds));
+
+	for (int i = 0; i < list.size(); i++)
+	{
+		if (list[i] == nullptr)
+			list.remove(i--);
+	}
+
+	return list;
+}
+
+struct ScriptingObjects::ScriptBroadcaster::ScriptComponentPropertyEvent
+{
+	ScriptComponentPropertyEvent(ScriptBroadcaster& parent, var componentIds, const Array<Identifier>& propertyIds)
+	{
+		for (auto sc : getComponentsFromVar(parent.getScriptProcessor(), componentIds))
+		{
+			for (auto& id : propertyIds)
+			{
+				if (sc->getIndexForProperty(id) == -1)
+				{
+					illegalId = id;
+					return;
+				}
+			}
+
+			internalListeners.add(new InternalListener(parent, sc, propertyIds));
+		}
+	}
+
+	struct InternalListener
+	{
+		InternalListener(ScriptBroadcaster& parent_, ScriptingApi::Content::ScriptComponent* sc, const Array<Identifier>& propertyIds) :
+			parent(parent_)
+		{
+			args.add(var(sc));
+			args.add("");
+			args.add(0);
+
+			keeper = var(args);
+
+			for (const auto& id : propertyIds)
+				idSet.set(id, id.toString());
+				
+			listener.setCallback(sc->getPropertyValueTree(), propertyIds, valuetree::AsyncMode::Synchronously, BIND_MEMBER_FUNCTION_2(InternalListener::update));
+		}
+
+		Identifier illegalId;
+
+		void update(const Identifier& id, var newValue)
+		{
+			if (newValue.isUndefined() || newValue.isVoid())
+			{
+				newValue = dynamic_cast<ScriptComponent*>(args[0].getObject())->getScriptObjectProperty(id);
+			}
+
+			args.set(1, idSet[id]);
+			args.set(2, newValue);
+			
+			parent.sendMessage(var(args), false);
+		}
+
+		NamedValueSet idSet;
+		Array<var> args;
+
+		WeakReference<ScriptComponent> sc;
+		
+		var keeper;
+		ScriptBroadcaster& parent;
+		String id;
+
+		valuetree::PropertyListener listener;
+	};
+
+	Identifier illegalId;
+	OwnedArray<InternalListener> internalListeners;
+};
+
+void ScriptingObjects::ScriptBroadcaster::attachToComponentProperties(var componentIds, var propertyIds)
+{
+	if (sourceType.isNotEmpty())
+		reportScriptError("This callback is already registered to " + sourceType);
+
+	if (defaultValues.size() != 3)
+	{
+		reportScriptError("If you want to attach a broadcaster to property events, it needs three parameters (component, propertyId, value)");
+	}
+
+	Array<Identifier> idList;
+
+	idList.add(Identifier(getArg(propertyIds, 0).toString()));
+
+	if (propertyIds.isArray())
+	{
+		for(int i = 1; i < propertyIds.size(); i++)
+			idList.add(Identifier(getArg(propertyIds, i).toString()));
+	}
+
+	eventSources.clear();
+
+	for (auto l : getComponentsFromVar(getScriptProcessor(), componentIds))
+	{
+		eventSources.add(new ScriptComponentPropertyEvent(*this, componentIds, idList));
+
+		auto illegalId = eventSources.getLast()->illegalId;
+
+		if (illegalId.isValid())
+			reportScriptError("Illegal property id: " + illegalId.toString());
+	}
+
+	sourceType = "ComponentProperties";
+}
+
+void ScriptingObjects::ScriptBroadcaster::attachToComponentValue(var componentIds)
+{
+	if (sourceType.isNotEmpty())
+		reportScriptError("This callback is already registered to " + sourceType);
+
+	if (defaultValues.size() != 2)
+	{
+		reportScriptError("If you want to attach a broadcaster to value events, it needs two parameters (component, value)");
+	}
+
+	for (auto l : getComponentsFromVar(getScriptProcessor(), componentIds))
+	{
+		l->attachValueListener(this);
+	}
+
+	sourceType = "ComponentValue";
+}
+
+
+
+void ScriptingObjects::ScriptBroadcaster::attachToComponentMouseEvents(var componentIds, var callbackLevel)
+{
+	if (sourceType.isNotEmpty())
+		reportScriptError("This callback is already registered to " + sourceType);
+
+	if (defaultValues.size() != 2)
+	{
+		reportScriptError("If you want to attach a broadcaster to mouse events, it needs two parameters (component, event)");
+	}
+
+	auto cl = callbackLevel.toString();
+	auto clValue = MouseCallbackComponent::getCallbackLevels(false).indexOf(cl);
+
+	if (clValue == -1)
+		reportScriptError("illegal callback level: " + cl);
+
+	for (auto l : getComponentsFromVar(getScriptProcessor(), componentIds))
+		l->attachMouseListener(this, (MouseCallbackComponent::CallbackLevel)clValue);
+
+	sourceType = "MouseEvents";
+}
+
+juce::var ScriptingObjects::ScriptBroadcaster::getArg(const var& v, int idx)
+{
+	if (v.isArray())
+		return v[idx];
+
+	jassert(idx == 0);
+	return v;
+}
+
+Result ScriptingObjects::ScriptBroadcaster::sendInternal(const Array<var>& args)
+{
+	for (auto i : items)
+	{
+		Array<var> thisValues;
+		thisValues.ensureStorageAllocated(lastValues.size());
+
+		{
+			SimpleReadWriteLock::ScopedReadLock v(lastValueLock);
+			thisValues.addArray(lastValues);
+		}
+
+		auto r = i->callSync(thisValues);
+		if (!r.wasOk())
+		{
+			return r;
+		}
+	}
+
+	return Result::ok();
+}
+
+ScriptingObjects::ScriptBroadcaster::Item::Item(ProcessorWithScriptingContent* p, int numArgs, const var& obj_, const var& f) :
+	callback(p, f, numArgs),
+	obj(obj_)
+{
+	if (auto dl = dynamic_cast<DebugableObjectBase*>(f.getObject()))
+	{
+		location = dl->getLocation();
+	}
+
+	callback.incRefCount();
+}
+
+Result ScriptingObjects::ScriptBroadcaster::Item::callSync(const Array<var>& args)
+{
+#if USE_BACKEND
+	if (!enabled)
+		return Result::ok();
+#endif
+
+	auto a = var::NativeFunctionArgs(obj, args.getRawDataPointer(), args.size());
+	return callback.callSync(a, nullptr);
 }
 
 } // namespace hise

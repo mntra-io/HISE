@@ -448,6 +448,121 @@ namespace ScriptingObjects
 		var args[2];
 	};
 
+	struct ScriptBroadcaster : public ConstScriptingObject,
+							   public WeakCallbackHolder::CallableObject,
+							   private Timer
+	{
+		ScriptBroadcaster(ProcessorWithScriptingContent* p, const var& defaultValue);;
+
+		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("Broadcaster"); }
+
+		Component* createPopupComponent(const MouseEvent& e, Component* parent) override;
+
+		Result call(HiseJavascriptEngine* engine, const var::NativeFunctionArgs& args, var* returnValue) override;
+
+		int getNumChildElements() const override { return defaultValues.size(); }
+
+		DebugInformationBase* getChildElement(int index) override;
+
+		bool isAutocompleteable() const override { return false; }
+
+		void timerCallback() override
+		{
+			sendMessage(pendingData, false);
+			stopTimer();
+		}
+
+		// =============================================================================== API Methods
+
+		/** Adds a listener that is notified when a message is send. The object can be either a JSON object, a script object or a simple string. */
+		bool addListener(var object, var function);
+
+		/** Removes the listener that was assigned with the given object. */
+		bool removeListener(var objectToRemove);
+
+		/** Sends a message to all listeners. the length of args must match the default value list. if isSync is false, then it will be deferred. */
+		void sendMessage(var args, bool isSync);
+
+		/** Sends a message to all listeners with a delay. */
+		void sendMessageWithDelay(var args, int delayInMilliseconds);
+
+		/** Resets the state. */
+		void reset();
+
+		/** Returns the current value. */
+		var getCurrentValue() const;
+		
+		/** Registers this broadcaster to be called when one of the properties of the given components change. */
+		void attachToComponentProperties(var componentIds, var propertyIds);
+
+		/** Registers this broadcaster to be called when the value of the given components change. */
+		void attachToComponentValue(var componentIds);
+
+		/** Registers this broadcaster to be notified for mouse events for the given components. */
+		void attachToComponentMouseEvents(var componentIds, var callbackLevel);
+
+		// ===============================================================================
+
+	private:
+
+		var pendingData;
+
+		Array<Identifier> argumentIds;
+
+		SimpleReadWriteLock lastValueLock;
+
+		String sourceType;
+
+		uint32 lastMessageTime = 0;
+
+		bool triggerBreakpoint = false;
+
+		struct Display;
+		static var getArg(const var& v, int idx);
+
+		Result sendInternal(const Array<var>& args);
+
+		bool cancelIfSame = true;
+
+		Array<var> defaultValues;
+		Array<var> lastValues;
+
+		var keepers;
+
+		struct Wrapper;
+
+		struct ScriptComponentPropertyEvent;
+		OwnedArray<ScriptComponentPropertyEvent> eventSources;
+		
+		struct ProcessorBypassEvent;
+
+		struct Item
+		{
+			Item(ProcessorWithScriptingContent* p, int numArgs, const var& obj_, const var& f);;
+
+			Result callSync(const Array<var>& args);
+
+			bool operator==(const Item& other) const
+			{
+				return obj == other.obj;
+			}
+
+			DebugableObjectBase::Location location;
+
+			bool enabled = true;
+			WeakCallbackHolder callback;
+			var obj;
+
+			JUCE_DECLARE_WEAK_REFERENCEABLE(Item);
+		};
+
+		OwnedArray<Item> items;
+
+		Result lastResult;
+
+		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptBroadcaster);
+	};
+
 	struct ScriptBackgroundTask : public ConstScriptingObject,
 								  public Thread
 	{
@@ -709,6 +824,9 @@ namespace ScriptingObjects
 
 		/** Returns a typed reference for the module with the given build index. */
 		var get(int buildIndex, String interfaceType);
+
+		/** Adds the existing module to the internal list and returns the index for refering to it. */
+		int getExisting(String processorId);
 
 		/** Set multiple attributes for the given module at once using a JSON object. */
 		void setAttributes(int buildIndex, var attributeValues);

@@ -1821,10 +1821,13 @@ Result JavascriptThreadPool::executeQueue(const Task::Type& t, PendingCompilatio
 	{
 		CompilationTask ct;
 
+		
+
 		allowSleep = true;
 
 		while (compilationQueue.pop(ct))
 		{
+            SimpleReadWriteLock::ScopedWriteLock sl(getLookAndFeelRenderLock());
 			SuspendHelpers::ScopedTicket ticket;
 
 			lowPriorityQueue.clear();
@@ -1833,10 +1836,9 @@ Result JavascriptThreadPool::executeQueue(const Task::Type& t, PendingCompilatio
 			killVoicesAndExtendTimeOut(ct.getFunction().getProcessor());
 
 			r = ct.call();
+
 			pendingCompilations.addIfNotAlreadyThere(ct.getFunction().getProcessor());
 		}
-
-		
 
 		return r;
 	}
@@ -1867,7 +1869,7 @@ Result JavascriptThreadPool::executeQueue(const Task::Type& t, PendingCompilatio
 
 		while (lowPriorityQueue.pop(lpt))
 		{
-			ScopedLock sl(lookAndFeelRenderLock);
+			SimpleReadWriteLock::ScopedReadLock sl(getLookAndFeelRenderLock());
 
 			jassert(!lpt.getFunction().isHiPriority());
 
@@ -1920,11 +1922,6 @@ void JavascriptThreadPool::killVoicesAndExtendTimeOut(JavascriptProcessor* jp, i
 	{
 		engine->extendTimeout(milliseconds);
 	}
-}
-
-juce::CriticalSection& JavascriptThreadPool::getLookAndFeelRenderLock()
-{
-	return lookAndFeelRenderLock;
 }
 
 void JavascriptThreadPool::pushToQueue(const Task::Type& t, JavascriptProcessor* p, const Task::Function& f)
