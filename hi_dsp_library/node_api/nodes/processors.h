@@ -128,7 +128,7 @@ struct event
 
 		if (events.size() > 0)
 		{
-			// We don't need the event in child nodes as it should call 
+			// We don't need the event in child nodes as it should call
 			// handleHiseEvent recursively from here...
 			static constexpr bool IncludeHiseEvents = false;
 
@@ -278,9 +278,9 @@ private:
 /** A wrapper around a node that allows custom initialisation.
 
 	Just create an initialiser class that takes a reference
-	to a T object and initialises it and it will do so in 
+	to a T object and initialises it and it will do so in
 	the constructor of this class.
-	
+
 	You can use it in order to setup default values and
 	add parameter connections for container nodes.
 */
@@ -310,7 +310,7 @@ public:
 	constexpr OPTIONAL_BOOL_CLASS_FUNCTION(isPolyphonic);
 	constexpr OPTIONAL_BOOL_CLASS_FUNCTION(isNormalisedModulation);
 	OPTIONAL_BOOL_CLASS_FUNCTION(isProcessingHiseEvent);
-	
+
 	void createParameters(ParameterDataList& list)
 	{
 		if constexpr (prototypes::check::createParameters<T>::value)
@@ -381,7 +381,7 @@ public:
 	SN_DEFAULT_HANDLE_EVENT(T);
 	SN_DEFAULT_PROCESS_FRAME(T);
 
-	
+
 
 	template <typename ProcessDataType> void process(ProcessDataType& data)
 	{
@@ -392,13 +392,13 @@ public:
 
 	void createParameters(ParameterDataList& d)
 	{
-		if constexpr (prototypes::check::createParameters<T::ObjectType>::value)
+		if constexpr (prototypes::check::createParameters<typename T::ObjectType>::value)
 			this->obj.createParameters(d);
 	}
 
 	void setExternalData(const ExternalData& s, int i)
 	{
-		if constexpr (prototypes::check::setExternalData<T::ObjectType>::value)
+		if constexpr (prototypes::check::setExternalData<typename T::ObjectType>::value)
 			this->obj.setExternalData(s, i);
 	}
 
@@ -431,7 +431,7 @@ public:
 
 	}
 
-	
+
 
 	template <int P> void setParameter(double v)
 	{
@@ -548,19 +548,19 @@ struct oversample_base
 	{};
 
     virtual ~oversample_base() {};
-    
-	
+
+
 
     void rebuildOversampler()
     {
         if(originalBlockSize == 0)
             return;
-        
+
 		if (oversamplingFactor == -1)
 			return;
 
         ScopedPointer<Oversampler> newOverSampler;
-        
+
         newOverSampler = new Oversampler(numChannels, (int)std::log2(oversamplingFactor), Oversampler::FilterType::filterHalfBandPolyphaseIIR, false);
 
         if (originalBlockSize > 0)
@@ -568,7 +568,7 @@ struct oversample_base
 
 		oversampler.swapWith(newOverSampler);
     }
-    
+
 	void prepare(PrepareSpecs ps)
 	{
 		SimpleReadWriteLock::ScopedWriteLock sl(this->lock);
@@ -580,16 +580,16 @@ struct oversample_base
 			scriptnode::Error::throwError(Error::IllegalPolyphony);
 			return;
 		}
-        
+
         originalBlockSize = ps.blockSize;
         numChannels = ps.numChannels;
-        
+
 		ps.sampleRate *= (double)oversamplingFactor;
 		ps.blockSize *= oversamplingFactor;
 
 		if (prepareFunc)
 			prepareFunc(pObj, &ps);
-		
+
         rebuildOversampler();
 	}
 
@@ -597,7 +597,7 @@ struct oversample_base
 	{
 		return oversamplingFactor;
 	}
-    
+
     void setOversamplingFactor(int factorExponent)
     {
 		SimpleReadWriteLock::ScopedWriteLock sl(this->lock);
@@ -609,7 +609,7 @@ struct oversample_base
 		if(originalSpecs)
 			prepare(originalSpecs);
     }
-    
+
 protected:
 
 	PrepareSpecs originalSpecs;
@@ -619,7 +619,7 @@ protected:
     int oversamplingFactor = 0;
     int originalBlockSize = 0;
     int numChannels = 0;
-	
+
 	void* pObj = nullptr;
 	prototypes::prepare prepareFunc;
 
@@ -642,7 +642,7 @@ public:
 
     // A oversample node is never polyphonic
     static constexpr bool isPolyphonic() { return false; }
-    
+
 	// Forward the get calls to the wrapped container
 	template <int arg> constexpr auto& get() noexcept { return this->obj.template get<arg>(); }
 	template <int arg> constexpr const auto& get() const noexcept { return this->obj.template get<arg>(); }
@@ -656,7 +656,7 @@ public:
     }
 	SN_FORWARD_PARAMETER_TO_MEMBER(oversample);
 
-	forcedinline void reset() noexcept 
+	forcedinline void reset() noexcept
 	{
 		hise::SimpleReadWriteLock::ScopedReadLock sl(this->lock);
 
@@ -738,9 +738,9 @@ template <class T> class default_data
 
 /** A wrapper that extends the wrap::init class with the possibility of handling external data.
 
-	The DataHandler class needs to have a constructor with a T& argument (where you can do the 
+	The DataHandler class needs to have a constructor with a T& argument (where you can do the
 	usual parameter initialisations). On top of that you need to:
-	
+
 	1. Define 3 static const int values: `NumTables`, `NumSliderPacks` and `NumAudioFiles`
 	2. Define a `void setExternalData(T& obj, int index, const block& b)` method that distributes the
 	   incoming blocks to its children.
@@ -757,15 +757,15 @@ template <class T, class DataHandler = default_data<T>> struct data : public wra
         using D = data<T, DataHandler>;
         return offsetof(D, i);
 
-        
-        
+
+
         D* d = nullptr;
-        
+
         auto x1 = reinterpret_cast<uint64>(&d->i);
         auto x2 = reinterpret_cast<uint64>(&d->obj);
-        
+
         return static_cast<size_t>(x1 - x2);
-        
+
 		//return offsetof(D, i);
 	}
 
@@ -832,7 +832,7 @@ public:
 	SN_EMPTY_PREPARE;
 	SN_EMPTY_RESET;
 	SN_EMPTY_HANDLE_EVENT;
-	
+
 	void initialise(NodeBase* n) { obj.initialise(n); }
 
 	void setExternalData(const snex::ExternalData& data, int index) override
@@ -849,7 +849,7 @@ public:
 
 		getWrappedObject().prepare(ps);
 		getWrappedObject().reset();
-		
+
 		ProcessDataDyn pd((float**)data.data, data.numSamples, data.numChannels);
 
 		ChunkableProcessData cd(pd);
@@ -955,7 +955,7 @@ template <class T, typename FixBlockClass> struct fix_blockx
 {
 	SN_OPAQUE_WRAPPER(fix_blockx, T);
 
-	
+
 	SN_DEFAULT_RESET(T);
 	SN_DEFAULT_MOD(T);
 	SN_DEFAULT_HANDLE_EVENT(T);
@@ -1020,7 +1020,7 @@ public:
 			ps.sampleRate /= (double)HISE_EVENT_RASTER;
 			ps.blockSize /= HISE_EVENT_RASTER;
 		}
-		
+
 		ps.numChannels = 1;
 
 		if(!isFrame)
@@ -1042,7 +1042,7 @@ public:
 		jassert(numToProcess <= controlBuffer.size());
 
 		FloatVectorOperations::clear(controlBuffer.begin(), numToProcess);
-		
+
 		float* d[1] = { controlBuffer.begin() };
 
 		ProcessType md(d, numToProcess, 1);
@@ -1077,7 +1077,7 @@ public:
 
 /** The wrap::mod class can be used in order to create modulation connections between nodes.
 
-	It uses the same parameter class as the containers in order to optimise as much as possible on 
+	It uses the same parameter class as the containers in order to optimise as much as possible on
 	compile time.
 
 	If you want a node to act as modulation source, you need to add a function with the prototype
@@ -1092,7 +1092,7 @@ public:
 	to the parameter class:
 
 	- after a reset() call
-	- after each process call. Be aware that processFrame will also cause a call to handle modulation so be 
+	- after each process call. Be aware that processFrame will also cause a call to handle modulation so be
 	  aware of the performance implications here.
 	- after each handleHiseEvent() callback. This can be used to make modulation sources that react on MIDI.
 
@@ -1111,7 +1111,7 @@ template <class ParameterClass, class T> struct mod
 	static Identifier getStaticId() { return T::getStaticId(); }
 
 	/** Resets the node and sends a modulation signal if required. */
-	void reset() noexcept 
+	void reset() noexcept
 	{
 		obj.reset();
 		checkModValue();
@@ -1144,8 +1144,8 @@ template <class ParameterClass, class T> struct mod
 		obj.prepare(ps);
 	}
 
-	/** This function will be called when a mod value is supposed to be 
-	    sent out to the target. 
+	/** This function will be called when a mod value is supposed to be
+	    sent out to the target.
 	*/
 	bool handleModulation(double& value) noexcept
 	{
@@ -1153,7 +1153,7 @@ template <class ParameterClass, class T> struct mod
 	}
 
 	/** This method can be used to connect a target to the parameter of this
-	    modulation node. 
+	    modulation node.
 	*/
 	template <int I, class TargetType> void connect(TargetType& t)
 	{
@@ -1163,7 +1163,7 @@ template <class ParameterClass, class T> struct mod
 	ParameterClass& getParameter() { return p; }
 
 	/** Forwards the setParameter to the wrapped node. (Required because this
-	    node needs to be *SelfAware*. 
+	    node needs to be *SelfAware*.
 	*/
 	template <int P> void setParameter(double v)
 	{
@@ -1179,9 +1179,9 @@ template <class ParameterClass, class T> struct mod
     {
         if constexpr (prototypes::check::createParameters<T>::value)
             obj.createParameters(data);
-        
+
     }
-    
+
 	void setExternalData(const ExternalData& d, int index)
 	{
 		if constexpr (prototypes::check::setExternalData<T>::value)
@@ -1221,7 +1221,7 @@ template <typename T> struct illegal_poly: public scriptnode::data::base
         if constexpr (prototypes::check::setExternalData<T>::value)
             obj.setExternalData(d, index);
     }
-    
+
 	SN_DESCRIPTION("(not available in a poly network)");
 
 	SN_EMPTY_PROCESS;
@@ -1229,7 +1229,7 @@ template <typename T> struct illegal_poly: public scriptnode::data::base
 	SN_EMPTY_RESET;
 	SN_EMPTY_HANDLE_EVENT;
 	SN_EMPTY_MOD;
-	
+
 	void initialise(NodeBase* n) { obj.initialise(n); }
 
 	void createParameters(ParameterDataList& l) { obj.createParameters(l); }
@@ -1364,7 +1364,7 @@ template <class T> struct node : public scriptnode::data::base
 
 		auto peList = parameter::encoder::fromNode<node>();
 
-		
+
 
 		for (const parameter::pod& p : peList)
 		{

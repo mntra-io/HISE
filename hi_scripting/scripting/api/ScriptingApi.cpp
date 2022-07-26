@@ -875,6 +875,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_2(Engine, matchesRegex);
 	API_METHOD_WRAPPER_2(Engine, getRegexMatches);
 	API_METHOD_WRAPPER_2(Engine, doubleToString);
+	API_METHOD_WRAPPER_4(Engine, getStringWidth);
 	API_METHOD_WRAPPER_1(Engine, intToHexString);
 	API_METHOD_WRAPPER_0(Engine, getOS);
 	API_METHOD_WRAPPER_0(Engine, getSystemStats);
@@ -928,12 +929,14 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_2(Engine, getDspNetworkReference);
 	API_METHOD_WRAPPER_1(Engine, getSystemTime);
 	API_METHOD_WRAPPER_0(Engine, createLicenseUnlocker);
+	API_METHOD_WRAPPER_1(Engine, createBroadcaster);
 	API_METHOD_WRAPPER_0(Engine, getGlobalRoutingManager);
 	API_METHOD_WRAPPER_1(Engine, loadAudioFileIntoBufferArray);
 	API_METHOD_WRAPPER_0(Engine, getClipboardContent);
 	API_VOID_METHOD_WRAPPER_1(Engine, copyToClipboard);
 	API_METHOD_WRAPPER_1(Engine, decodeBase64ValueTree);
 	API_VOID_METHOD_WRAPPER_2(Engine, renderAudio);
+	API_VOID_METHOD_WRAPPER_2(Engine, playBuffer);
 };
 
 
@@ -1000,6 +1003,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_0(createUnorderedStack);
 	ADD_API_METHOD_1(createBackgroundTask);
 	ADD_API_METHOD_0(createFFT);
+	ADD_API_METHOD_1(createBroadcaster);
 	ADD_API_METHOD_0(getPlayHead);
 	ADD_API_METHOD_2(dumpAsJSON);
 	ADD_API_METHOD_1(loadFromJSON);
@@ -1008,6 +1012,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_2(getRegexMatches);
 	ADD_API_METHOD_2(doubleToString);
 	ADD_API_METHOD_1(intToHexString);
+	ADD_API_METHOD_4(getStringWidth);
 	ADD_API_METHOD_1(getMasterPeakLevel);
 	ADD_API_METHOD_0(getOS);
 	ADD_API_METHOD_0(getSystemStats);
@@ -1067,6 +1072,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_0(reloadAllSamples);
 	ADD_API_METHOD_1(decodeBase64ValueTree);
 	ADD_API_METHOD_2(renderAudio);
+	ADD_API_METHOD_2(playBuffer);
 }
 
 
@@ -1695,14 +1701,14 @@ struct AudioRenderer : public Thread,
 				numSamplesToRender = (int)events.getEvent(events.getNumUsed() - 1).getTimeStamp();
 
 				// we'll trim it later
-				numActualSamples = 0;
+				numActualSamples = numSamplesToRender;
 
 				auto leftOver = numSamplesToRender % bufferSize;
 
 				if (leftOver != 0)
 				{
 					// pad to blocksize
-					//numSamplesToRender += (bufferSize - leftOver);
+					numSamplesToRender += (bufferSize - leftOver);
 				}
 
 				numChannelsToRender = getMainController()->getMainSynthChain()->getMatrix().getNumSourceChannels();
@@ -1784,8 +1790,6 @@ struct AudioRenderer : public Thread,
 
 			auto startTime = Time::getMillisecondCounter();
 
-			
-
 			while (numTodo > 0)
 			{
 				if (threadShouldExit())
@@ -1837,6 +1841,12 @@ struct AudioRenderer : public Thread,
 			}
 		}
 
+                                                                                                                                                      		for (int i = 0; i < numChannelsToRender; i++)
+		{
+			VariantBuffer* b = channels[i].get();
+			b->size = numActualSamples;
+		}
+
 		getMainController()->getKillStateHandler().removeThreadIdFromAudioThreadList();
 		dynamic_cast<AudioProcessor*>(getMainController())->setNonRealtime(false);
 		getMainController()->getSampleManager().handleNonRealtimeState();
@@ -1869,6 +1879,8 @@ struct AudioRenderer : public Thread,
 		for (int i = 0; i < numChannelsToRender; i++)
 			splitData[i] = channels[i]->buffer.getWritePointer(0, startSample);
 
+		jassert(isPositiveAndBelow(startSample + numSamples, numSamplesToRender + 1));
+
 		return AudioSampleBuffer(splitData, numChannelsToRender, numSamples);
 	}
 
@@ -1886,6 +1898,154 @@ struct AudioRenderer : public Thread,
 void ScriptingApi::Engine::renderAudio(var eventList, var updateCallback)
 {
 	currentExportThread = new AudioRenderer(getScriptProcessor(), eventList, updateCallback);
+}
+
+struct ScriptingApi::Engine::PreviewHandler: public ControlledObject,
+											 public AsyncUpdater,
+											 public BufferPreviewListener
+{
+	PreviewHandler(ProcessorWithScriptingContent* p) :
+		ControlledObject(p->getMainController_()),
+		pwsc(p)
+	{
+		getMainController()->addPreviewListener(this);
+	}
+
+	~PreviewHandler()
+	{
+		getMainController()->stopBufferToPlay();
+		getMainController()->removePreviewListener(this);
+	}
+
+	struct Job: public ControlledObject,
+				private PooledUIUpdater::SimpleTimer
+	{
+		Job(ProcessorWithScriptingContent* p, var buffer, var callbackFunction) :
+			ControlledObject(p->getMainController_()),
+			SimpleTimer(p->getMainController_()->getGlobalUIUpdater(), true),
+			bufferToPreview(buffer),
+			callback(p, callbackFunction, 2)
+		{
+			callback.incRefCount();
+			memset(channels, 0, sizeof(float*) * HISE_NUM_PLUGIN_CHANNELS);
+
+			if (buffer.isArray())
+			{
+				numChannels = buffer.size();
+				
+				for (int i = 0; i < numChannels; i++)
+				{
+					if (auto b = buffer[i].getBuffer())
+					{
+						if (numSamples == -1)
+							numSamples = b->buffer.getNumSamples();
+
+						channels[i] = b->buffer.getWritePointer(0);
+					}
+				}
+			}
+			else if(auto b = buffer.getBuffer())
+			{
+				numSamples = b->buffer.getNumSamples();
+				numChannels = 1;
+				channels[0] = b->buffer.getWritePointer(0);
+			}
+
+			if (numChannels == 1)
+			{
+				numChannels = 2;
+				channels[1] = channels[0];
+			}
+		}
+
+		void play()
+		{
+			AudioSampleBuffer b(channels, numChannels, numSamples);
+
+			AudioSampleBuffer copy;
+			copy.makeCopyOf(b);
+
+			getMainController()->setBufferToPlay(copy);
+			start();
+		}
+
+		void sendCallback(bool isPlaying, double position)
+		{
+			args[0] = isPlaying;
+			args[1] = position;
+
+			if (callback)
+				callback.call(args, 2);
+
+			if (!isPlaying)
+				stop();
+		}
+
+		void timerCallback() override
+		{
+			auto pos = getMainController()->getPreviewBufferPosition();
+			double normPos = (double)pos / (double)numSamples;
+			sendCallback(true, normPos);
+		}
+		
+		float* channels[HISE_NUM_PLUGIN_CHANNELS];
+		int numChannels;
+		int numSamples = -1;
+
+
+		var args[2];
+		var bufferToPreview;
+		WeakCallbackHolder callback;
+	};
+
+	void addJob(var buffer, var callback)
+	{
+		ScopedLock sl(jobLock);
+
+		getMainController()->stopBufferToPlay();
+		currentJobs.add(new Job(pwsc, buffer, callback));
+
+		if (currentJobs.size() == 1)
+			startNextJob();
+	}
+
+	void handleAsyncUpdate()
+	{
+		ScopedLock sl(jobLock);
+
+		if (auto j = currentJobs.removeAndReturn(0))
+		{
+			j->sendCallback(false, 1.0);
+		}
+
+		startNextJob();
+	}
+
+	void previewStateChanged(bool isPlaying, const AudioSampleBuffer& currentBuffer) override
+	{
+		if (!isPlaying && !currentJobs.isEmpty())
+			triggerAsyncUpdate();
+	}
+
+	void startNextJob()
+	{
+		ScopedLock sl(jobLock);
+
+		if (!currentJobs.isEmpty())
+			currentJobs[0]->play();
+	}
+
+	CriticalSection jobLock;
+	OwnedArray<Job> currentJobs;
+	ProcessorWithScriptingContent* pwsc;
+};
+
+void ScriptingApi::Engine::playBuffer(var bufferData, var callback)
+{
+	if (previewHandler == nullptr)
+		previewHandler = new PreviewHandler(getScriptProcessor());
+
+	previewHandler->addJob(bufferData, callback);
 }
 
 var ScriptingApi::Engine::createFFT()
@@ -1940,6 +2100,11 @@ juce::var ScriptingApi::Engine::createMidiAutomationHandler()
 var ScriptingApi::Engine::createUserPresetHandler()
 {
 	return var(new ScriptUserPresetHandler(getScriptProcessor()));
+}
+
+juce::var ScriptingApi::Engine::createBroadcaster(var defaultValues)
+{
+	return var(new ScriptingObjects::ScriptBroadcaster(getScriptProcessor(), defaultValues));
 }
 
 var ScriptingApi::Engine::getDspNetworkReference(String processorId, String id)
@@ -2872,6 +3037,13 @@ String ScriptingApi::Engine::doubleToString(double value, int digits)
 String ScriptingApi::Engine::intToHexString(int value)
 {
     return String::toHexString(value);
+}
+
+float ScriptingApi::Engine::getStringWidth(String text, String fontName, float fontSize, float fontSpacing)
+{
+	auto f = getScriptProcessor()->getMainController_()->getFontFromString(fontName, fontSize).withExtraKerningFactor(fontSpacing);
+
+	return f.getStringWidthFloat(text);
 }
 
 void ScriptingApi::Engine::quit()

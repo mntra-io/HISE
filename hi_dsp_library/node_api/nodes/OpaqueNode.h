@@ -32,7 +32,7 @@
 
 #pragma once
 
-namespace scriptnode { 
+namespace scriptnode {
 using namespace juce;
 using namespace hise;
 
@@ -54,7 +54,7 @@ struct mothernode
         data_provider = other.data_provider;
         return *this;
     };
-    
+
 	virtual ~mothernode() {};
 
 	template <typename T> static constexpr bool isBaseOf()
@@ -84,15 +84,15 @@ private:
 
 
 
-/** A mysterious wrapper that will use a rather old-school, plain C API for the callbacks. 
+/** A mysterious wrapper that will use a rather old-school, plain C API for the callbacks.
 
 	It holds a number of typed function pointers to the callbacks of the scriptnode system
 	and allocates an object of the wrapped node. This allows both external nodes via DLLs and
-	JIT compiled nodes as well as avoid huge template sizes for each subtype. 
-	
+	JIT compiled nodes as well as avoid huge template sizes for each subtype.
+
 	In order to use this node, just create it, and then call the templated create() function and
 	it will setup all function pointers using the prototypes namespace and allocate the bytes
-	required for the object and call its constructor / destructor. 
+	required for the object and call its constructor / destructor.
 
 	Depending on the object size it will allocate on the heap or use a internal buffer to keep the cache
 	pressure as low as possible.
@@ -110,7 +110,7 @@ struct OpaqueNode
 	OpaqueNode();
 
 	OpaqueNode(OpaqueNode&& other) = default;
-	
+
 
 	OpaqueNode(const OpaqueNode& other) = default;
 
@@ -160,7 +160,7 @@ struct OpaqueNode
 		if constexpr (prototypes::check::hasTail<T>::value)
 			hasTail_ = t->hasTail();
 
-		if constexpr (prototypes::check::getFixChannelAmount<T::ObjectType>::value)
+		if constexpr (prototypes::check::getFixChannelAmount<typename T::ObjectType>::value)
 			numChannels = T::ObjectType::getFixChannelAmount();
 		else
 			numChannels = -1;
@@ -181,7 +181,7 @@ struct OpaqueNode
 
 		fillParameterList(pList);
 
-		
+
 	}
 
 	template <typename T> T& as()
@@ -359,9 +359,9 @@ namespace dll
 	};
 
 	/** A Factory that initialises the nodes using the templated OpaqueNode::create function.
-	
+
 		This will be used inside the project DLL (or the compiled plugin when the project nodes
-		are embedded into the code. 
+		are embedded into the code.
 	*/
 	struct StaticLibraryHostFactory : public FactoryBase
 	{
@@ -502,7 +502,7 @@ namespace dll
 		int getHash(int index) const;
 
         File getDllFile() const { return loadedFile; }
-        
+
 	private:
 
 		void clearAllFunctions()
@@ -526,7 +526,7 @@ namespace dll
 				r = Result::fail("Can't find function " + id + "() in " + dllFile.getFileName());
 				clearAllFunctions();
 			}
-				
+
 			return func;
 		};
 
@@ -539,9 +539,9 @@ namespace dll
 	};
 
 	/** The factory that creates the nodes on the host side.
-	
+
 		It will call into the provided dll and initialise the given opaque node using
-		the DLL functions. 
+		the DLL functions.
 
 		It uses a reference counted pointer to the given DLL object, so creating and
 		using these is very lightweight.
@@ -563,7 +563,7 @@ namespace dll
 		void clearError() const override;
 
 		Error getError() const override;
-		
+
 		void deinitOpaqueNode(scriptnode::OpaqueNode* n) override;
 
 	private:
@@ -581,4 +581,4 @@ namespace dll
 	};
 }
 
-} 
+}

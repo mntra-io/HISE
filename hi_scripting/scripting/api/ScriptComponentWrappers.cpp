@@ -42,8 +42,89 @@ namespace hise { using namespace juce;
 
 #define GET_OBJECT_COLOUR(id) (ScriptingApi::Content::Helpers::getCleanedObjectColour(GET_SCRIPT_PROPERTY(id)))
 
+struct ScriptCreatedComponentWrapper::AdditionalMouseCallback: public MouseListener
+{
+	AdditionalMouseCallback(ScriptComponent* sc, Component* c) :
+		scriptComponent(sc),
+		component(c),
+		callbackLevel(sc->getMouseCallbackLevel()),
+		broadcaster(sc->getMouseListener())
+	{
+		component->addMouseListener(this, true);
+	};
+
+	~AdditionalMouseCallback()
+	{
+		if (component.getComponent() != nullptr)
+			component->removeMouseListener(this);
+	}
+
+	void mouseDown(const MouseEvent& event)
+	{
+		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksOnly) return;
+		sendMessage(event, MouseCallbackComponent::Action::Clicked, MouseCallbackComponent::EnterState::Nothing);
+	}
+
+	void mouseDoubleClick(const MouseEvent& event)
+	{
+		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksOnly) return;
+		sendMessage(event, MouseCallbackComponent::Action::DoubleClicked, MouseCallbackComponent::EnterState::Nothing);
+	}
+
+	void mouseMove(const MouseEvent& event)
+	{
+		if (callbackLevel < MouseCallbackComponent::CallbackLevel::AllCallbacks) return;
+		sendMessage(event, MouseCallbackComponent::Action::Moved, MouseCallbackComponent::EnterState::Nothing);
+	}
+
+	void mouseDrag(const MouseEvent& event)
+	{
+		if (callbackLevel < MouseCallbackComponent::CallbackLevel::Drag) return;
+		sendMessage(event, MouseCallbackComponent::Action::Dragged, MouseCallbackComponent::EnterState::Nothing);
+	}
+
+	void mouseEnter(const MouseEvent &event)
+	{
+		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksAndEnter) return;
+		sendMessage(event, MouseCallbackComponent::Action::Moved, MouseCallbackComponent::Entered);
+	}
+
+	void mouseExit(const MouseEvent &event)
+	{
+		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksAndEnter) return;
+		sendMessage(event, MouseCallbackComponent::Action::Moved, MouseCallbackComponent::Exited);
+	}
+
+	void mouseUp(const MouseEvent &event)
+	{
+		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksOnly) return;
+		sendMessage(event, MouseCallbackComponent::Action::MouseUp, MouseCallbackComponent::EnterState::Nothing);
+	}
+
+	void sendMessage(const MouseEvent& event, MouseCallbackComponent::Action action, MouseCallbackComponent::EnterState state)
+	{
+		if (broadcaster != nullptr)
+		{
+			var arguments[2];
+
+			arguments[0] = var(scriptComponent.get());
+			arguments[1] = MouseCallbackComponent::getMouseCallbackObject(component.getComponent(), event, callbackLevel, action, state);
+
+			var::NativeFunctionArgs args({}, arguments, 2);
+			auto ok = broadcaster->call(nullptr, args, nullptr);
+		}
+	}
+
+	Component::SafePointer<Component> component;
+	WeakReference<ScriptComponent> scriptComponent;
+	WeakReference<WeakCallbackHolder::CallableObject> broadcaster;
+	MouseCallbackComponent::CallbackLevel callbackLevel;
+};
+
 ScriptCreatedComponentWrapper::~ScriptCreatedComponentWrapper()
 {
+	mouseCallback = nullptr;
+
 	Desktop::getInstance().removeFocusChangeListener(this);
 
 	if (auto c = getComponent())
@@ -195,10 +276,13 @@ void ScriptCreatedComponentWrapper::initAllProperties()
 
 	component->setComponentID(sc->getName().toString());
 
+	if (sc->getMouseCallbackLevel() != MouseCallbackComponent::CallbackLevel::NoCallbacks)
+	{
+		mouseCallback = new AdditionalMouseCallback(sc, component);
+	}
+
 	if (sc->wantsKeyboardFocus())
 	{
-		
-
 		component->addKeyListener(this);
 		component->setWantsKeyboardFocus(true);
 		Desktop::getInstance().addFocusChangeListener(this);
@@ -1375,8 +1459,6 @@ ScriptCreatedComponentWrappers::ViewportWrapper::ViewportWrapper(ScriptContentCo
 		mode = shouldUseList ? Mode::List : Mode::Viewport;
 	}
 
-	Viewport* vp = nullptr;
-
 	if (mode == Mode::Viewport)
 	{
 		vp = new Viewport();
@@ -1423,10 +1505,13 @@ ScriptCreatedComponentWrappers::ViewportWrapper::ViewportWrapper(ScriptContentCo
 		component = t;
 	}
 	
-	viewport->positionBroadcaster.addListener(*this, [vp](ViewportWrapper& v, double x, double y)
+	vp->getVerticalScrollBar().addListener(this);
+	vp->getHorizontalScrollBar().addListener(this);
+
+	viewport->positionBroadcaster.addListener(*this, [](ViewportWrapper& v, double x, double y)
 	{
-		vp->setViewPositionProportionately(x, y);
-	});
+		v.vp.getComponent()->setViewPositionProportionately(x, y);
+	}, true);
 
 	initAllProperties();
 	updateValue(viewport->value);
@@ -1443,6 +1528,13 @@ ScriptCreatedComponentWrappers::ViewportWrapper::ViewportWrapper(ScriptContentCo
 
 ScriptCreatedComponentWrappers::ViewportWrapper::~ViewportWrapper()
 {
+	if (vp.getComponent() != nullptr)
+	{
+		juce::Viewport* v = vp.getComponent();
+		v->getHorizontalScrollBar().removeListener(this);
+		v->getVerticalScrollBar().removeListener(this);
+	}
+
 	component = nullptr;
 	model = nullptr;
 }
@@ -1520,7 +1612,7 @@ void ScriptCreatedComponentWrappers::ViewportWrapper::updateValue(var newValue)
 {
 	auto listBox = dynamic_cast<ListBox*>(component.get());
 
-	if (listBox != nullptr)
+	if (listBox != nullptr && !newValue.isArray())
 	{
 		int viewportIndex = (int)newValue;
 		listBox->selectRow(viewportIndex);
@@ -1555,6 +1647,35 @@ void ScriptCreatedComponentWrappers::ViewportWrapper::updateItems(ScriptingApi::
 }
 
 
+
+void ScriptCreatedComponentWrappers::ViewportWrapper::scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart)
+{
+	auto isY = &vp->getVerticalScrollBar() == scrollBarThatHasMoved;
+
+	auto limit = scrollBarThatHasMoved->getRangeLimit();
+	auto s = scrollBarThatHasMoved->getCurrentRange();
+
+	limit.setEnd(limit.getEnd() - s.getLength());
+	if (limit.getLength() > 0.0)
+	{
+		auto normPos  = jlimit(0.0, 1.0, s.getStart() / limit.getLength());
+
+		double pos[2];
+
+		pos[0] = (double)getScriptComponent()->getScriptObjectProperty(ScriptingApi::Content::ScriptedViewport::Properties::viewPositionX);
+
+		pos[1] = (double)getScriptComponent()->getScriptObjectProperty(ScriptingApi::Content::ScriptedViewport::Properties::viewPositionY);
+
+		auto propertyToChange = isY ? ScriptingApi::Content::ScriptedViewport::Properties::viewPositionY :
+									  ScriptingApi::Content::ScriptedViewport::Properties::viewPositionX;
+
+		pos[(int)isY] = normPos;
+
+		auto sv = dynamic_cast<ScriptingApi::Content::ScriptedViewport*>(getScriptComponent());
+		sv->positionBroadcaster.sendMessage(dontSendNotification, pos[0], pos[1]);
+		getScriptComponent()->setScriptObjectProperty(propertyToChange, normPos, dontSendNotification);
+	}
+}
 
 void ScriptCreatedComponentWrappers::ViewportWrapper::updateColours()
 {
@@ -2437,16 +2558,19 @@ ScriptCreatedComponentWrappers::FloatingTileWrapper::FloatingTileWrapper(ScriptC
 	ft->setContent(floatingTile->getContentData());
 	ft->refreshRootLayout();
 
-    if (auto l = floatingTile->createLocalLookAndFeel())
+	LookAndFeel* laf = &mc->getGlobalLookAndFeel();
+
+	if (auto l = floatingTile->createLocalLookAndFeel())
     {
         localLookAndFeel = l;
-        
-        Component::callRecursive<Component>(ft, [l](Component* c)
-        {
-            c->setLookAndFeel(l);
-            return false;
-        });
+		laf = localLookAndFeel.get();
     }
+
+	Component::callRecursive<Component>(ft, [laf](Component* c)
+	{
+		c->setLookAndFeel(laf);
+		return false;
+	});
 }
 
 

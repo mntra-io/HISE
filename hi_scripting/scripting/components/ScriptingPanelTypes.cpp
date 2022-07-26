@@ -64,7 +64,7 @@ Component* CodeEditorPanel::createContentComponent(int index)
 
 	const bool isCallback = index < numSnippets;
 	const bool isExternalFile = index >= numSnippets && (index-numSnippets) < numFiles;
-	
+
 	if (isCallback)
 	{
 		auto pe = new PopupIncludeEditor(p, p->getSnippet(index)->getCallbackName());
@@ -126,6 +126,20 @@ void CodeEditorPanel::fillModuleList(StringArray& moduleList)
 }
 
 
+void CodeEditorPanel::contentChanged()
+{
+	refreshIndexList();
+
+	StringArray indexList;
+	fillIndexList(indexList);
+	auto titleToShow = indexList[getCurrentIndex()];
+
+	setCustomTitle(titleToShow);
+
+	if (titleToShow.isNotEmpty())
+		setDynamicTitle(titleToShow);
+}
+
 void CodeEditorPanel::fromDynamicObject(const var& object)
 {
 	PanelWithProcessorConnection::fromDynamicObject(object);
@@ -134,6 +148,40 @@ void CodeEditorPanel::fromDynamicObject(const var& object)
 var CodeEditorPanel::toDynamicObject() const
 {
 	return PanelWithProcessorConnection::toDynamicObject();
+}
+
+CodeEditorPanel* CodeEditorPanel::showOrCreateTab(FloatingTabComponent* parentTab, JavascriptProcessor* jp, int index)
+{
+	for (int tabIndex = 0; tabIndex < parentTab->getNumTabs(); tabIndex++)
+	{
+		if (auto tc = dynamic_cast<FloatingTile*>(parentTab->getTabContentComponent(tabIndex)))
+		{
+			if (auto cep = dynamic_cast<CodeEditorPanel*>(tc->getCurrentFloatingPanel()))
+			{
+				auto processorMatches = cep->getConnectedProcessor() == dynamic_cast<Processor*>(jp);
+				auto indexMatches = cep->getCurrentIndex() == index;
+
+				if (processorMatches && indexMatches)
+				{
+					parentTab->setCurrentTabIndex(tabIndex);
+
+					return cep;
+				}
+			}
+		}
+	}
+
+	FloatingInterfaceBuilder ib(parentTab->getParentShell());
+
+	auto newEditor = ib.addChild<CodeEditorPanel>(0);
+
+	auto ed = ib.getContent<CodeEditorPanel>(newEditor);
+	
+	ib.finalizeAndReturnRoot();
+
+	ed->setContentWithUndo(dynamic_cast<Processor*>(jp), index);
+	parentTab->setCurrentTabIndex(parentTab->getNumTabs() - 1);
+	return ed;
 }
 
 void CodeEditorPanel::scriptWasCompiled(JavascriptProcessor *processor)
@@ -300,6 +348,8 @@ void ConsolePanel::resized()
 {
 	console->setBounds(getParentShell()->getContentBounds());
 }
+
+
 
 
 
@@ -1033,19 +1083,40 @@ bool ScriptContentPanel::Editor::Actions::undo(Editor* e, bool shouldUndo)
 	return true;
 }
 
+void ScriptContentPanel::initKeyPresses(Component* root)
+{
+	using namespace InterfaceDesignerShortcuts;
+
+	String cat = "Interface Designer";
+
+	TopLevelWindowWithKeyMappings::addShortcut(root, cat, id_deselect_all, "Deselect all", KeyPress(KeyPress::escapeKey));
+
+	TopLevelWindowWithKeyMappings::addShortcut(root, cat, id_toggle_edit, "Toggle Edit mode", KeyPress(KeyPress::F4Key));
+
+	TopLevelWindowWithKeyMappings::addShortcut(root, cat, id_rebuild, "Rebuild & Recompile", KeyPress(KeyPress::F5Key));
+
+	TopLevelWindowWithKeyMappings::addShortcut(root, cat, id_lock_selection, "Lock selected components", KeyPress('l', ModifierKeys::commandModifier, 'l'));
+
+	TopLevelWindowWithKeyMappings::addShortcut(root, cat, id_duplicate, "Duplicate selection at cursor", KeyPress('d', ModifierKeys::commandModifier, 'd'));
+
+	TopLevelWindowWithKeyMappings::addShortcut(root, cat, id_show_json, "Show JSON properties", KeyPress('j'));
+}
+
 bool ScriptContentPanel::Editor::keyPressed(const KeyPress& key)
 {
-	if (key == KeyPress::F4Key)
+	using namespace InterfaceDesignerShortcuts;
+
+	if (key == TopLevelWindowWithKeyMappings::getKeyPress(this, id_toggle_edit))
 		return Actions::toggleEditMode(*this);
-	if (key == KeyPress::escapeKey)
+	if (key == TopLevelWindowWithKeyMappings::getKeyPress(this, id_deselect_all))
 		return Actions::deselectAll(*this);
-	else if (key == KeyPress::F5Key)
+	else if (key == TopLevelWindowWithKeyMappings::getKeyPress(this, id_rebuild))
 		return Actions::rebuildAndRecompile(*this);
 	else if (key.getKeyCode() == '+' && key.getModifiers().isCommandDown())
 		return Actions::zoomIn(*this);
 	else if (key.getKeyCode() == '-' && key.getModifiers().isCommandDown())
 		return Actions::zoomOut(*this);
-	else if (key.getKeyCode() == 'L' && key.getModifiers().isCommandDown())
+	else if (key == TopLevelWindowWithKeyMappings::getKeyPress(this, id_lock_selection))
 		return Actions::lockSelection(*this);
 
 	return false;
@@ -1848,9 +1919,16 @@ Identifier ScriptWatchTablePanel::getProcessorTypeId() const
 
 Component* ScriptWatchTablePanel::createContentComponent(int /*index*/)
 {
+	if (auto sw = getContent<ScriptWatchTable>())
+	{
+		columnData = sw->getColumnVisiblilityData();
+	}
+
 	setStyleProperty("showConnectionBar", false);
 
 	auto swt = new ScriptWatchTable();
+
+	swt->restoreColumnVisibility(columnData);
 
 	auto f = [this](Component* p, Component* c, Point<int> s)
 	{
