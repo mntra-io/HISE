@@ -116,6 +116,22 @@ PopupIncludeEditor::PopupIncludeEditor(JavascriptProcessor *s, const File &fileT
 
 	addButtonAndCompileLabel();
 	refreshAfterCompilation(JavascriptProcessor::SnippetResult(s->getLastErrorMessage(), 0));
+
+	for (int i = 0; i < jp->getNumWatchedFiles(); i++)
+	{
+		if (jp->getWatchedFile(i) == fileToEdit)
+		{
+			auto storedPos = jp->getLastPosition(jp->getWatchedFileDocument(i));
+
+			if (storedPos.getPosition() != 0)
+			{
+				mcl::Selection sel;
+				sel.head = { storedPos.getLineNumber(), storedPos.getIndexInLine() };
+				sel.tail = sel.head;
+				editor->editor.getTextDocument().setSelection(0, sel, false);
+			}
+		}
+	}
 }
 
 PopupIncludeEditor::PopupIncludeEditor(JavascriptProcessor* s, const Identifier &callback_) :
@@ -281,6 +297,16 @@ void PopupIncludeEditor::refreshAfterCompilation(const JavascriptProcessor::Snip
 
 PopupIncludeEditor::~PopupIncludeEditor()
 {
+	if (jp != nullptr && editor != nullptr)
+	{
+		auto& doc = editor->editor.getDocument();
+		auto pos = editor->editor.getTextDocument().getSelection(0).head;
+
+        CodeDocument::Position p(doc, pos.x, pos.y);
+        
+		jp->setWatchedFilePosition(p);
+	}
+
 	editor = nullptr;
 	resultLabel = nullptr;
 
@@ -302,6 +328,8 @@ void PopupIncludeEditor::timerCallback()
 	stopTimer();
 }
 
+
+
 bool PopupIncludeEditor::keyPressed(const KeyPress& key)
 {
 	if (key.isKeyCode(KeyPress::F5Key) && !key.getModifiers().isShiftDown())
@@ -309,6 +337,13 @@ bool PopupIncludeEditor::keyPressed(const KeyPress& key)
 		compileInternal();
 		return true;
 	}
+
+	if (TopLevelWindowWithKeyMappings::matches(this, key, TextEditorShortcuts::goto_file))
+	{
+		jassertfalse;
+		return true;
+	}
+	
 
 	return false;
 }
@@ -444,6 +479,8 @@ void PopupIncludeEditor::initKeyPresses(Component* root)
 	TopLevelWindowWithKeyMappings::addShortcut(root, cat, TextEditorShortcuts::show_search_replace, "Search & Replace", KeyPress('g', ModifierKeys::commandModifier, 'g'));
 
 	TopLevelWindowWithKeyMappings::addShortcut(root, cat, TextEditorShortcuts::breakpoint_resume, "Resume breakpoint", KeyPress(KeyPress::F10Key));
+
+	TopLevelWindowWithKeyMappings::addShortcut(root, cat, TextEditorShortcuts::goto_file, "Goto file", KeyPress('t', ModifierKeys::commandModifier | ModifierKeys::shiftModifier, 't'));
 }
 
 File PopupIncludeEditor::getFile() const
@@ -547,12 +584,12 @@ void PopupIncludeEditor::addEditor(CodeDocument& d, bool isJavascript)
 
 	ed.addKeyPressFunction([this](const KeyPress& k)
 	{
-		if (k == TopLevelWindowWithKeyMappings::getKeyPress(getEditor(), TextEditorShortcuts::add_autocomplete_template))
+		if (TopLevelWindowWithKeyMappings::matches(getEditor(), k, TextEditorShortcuts::add_autocomplete_template))
 		{
 			jp->performPopupMenuAction(JavascriptProcessor::ScriptContextActions::AddAutocompleteTemplate, getEditor());
 			return true;
 		}
-		if (k == TopLevelWindowWithKeyMappings::getKeyPress(getEditor(), TextEditorShortcuts::clear_autocomplete_templates))
+		if (TopLevelWindowWithKeyMappings::matches(getEditor(), k, TextEditorShortcuts::clear_autocomplete_templates))
 		{
 			jp->performPopupMenuAction(JavascriptProcessor::ScriptContextActions::ClearAutocompleteTemplates, getEditor());
 			return true;
@@ -562,17 +599,17 @@ void PopupIncludeEditor::addEditor(CodeDocument& d, bool isJavascript)
 			resultLabel->gotoText();
 			return true;
 		}
-		if (k == TopLevelWindowWithKeyMappings::getKeyPress(getEditor(), TextEditorShortcuts::breakpoint_resume))
+		if (TopLevelWindowWithKeyMappings::matches(getEditor(), k, TextEditorShortcuts::breakpoint_resume))
 		{
 			dynamic_cast<Processor*>(jp.get())->getMainController()->getJavascriptThreadPool().resume();
 			return true;
 		}
-		if (k == TopLevelWindowWithKeyMappings::getKeyPress(getEditor(), TextEditorShortcuts::show_full_search))
+		if (TopLevelWindowWithKeyMappings::matches(getEditor(), k, TextEditorShortcuts::show_full_search))
 		{
 			jp->performPopupMenuAction(JavascriptProcessor::ScriptContextActions::FindAllOccurences, getEditor());
 			return true;
 		}
-		if (k == TopLevelWindowWithKeyMappings::getKeyPress(getEditor(), TextEditorShortcuts::show_search_replace))
+		if (TopLevelWindowWithKeyMappings::matches(getEditor(), k, TextEditorShortcuts::show_search_replace))
 		{
 			jp->performPopupMenuAction(JavascriptProcessor::ScriptContextActions::SearchAndReplace, getEditor());
 			return true;

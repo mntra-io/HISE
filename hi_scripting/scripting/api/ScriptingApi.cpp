@@ -5834,9 +5834,9 @@ void ScriptingApi::Console::stop(bool condition)
 	else
 	{
 		String message;
-		message << "Breakpoint in UI Thread at " << id << "(Line " << lineNumber << ")";
+		message << "Breakpoint in UI Thread";// at " << id << "(Line " << lineNumber << ")";
 
-		debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), message);
+		reportScriptError(message);
 	}
 }
 

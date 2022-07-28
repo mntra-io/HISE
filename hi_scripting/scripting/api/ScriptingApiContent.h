@@ -299,6 +299,12 @@ public:
 			var value = var::undefined();
 		};
 
+		struct MouseListenerData
+		{
+			WeakReference<WeakCallbackHolder::CallableObject> listener;
+			MouseCallbackComponent::CallbackLevel mouseCallbackLevel = MouseCallbackComponent::CallbackLevel::NoCallbacks;
+		};
+
 		// ============================================================================================================
 
 		enum Properties
@@ -598,6 +604,12 @@ public:
 		/** Manually sends a repaint message for the component. */
 		void sendRepaintMessage();
 
+		/** Returns the ID of the component. */
+		String getId() const;
+
+		/** Toggles the visibility and fades a component using the global animator. */
+		void fadeComponent(bool shouldBeVisible, int milliseconds);
+
 		// End of API Methods ============================================================================================
 
 		void attachValueListener(WeakCallbackHolder::CallableObject* obj)
@@ -608,16 +620,10 @@ public:
 
 		void attachMouseListener(WeakCallbackHolder::CallableObject* obj, MouseCallbackComponent::CallbackLevel cl)
 		{
-			mouseListener = obj;
-			mouseCallbackLevel = cl;
+			mouseListeners.add({ obj, cl });
 		}
 
-		MouseCallbackComponent::CallbackLevel getMouseCallbackLevel() const
-		{
-			return mouseCallbackLevel;
-		}
-
-		WeakCallbackHolder::CallableObject* getMouseListener() { return mouseListener; }
+		const Array<MouseListenerData>& getMouseListeners() const { return mouseListeners; }
 
 		bool handleKeyPress(const KeyPress& k);
 
@@ -645,8 +651,11 @@ public:
 		Content *parent;
 		bool skipRestoring;
 
-		WeakReference<WeakCallbackHolder::CallableObject> mouseListener, valueListener;
-		MouseCallbackComponent::CallbackLevel mouseCallbackLevel = MouseCallbackComponent::CallbackLevel::NoCallbacks;
+		
+
+		WeakReference<WeakCallbackHolder::CallableObject> valueListener;
+		
+		Array<MouseListenerData> mouseListeners;
 
 		struct Wrapper;
 
@@ -753,6 +762,8 @@ public:
 		CustomAutomationPtr getCustomAutomation() { return currentAutomationData; }
 
 		LambdaBroadcaster<bool> repaintBroadcaster;
+
+		LambdaBroadcaster<bool, int> fadeListener;
 
 	protected:
 

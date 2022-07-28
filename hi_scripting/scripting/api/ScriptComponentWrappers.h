@@ -296,6 +296,8 @@ public:
 	/** Overwrite this method and update the value of the component. */
 	virtual void updateValue(var newValue) {};
 
+	static void updateFadeState(ScriptCreatedComponentWrapper& wrapper, bool shouldBeVisible, int fadeTime);
+
 	void sourceHasChanged(ComplexDataUIBase*, ComplexDataUIBase*) override;
 
 	bool setMouseCursorFromParentPanel(ScriptComponent* sc, MouseCursor& c);
@@ -381,7 +383,7 @@ protected:
 
     ScopedPointer<LookAndFeel> localLookAndFeel;
     
-	ScopedPointer<AdditionalMouseCallback> mouseCallback;
+	OwnedArray<AdditionalMouseCallback> mouseCallbacks;
 
 private:
 
