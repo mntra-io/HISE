@@ -170,6 +170,8 @@ void ScriptCreatedComponentWrapper::updateComponent(int propertyIndex, var newVa
 
 void ScriptCreatedComponentWrapper::updateFadeState(ScriptCreatedComponentWrapper& wrapper, bool shouldBeVisible, int fadeTime)
 {
+    wrapper.component->repaint();
+    
 	if(shouldBeVisible)
 		Desktop::getInstance().getAnimator().fadeIn(wrapper.component, fadeTime);
 	else
@@ -241,7 +243,10 @@ void ScriptCreatedComponentWrapper::asyncValueTreePropertyChanged(ValueTree& v, 
 
 void ScriptCreatedComponentWrapper::valueTreeParentChanged(ValueTree& /*v*/)
 {
-	contentComponent->updateComponentParent(this);
+    SafeAsyncCall::callAsyncIfNotOnMessageThread<ScriptCreatedComponentWrapper>(*this, [](ScriptCreatedComponentWrapper& f)
+    {
+        f.contentComponent->updateComponentParent(&f);
+    });
 }
 
 ScriptCreatedComponentWrapper::ScriptCreatedComponentWrapper(ScriptContentComponent *content, int index_) :
@@ -1456,7 +1461,7 @@ public:
 ScriptCreatedComponentWrappers::ViewportWrapper::ViewportWrapper(ScriptContentComponent* content, ScriptingApi::Content::ScriptedViewport* viewport, int index):
 	ScriptCreatedComponentWrapper(content, index)
 {
-	if (tableModel = viewport->getTableModel())
+	if ((tableModel = viewport->getTableModel()))
 	{
 		mode = Mode::Table;
 		tableModel->tableRefreshBroadcaster.addListener(*this, ViewportWrapper::tableUpdated, false);

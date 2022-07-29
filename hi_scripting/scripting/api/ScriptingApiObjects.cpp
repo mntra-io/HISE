@@ -1524,6 +1524,7 @@ struct ScriptingObjects::ScriptRingBuffer::Wrapper
 	API_METHOD_WRAPPER_0(ScriptRingBuffer, getReadBuffer);
 	API_METHOD_WRAPPER_3(ScriptRingBuffer, createPath);
 	API_METHOD_WRAPPER_2(ScriptRingBuffer, getResizedBuffer);
+    API_VOID_METHOD_WRAPPER_1(ScriptRingBuffer, setActive);
 	API_VOID_METHOD_WRAPPER_1(ScriptRingBuffer, setRingBufferProperties);
 };
 
@@ -1534,6 +1535,7 @@ ScriptingObjects::ScriptRingBuffer::ScriptRingBuffer(ProcessorWithScriptingConte
 	ADD_API_METHOD_3(createPath);
 	ADD_API_METHOD_2(getResizedBuffer);
 	ADD_API_METHOD_1(setRingBufferProperties);
+    ADD_API_METHOD_1(setActive);
 }
 
 var ScriptingObjects::ScriptRingBuffer::getReadBuffer()
@@ -1622,6 +1624,14 @@ var ScriptingObjects::ScriptRingBuffer::createPath(var dstArea, var sourceRange,
 	}
 
 	return var(sp);
+}
+
+void ScriptingObjects::ScriptRingBuffer::setActive(bool shouldBeActive)
+{
+    if (auto obj = getRingBuffer())
+    {
+        obj->setActive(shouldBeActive);
+    }
 }
 
 void ScriptingObjects::ScriptRingBuffer::setRingBufferProperties(var propertyData)
@@ -5228,8 +5238,6 @@ void ScriptingObjects::ScriptedMidiPlayer::setSequenceCallback(var updateFunctio
 
 void ScriptingObjects::ScriptedMidiPlayer::setPlaybackCallback(var newPlaybackCallback, bool synchronous)
 {
-	auto mp = getPlayer();
-
 	playbackUpdater = nullptr;
 
 	if (HiseJavascriptEngine::isJavascriptFunction(newPlaybackCallback))
@@ -8262,15 +8270,12 @@ void ScriptingObjects::ScriptBroadcaster::attachToComponentProperties(var compon
 
 	eventSources.clear();
 
-	for (auto l : getComponentsFromVar(getScriptProcessor(), componentIds))
-	{
-		eventSources.add(new ScriptComponentPropertyEvent(*this, componentIds, idList));
+    eventSources.add(new ScriptComponentPropertyEvent(*this, componentIds, idList));
 
-		auto illegalId = eventSources.getLast()->illegalId;
+    auto illegalId = eventSources.getLast()->illegalId;
 
-		if (illegalId.isValid())
-			reportScriptError("Illegal property id: " + illegalId.toString());
-	}
+    if (illegalId.isValid())
+        reportScriptError("Illegal property id: " + illegalId.toString());
 
 	sourceType = "ComponentProperties";
 }
@@ -8388,7 +8393,7 @@ void ScriptingObjects::ScriptBroadcaster::attachToRadioGroup(int radioGroupIndex
 	static const Identifier radioGroup("radioGroup");
 
 	if ((int)radioGroupIndex == 0)
-		reportScriptError("illegal radio group index " + radioGroupIndex);
+		reportScriptError("illegal radio group index " + String(radioGroupIndex));
 
 	Array<var> buttonList;
 

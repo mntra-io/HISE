@@ -1249,6 +1249,9 @@ namespace ScriptingObjects
 		/** Sets the ring buffer properties from an object (Use the JSON from the Edit Properties popup). */
 		void setRingBufferProperties(var propertyData);
 
+        /** Enables or disables the ring buffer. */
+        void setActive(bool shouldBeActive);
+        
 		// ============================================================================================================
 
 	private:
