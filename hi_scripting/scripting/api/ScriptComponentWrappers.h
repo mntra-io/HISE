@@ -296,6 +296,8 @@ public:
 	/** Overwrite this method and update the value of the component. */
 	virtual void updateValue(var newValue) {};
 
+	static void updateFadeState(ScriptCreatedComponentWrapper& wrapper, bool shouldBeVisible, int fadeTime);
+
 	void sourceHasChanged(ComplexDataUIBase*, ComplexDataUIBase*) override;
 
 	bool setMouseCursorFromParentPanel(ScriptComponent* sc, MouseCursor& c);
@@ -381,6 +383,8 @@ protected:
 
     ScopedPointer<LookAndFeel> localLookAndFeel;
     
+	OwnedArray<AdditionalMouseCallback> mouseCallbacks;
+
 private:
 
 	bool wasFocused = false;
@@ -424,7 +428,7 @@ private:
 
 	const int index;
 
-	ScopedPointer<AdditionalMouseCallback> mouseCallback;
+	
 	
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ScriptCreatedComponentWrapper)
 	JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptCreatedComponentWrapper);

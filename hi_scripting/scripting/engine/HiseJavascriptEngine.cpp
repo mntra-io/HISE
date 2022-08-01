@@ -1508,10 +1508,8 @@ struct HiseJavascriptEngine::TokenProvider::DebugInformationToken : public Token
 		else
 		{
 			markdownDescription << "**Type:** `" << i->getTextForType() << "`  \n";
-			markdownDescription << "**Value:** " << i->getTextForValue();
+			//markdownDescription << "**Value:** " << i->getTextForValue();
 		}
-
-		
 	};
 
 	MarkdownLink getLink() const override { return link; }
@@ -1827,6 +1825,7 @@ hise::HiseJavascriptEngine::RootObject::OptimizationPass::OptimizationResult His
 			{
 				ScopedPointer<Statement> newExpr(optimizedStatement);
 				auto ok = st->replaceChildStatement(newExpr, child);
+                ignoreUnused(ok);
 				jassert(ok);
 				r.numOptimizedStatements++;
 			}

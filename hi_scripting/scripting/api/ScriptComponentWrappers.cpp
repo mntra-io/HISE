@@ -44,11 +44,11 @@ namespace hise { using namespace juce;
 
 struct ScriptCreatedComponentWrapper::AdditionalMouseCallback: public MouseListener
 {
-	AdditionalMouseCallback(ScriptComponent* sc, Component* c) :
+	AdditionalMouseCallback(ScriptComponent* sc, Component* c, const ScriptComponent::MouseListenerData& cd) :
 		scriptComponent(sc),
 		component(c),
-		callbackLevel(sc->getMouseCallbackLevel()),
-		broadcaster(sc->getMouseListener())
+		callbackLevel(cd.mouseCallbackLevel),
+		broadcaster(cd.listener)
 	{
 		component->addMouseListener(this, true);
 	};
@@ -123,7 +123,7 @@ struct ScriptCreatedComponentWrapper::AdditionalMouseCallback: public MouseListe
 
 ScriptCreatedComponentWrapper::~ScriptCreatedComponentWrapper()
 {
-	mouseCallback = nullptr;
+	mouseCallbacks.clear();
 
 	Desktop::getInstance().removeFocusChangeListener(this);
 
@@ -166,6 +166,16 @@ void ScriptCreatedComponentWrapper::updateComponent(int propertyIndex, var newVa
 	default:
 		break;
 	}
+}
+
+void ScriptCreatedComponentWrapper::updateFadeState(ScriptCreatedComponentWrapper& wrapper, bool shouldBeVisible, int fadeTime)
+{
+    wrapper.component->repaint();
+    
+	if(shouldBeVisible)
+		Desktop::getInstance().getAnimator().fadeIn(wrapper.component, fadeTime);
+	else
+		Desktop::getInstance().getAnimator().fadeOut(wrapper.component, fadeTime);
 }
 
 void ScriptCreatedComponentWrapper::sourceHasChanged(ComplexDataUIBase*, ComplexDataUIBase*)
@@ -233,7 +243,10 @@ void ScriptCreatedComponentWrapper::asyncValueTreePropertyChanged(ValueTree& v, 
 
 void ScriptCreatedComponentWrapper::valueTreeParentChanged(ValueTree& /*v*/)
 {
-	contentComponent->updateComponentParent(this);
+    SafeAsyncCall::callAsyncIfNotOnMessageThread<ScriptCreatedComponentWrapper>(*this, [](ScriptCreatedComponentWrapper& f)
+    {
+        f.contentComponent->updateComponentParent(&f);
+    });
 }
 
 ScriptCreatedComponentWrapper::ScriptCreatedComponentWrapper(ScriptContentComponent *content, int index_) :
@@ -244,6 +257,7 @@ ScriptCreatedComponentWrapper::ScriptCreatedComponentWrapper(ScriptContentCompon
 {
 	scriptComponent = content->contentData->getComponent(index_);
 
+	scriptComponent->fadeListener.addListener(*this, ScriptCreatedComponentWrapper::updateFadeState, false);
 	scriptComponent->repaintBroadcaster.addListener(*this, ScriptCreatedComponentWrapper::repaintComponent, false);
 
 	scriptComponent->addZLevelListener(this);
@@ -258,6 +272,7 @@ ScriptCreatedComponentWrapper::ScriptCreatedComponentWrapper(ScriptContentCompon
 {
 	scriptComponent->addZLevelListener(this);
 	scriptComponent->repaintBroadcaster.addListener(*this, ScriptCreatedComponentWrapper::repaintComponent, false);
+	scriptComponent->fadeListener.addListener(*this, ScriptCreatedComponentWrapper::updateFadeState, false);
 }
 
 Processor * ScriptCreatedComponentWrapper::getProcessor()
@@ -276,10 +291,8 @@ void ScriptCreatedComponentWrapper::initAllProperties()
 
 	component->setComponentID(sc->getName().toString());
 
-	if (sc->getMouseCallbackLevel() != MouseCallbackComponent::CallbackLevel::NoCallbacks)
-	{
-		mouseCallback = new AdditionalMouseCallback(sc, component);
-	}
+	for(const auto& c: sc->getMouseListeners())
+		mouseCallbacks.add(new AdditionalMouseCallback(sc, component, c));
 
 	if (sc->wantsKeyboardFocus())
 	{
@@ -1448,7 +1461,7 @@ public:
 ScriptCreatedComponentWrappers::ViewportWrapper::ViewportWrapper(ScriptContentComponent* content, ScriptingApi::Content::ScriptedViewport* viewport, int index):
 	ScriptCreatedComponentWrapper(content, index)
 {
-	if (tableModel = viewport->getTableModel())
+	if ((tableModel = viewport->getTableModel()))
 	{
 		mode = Mode::Table;
 		tableModel->tableRefreshBroadcaster.addListener(*this, ViewportWrapper::tableUpdated, false);
@@ -2108,7 +2121,7 @@ void ScriptCreatedComponentWrappers::PanelWrapper::initPanel(ScriptingApi::Conte
 	bp->setEnableFileDrop(panel->fileDropLevel, panel->fileDropExtension);
 
 	
-
+    bp->setBufferedToImage(panel->getScriptObjectProperty(ScriptingApi::Content::ScriptPanel::bufferToImage));
 
 	component = bp;
 
@@ -2558,6 +2571,9 @@ ScriptCreatedComponentWrappers::FloatingTileWrapper::FloatingTileWrapper(ScriptC
 	ft->setContent(floatingTile->getContentData());
 	ft->refreshRootLayout();
 
+	for (const auto& c : floatingTile->getMouseListeners())
+		mouseCallbacks.add(new AdditionalMouseCallback(floatingTile, component, c));
+
 	LookAndFeel* laf = &mc->getGlobalLookAndFeel();
 
 	if (auto l = floatingTile->createLocalLookAndFeel())
@@ -2566,11 +2582,14 @@ ScriptCreatedComponentWrappers::FloatingTileWrapper::FloatingTileWrapper(ScriptC
 		laf = localLookAndFeel.get();
     }
 
-	Component::callRecursive<Component>(ft, [laf](Component* c)
+	if (dynamic_cast<ScriptingObjects::ScriptedLookAndFeel::Laf*>(laf) != nullptr)
 	{
-		c->setLookAndFeel(laf);
-		return false;
-	});
+		Component::callRecursive<Component>(ft, [laf](Component* c)
+		{
+			c->setLookAndFeel(laf);
+			return false;
+		});
+	}
 }
 
 

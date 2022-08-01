@@ -112,7 +112,7 @@ Component* ScriptTableListModel::refreshComponentForCell(int rowNumber, int colu
 		{
 		case CellType::Button:
 		{
-			auto b = new HiToggleButton(cd.getProperty("Text", "Button"));
+			auto b = new MomentaryToggleButton(cd.getProperty("Text", "Button"));
 
 			auto momentary = !(bool)cd.getProperty("Toggle", false);
 
@@ -223,10 +223,7 @@ void ScriptTableListModel::setup(juce::TableListBox* t)
 			else
 				w = jmax(min, w);
 
-			auto visible = (bool)c.getProperty("Visible", true);
-
-			int flag = 0;
-			flag |= TableHeaderComponent::ColumnPropertyFlags::visible;
+			int flag = TableHeaderComponent::ColumnPropertyFlags::visible;
 
 			header.addColumn(label, idx, w, min, max, flag);
 			idx++;

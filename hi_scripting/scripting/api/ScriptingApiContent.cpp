@@ -110,6 +110,7 @@ struct ScriptingApi::Content::ScriptComponent::Wrapper
 {
 	API_VOID_METHOD_WRAPPER_2(ScriptComponent, set);
 	API_METHOD_WRAPPER_1(ScriptComponent, get);
+	API_METHOD_WRAPPER_0(ScriptComponent, getId);
 	API_METHOD_WRAPPER_0(ScriptComponent, getValue);
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setValue);
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setValueNormalized);
@@ -134,6 +135,7 @@ struct ScriptingApi::Content::ScriptComponent::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setZLevel);
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setLocalLookAndFeel);
 	API_VOID_METHOD_WRAPPER_0(ScriptComponent, sendRepaintMessage);
+	API_VOID_METHOD_WRAPPER_2(ScriptComponent, fadeComponent);
 };
 
 #define ADD_SCRIPT_PROPERTY(id, name) static const Identifier id(name); propertyIds.add(id);
@@ -295,6 +297,7 @@ ScriptingApi::Content::ScriptComponent::ScriptComponent(ProcessorWithScriptingCo
 
 	ADD_API_METHOD_2(set);
 	ADD_API_METHOD_1(get);
+	ADD_API_METHOD_0(getId);
 	ADD_API_METHOD_0(getValue);
 	ADD_API_METHOD_1(setValue);
 	ADD_API_METHOD_1(setValueNormalized);
@@ -319,7 +322,7 @@ ScriptingApi::Content::ScriptComponent::ScriptComponent(ProcessorWithScriptingCo
 	ADD_API_METHOD_0(loseFocus);
 	ADD_API_METHOD_1(setLocalLookAndFeel);
 	ADD_API_METHOD_0(sendRepaintMessage);
-	
+	ADD_API_METHOD_2(fadeComponent);
 
 	//setName(name_.toString());
 
@@ -629,6 +632,8 @@ void ScriptingApi::Content::ScriptComponent::setScriptObjectPropertyWithChangeMe
 		{
 			connectedProcessor = ProcessorHelpers::getFirstProcessorWithName(getScriptProcessor()->getMainController_()->getMainSynthChain(), pId);
 		}
+        
+        updateValueFromProcessorConnection();
 	}
 	else if (id == getIdFor(parameterId))
 	{
@@ -650,9 +655,34 @@ void ScriptingApi::Content::ScriptComponent::setScriptObjectPropertyWithChangeMe
 			else
 				connectedParameterIndex = -1;
 		}
+        
+        updateValueFromProcessorConnection();
 	}
 
 	setScriptObjectProperty(propertyIds.indexOf(id), newValue, notifyEditor);
+}
+
+void ScriptingApi::Content::ScriptComponent::updateValueFromProcessorConnection()
+{
+    if(connectedProcessor != nullptr && connectedParameterIndex != -1)
+    {
+        float value = 0.0f;
+        
+        if (connectedParameterIndex == -2)
+        {
+            if (auto mod = dynamic_cast<Modulation*>(connectedProcessor.get()))
+                value = mod->getIntensity();
+        }
+        else if (connectedParameterIndex == -3)
+            value = connectedProcessor->isBypassed() ? 1.0f : 0.0f;
+        else if (connectedParameterIndex == -4)
+            value = connectedProcessor->isBypassed() ? 0.0f : 1.0f;
+        else
+            value = connectedProcessor->getAttribute(connectedParameterIndex);
+
+        FloatSanitizers::sanitizeFloatNumber(value);
+        setValue(value);
+    }
 }
 
 const Identifier ScriptingApi::Content::ScriptComponent::getIdFor(int p) const
@@ -1443,6 +1473,26 @@ void ScriptingApi::Content::ScriptComponent::repaintThisAndAllChildren()
 void ScriptingApi::Content::ScriptComponent::sendRepaintMessage()
 {
 	repaintBroadcaster.sendMessage(sendNotificationAsync, true);
+}
+
+String ScriptingApi::Content::ScriptComponent::getId() const
+{
+	return getName().toString();
+}
+
+
+
+void ScriptingApi::Content::ScriptComponent::fadeComponent(bool shouldBeVisible, int milliseconds)
+{
+	auto isVisible = (bool)getScriptObjectProperty(getIdFor(Properties::visible));
+
+	if (shouldBeVisible != isVisible)
+	{
+        setScriptObjectPropertyWithChangeMessage(getIdFor(Properties::visible), shouldBeVisible);
+
+		fadeListener.enableLockFreeUpdate(getScriptProcessor()->getMainController_()->getGlobalUIUpdater());
+		fadeListener.sendMessage(sendNotificationAsync, shouldBeVisible, milliseconds);
+	}
 }
 
 struct ScriptingApi::Content::ScriptSlider::Wrapper
@@ -2810,6 +2860,7 @@ struct ScriptingApi::Content::ScriptAudioWaveform::Wrapper
 	API_METHOD_WRAPPER_0(ScriptAudioWaveform, getRangeStart);
 	API_METHOD_WRAPPER_0(ScriptAudioWaveform, getRangeEnd);
 	API_METHOD_WRAPPER_1(ScriptAudioWaveform, registerAtParent);
+	API_VOID_METHOD_WRAPPER_1(ScriptAudioWaveform, setDefaultFolder);
 };
 
 ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScriptingContent *base, Content* /*parentContent*/, Identifier waveformName, int x, int y, int, int) :
@@ -2846,6 +2897,7 @@ ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScr
 	ADD_API_METHOD_1(referToData);
 	ADD_API_METHOD_0(getRangeStart);
 	ADD_API_METHOD_0(getRangeEnd);
+	ADD_API_METHOD_1(setDefaultFolder);
 	ADD_API_METHOD_1(registerAtParent);
 }
 
@@ -2939,6 +2991,17 @@ int ScriptingApi::Content::ScriptAudioWaveform::getRangeEnd()
 var ScriptingApi::Content::ScriptAudioWaveform::registerAtParent(int pIndex)
 {
 	return registerComplexDataObjectAtParent(pIndex);
+}
+
+void ScriptingApi::Content::ScriptAudioWaveform::setDefaultFolder(var newDefaultFolder)
+{
+	if (auto af = getCachedAudioFile())
+	{
+		if (auto sf = dynamic_cast<ScriptingObjects::ScriptFile*>(newDefaultFolder.getObject()))
+			af->getProvider()->setRootDirectory(sf->f);
+		else
+			reportScriptError("newDefaultFolder must be a File object");
+	}
 }
 
 struct ScriptingApi::Content::ScriptImage::Wrapper
@@ -3229,7 +3292,8 @@ void ScriptingApi::Content::ScriptPanel::init()
 	ADD_SCRIPT_PROPERTY(i10, "enableMidiLearn");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 	ADD_SCRIPT_PROPERTY(i11, "holdIsRightClick");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 	ADD_SCRIPT_PROPERTY(i12, "isPopupPanel");		ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
-
+    ADD_SCRIPT_PROPERTY(i13, "bufferToImage");      ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+    
 	setDefaultValue(ScriptComponent::Properties::x, x);
 	setDefaultValue(ScriptComponent::Properties::y, y);
 	setDefaultValue(ScriptComponent::Properties::width, 100);
@@ -3252,6 +3316,7 @@ void ScriptingApi::Content::ScriptPanel::init()
 	setDefaultValue(enableMidiLearn, false);
 	setDefaultValue(holdIsRightClick, true);
 	setDefaultValue(isPopupPanel, false);
+    setDefaultValue(bufferToImage, false);
 
 	handleDefaultDeactivatedProperties();
 

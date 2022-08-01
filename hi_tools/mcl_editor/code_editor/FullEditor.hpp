@@ -38,12 +38,16 @@ namespace TextEditorShortcuts
 	DECLARE_ID(show_fold_map);
 	DECLARE_ID(show_autocomplete);
 	DECLARE_ID(goto_definition);
+	DECLARE_ID(goto_file);
 	DECLARE_ID(show_search);
 	DECLARE_ID(show_full_search);
 	DECLARE_ID(breakpoint_resume);
 	DECLARE_ID(show_search_replace);
 	DECLARE_ID(add_autocomplete_template);
 	DECLARE_ID(clear_autocomplete_templates);
+	DECLARE_ID(select_token);
+    DECLARE_ID(goto_undo);
+    DECLARE_ID(goto_redo);
 }
 
 #undef DECLARE_ID
