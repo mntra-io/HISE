@@ -1369,7 +1369,7 @@ void mcl::TextEditor::mouseMagnify (const MouseEvent& e, float scaleFactor)
 
 bool TextEditor::keyMatchesId(const KeyPress& k, const Identifier& id)
 {
-	return k == TopLevelWindowWithKeyMappings::getKeyPress(this, id);
+	return TopLevelWindowWithKeyMappings::matches(this, k, id);
 }
 
 void TextEditor::initKeyPresses(Component* root)
@@ -1382,6 +1382,9 @@ void TextEditor::initKeyPresses(Component* root)
 
 	TopLevelWindowWithKeyMappings::addShortcut(root, category, TextEditorShortcuts::show_search, "Search in current file", 
 		KeyPress('f', ModifierKeys::ctrlModifier, 0));
+
+	TopLevelWindowWithKeyMappings::addShortcut(root, category, TextEditorShortcuts::select_token, "Select current token",
+		KeyPress('t', ModifierKeys::ctrlModifier, 0));
 }
 
 bool mcl::TextEditor::keyPressed (const KeyPress& key)
@@ -1781,7 +1784,8 @@ bool mcl::TextEditor::keyPressed (const KeyPress& key)
 			return insert("");
 		}
 
-        if (key.isKeyCode (KeyPress::backspaceKey)) return (   expandBack (Target::commandTokenNav, Direction::backwardCol)
+        if (key.isKeyCode (KeyPress::backspaceKey) && !key.getModifiers().isAnyModifierKeyDown())
+            return (expandBack (Target::commandTokenNav, Direction::backwardCol)
                                                             && insert (""));
 
 		if (key == KeyPress('e', ModifierKeys::ctrlModifier, 0) ||
@@ -1912,7 +1916,8 @@ bool mcl::TextEditor::keyPressed (const KeyPress& key)
 
 
 
-	if (key.isKeyCode(KeyPress::backspaceKey)) return remove(Target::character, Direction::backwardCol);
+	if (key.isKeyCode(KeyPress::backspaceKey) && !key.getModifiers().isAnyModifierKeyDown())
+        return remove(Target::character, Direction::backwardCol);
 	if (key.isKeyCode(KeyPress::deleteKey))
 	{
 		// Deactivate double delete when pressing del key
@@ -1944,7 +1949,7 @@ bool mcl::TextEditor::keyPressed (const KeyPress& key)
     {
         return document.getCodeDocument().getUndoManager().redo();
     }
-    if (key == KeyPress ('t', ModifierKeys::commandModifier, 0))
+    if (keyMatchesId(key, TextEditorShortcuts::select_token))
     {
         document.navigateSelections (TextDocument::Target::subword, TextDocument::Direction::backwardCol, Selection::Part::head);
         document.navigateSelections (TextDocument::Target::subword, TextDocument::Direction::forwardCol,  Selection::Part::tail);

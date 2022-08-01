@@ -790,7 +790,17 @@ namespace ScriptingObjects
 
         
 		Font f = GLOBAL_BOLD_FONT();
-		ReferenceCountedObjectPtr<GraphicsObject> g;
+        
+        struct GraphicsWithComponent
+        {
+            ReferenceCountedObjectPtr<GraphicsObject> g;
+            Identifier functionName;
+            Component* c = nullptr;
+        };
+        
+        Array<GraphicsWithComponent> graphics;
+        
+		
 
 		var functions;
 
@@ -815,6 +825,8 @@ namespace ScriptingObjects
 
 		const bool wasGlobal;
 		Array<NamedImage> loadedImages;
+
+		Result lastResult;
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptedLookAndFeel);
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ScriptedLookAndFeel);

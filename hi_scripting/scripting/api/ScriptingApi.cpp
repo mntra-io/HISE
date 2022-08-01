@@ -958,7 +958,6 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_1(getMilliSecondsForTempo);
 	ADD_API_METHOD_1(getSamplesForMilliSeconds);
 	ADD_API_METHOD_1(getMilliSecondsForSamples);
-	ADD_API_METHOD_1(getMilliSecondsForSamples);
 	ADD_API_METHOD_1(getQuarterBeatsForMilliSeconds);
 	ADD_API_METHOD_1(getQuarterBeatsForSamples);
 	ADD_API_METHOD_1(getSamplesForQuarterBeats);
@@ -1756,10 +1755,16 @@ struct AudioRenderer : public Thread,
 
 	bool renderAudio()
 	{
+        // Stop all clocks...
+        getMainController()->getMasterClock().changeState(0, true, false);
+        getMainController()->getMasterClock().changeState(0, false, false);
+        
 		SuspendHelpers::ScopedTicket st(getMainController());
 
 		callUpdateCallback(false, 0.0);
 
+        
+        
 		while (getMainController()->getKillStateHandler().isAudioRunning())
 		{
 			if (threadShouldExit())
@@ -5834,9 +5839,9 @@ void ScriptingApi::Console::stop(bool condition)
 	else
 	{
 		String message;
-		message << "Breakpoint in UI Thread at " << id << "(Line " << lineNumber << ")";
+		message << "Breakpoint in UI Thread";// at " << id << "(Line " << lineNumber << ")";
 
-		debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), message);
+		reportScriptError(message);
 	}
 }
 
@@ -6341,10 +6346,10 @@ var ScriptingApi::FileSystem::findFiles(var directory, String wildcard, bool rec
 	{
 		if (root->isDirectory())
 		{
-			auto list = root->f.findChildFiles(File::findFilesAndDirectories, recursive, wildcard);
+			auto list = root->f.findChildFiles(File::findFilesAndDirectories | File::ignoreHiddenFiles, recursive, wildcard);
 
 			for (auto sf : list)
-				l.add(new ScriptingObjects::ScriptFile(p, sf));
+                l.add(new ScriptingObjects::ScriptFile(p, sf));
 		}
 	}
 

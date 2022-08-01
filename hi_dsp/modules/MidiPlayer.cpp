@@ -740,13 +740,12 @@ MidiPlayer::MidiPlayer(MainController *mc, const String &id, ModulatorSynth*) :
 	updater(*this),
 	overdubUpdater(*this)
 {
-	addAttributeID(Stop);
-	addAttributeID(Play);
-	addAttributeID(Record);
 	addAttributeID(CurrentPosition);
 	addAttributeID(CurrentSequence);
 	addAttributeID(CurrentTrack);
-	addAttributeID(ClearSequences);
+	addAttributeID(LoopEnabled);
+	addAttributeID(LoopStart);
+	addAttributeID(LoopEnd);
 	addAttributeID(PlaybackSpeed);
 
 	mc->addTempoListener(this);
@@ -975,6 +974,9 @@ void MidiPlayer::setInternalAttribute(int index, float newAmount)
 		recordState.store(RecordState::Idle);
 
 		updatePositionInCurrentSequence();
+
+		sendSequenceUpdateMessage(sendNotificationAsync);
+
 		break;
 	}
 	case CurrentTrack:			
@@ -1273,8 +1275,6 @@ void MidiPlayer::processHiseEvent(HiseEvent &m) noexcept
 				}
 				else if (copy.isNoteOff())
 				{
-					bool found = false;
-
 					{
 						SimpleReadWriteLock::ScopedReadLock sl(overdubLock);
 

@@ -1490,7 +1490,7 @@ void ScriptingObjects::GraphicsObject::applyVignette(float amount, float radius,
 
 void ScriptingObjects::GraphicsObject::addNoise(var noiseAmount)
 {
-	auto m = drawActionHandler.getNoiseMapManager();
+    auto m = drawActionHandler.getNoiseMapManager();
 
 	Rectangle<int> ar;
 
@@ -1990,9 +1990,9 @@ struct ScriptingObjects::ScriptedLookAndFeel::Wrapper
 ScriptingObjects::ScriptedLookAndFeel::ScriptedLookAndFeel(ProcessorWithScriptingContent* sp, bool isGlobal) :
 	ConstScriptingObject(sp, 0),
 	ControlledObject(sp->getMainController_()),
-	g(new GraphicsObject(sp, this)),
 	functions(new DynamicObject()),
-	wasGlobal(isGlobal)
+	wasGlobal(isGlobal),
+	lastResult(Result::ok())
 {
 	ADD_API_METHOD_2(registerFunction);
 	ADD_API_METHOD_2(setGlobalFont);
@@ -2007,7 +2007,7 @@ ScriptingObjects::ScriptedLookAndFeel::~ScriptedLookAndFeel()
 	SimpleReadWriteLock::ScopedWriteLock sl(getMainController()->getJavascriptThreadPool().getLookAndFeelRenderLock());
 
     functions = var();
-    g = nullptr;
+    graphics.clear();
     loadedImages.clear();
 }
 
@@ -2087,13 +2087,39 @@ Array<Identifier> ScriptingObjects::ScriptedLookAndFeel::getAllFunctionNames()
 
 bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const Identifier& functionname, var argsObject, Component* c)
 {
-	// If this hits, you need to add that id to the array above.
+    // If this hits, you need to add that id to the array above.
 	jassert(getAllFunctionNames().contains(functionname));
 
+	if (!lastResult.wasOk())
+		return false;
+
+    
+    
 	auto f = functions.getProperty(functionname, {});
 
 	if (HiseJavascriptEngine::isJavascriptFunction(f))
 	{
+        ReferenceCountedObjectPtr<GraphicsObject> g;
+        
+        for(auto& gr: graphics)
+        {
+            if(gr.c == c && gr.functionName == functionname)
+            {
+                g = gr.g;
+                break;
+            }
+        }
+        
+        if(g == nullptr)
+        {
+            GraphicsWithComponent gr;
+            gr.g = new GraphicsObject(getScriptProcessor(), this);
+            gr.c = c;
+            gr.functionName = functionname;
+            graphics.add(gr);
+            g = gr.g;
+        }
+        
         var args[2];
 
         args[0] = var(g.get());
@@ -2101,6 +2127,8 @@ bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const
         
 		var thisObject(this);
 
+        
+        
 		{
 			if (auto sl = SimpleReadWriteLock::ScopedTryReadLock(getScriptProcessor()->getMainController_()->getJavascriptThreadPool().getLookAndFeelRenderLock()))
 			{
@@ -2112,28 +2140,14 @@ bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const
 
 				var::NativeFunctionArgs arg(thisObject, args, 2);
 				auto engine = dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine();
-				Result r = Result::ok();
+				lastResult = Result::ok();
 
-				try
-				{
-					engine->callExternalFunctionRaw(f, arg);
-				}
-				catch (String& errorMessage)
-				{
-					debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), errorMessage);
-				}
-				catch (HiseJavascriptEngine::RootObject::Error& e)
-				{
-					auto p = dynamic_cast<Processor*>(getScriptProcessor());
-					debugToConsole(p, e.toString(p) + e.errorMessage);
-				}
+				engine->callExternalFunction(f, arg, &lastResult, true);
 
-				g->getDrawHandler().flush();
-			}
-			else
-			{
-				g_.fillAll(Colours::black);
-				return false;
+				if (lastResult.wasOk())
+					g->getDrawHandler().flush();
+				else
+					debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), lastResult.getErrorMessage());
 			}
 		}
 
