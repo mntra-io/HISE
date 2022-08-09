@@ -7510,11 +7510,7 @@ int ScriptingObjects::ScriptErrorHandler::getCurrentErrorLevel() const
 
 void ScriptingObjects::ScriptErrorHandler::simulateErrorEvent(int state)
 {
-#if USE_BACKEND
 	getScriptProcessor()->getMainController_()->sendOverlayMessage(state);
-#else
-	ignoreUnused(state);
-#endif
 }
 
 void ScriptingObjects::ScriptErrorHandler::sendErrorForHighestState()
