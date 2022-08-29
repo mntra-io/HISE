@@ -2364,6 +2364,9 @@ public:
 	/** Returns the name of the component that is currently hovered. */
 	String getComponentUnderMouse();
 
+	/** Calls a function after a delay. This is not accurate and only useful for UI purposes!. */
+	void callAfterDelay(int milliSeconds, var function, var thisObject);
+
 	// ================================================================================================================
 
 	// Restores the content and sets the attributes so that the macros and the control callbacks gets executed.
