@@ -6904,7 +6904,7 @@ void ScriptingApi::TransportHandler::tempoChanged(double newTempo)
 
 
 
-void ScriptingApi::TransportHandler::onTransportChange(bool isPlaying)
+void ScriptingApi::TransportHandler::onTransportChange(bool isPlaying, double /*ppqPosition*/)
 {
 	play = isPlaying;
 
