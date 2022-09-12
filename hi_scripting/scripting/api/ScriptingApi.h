@@ -162,6 +162,9 @@ public:
 		/** Sets a callback that will be performed when an all notes off message is received. */
 		void setAllNotesOffCallback(var onAllNotesOffCallback);
 
+		/** This will forward the message to the MIDI out of the plugin. */
+		void sendToMidiOut();
+
 		// ============================================================================================================
 
 		void setHiseEvent(HiseEvent &m);
@@ -1366,7 +1369,7 @@ public:
 
 		void tempoChanged(double newTempo) override;
 
-		void onTransportChange(bool isPlaying) override;
+		void onTransportChange(bool isPlaying, double ppqPosition) override;
 
 		void onBeatChange(int newBeat, bool isNewBar) override;
 

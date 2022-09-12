@@ -452,7 +452,7 @@ public:
 
 	void onGridChange(int gridIndex, uint16 timestamp, bool firstGridEventInPlayback) override;
 
-	void onTransportChange(bool isPlaying) override;
+	void onTransportChange(bool isPlaying, double ppqPosition) override;
 	
 	enum class RecordState
 	{
@@ -712,6 +712,7 @@ private:
 	void flushOverdubNotes(double timestampForActiveNotes=-1.0);
 
 	
+	bool recordOnNextPlaybackStart = false;
 
 	bool overdubMode = true;
 	hise::UnorderedStack<NotePair> overdubNoteOns;
