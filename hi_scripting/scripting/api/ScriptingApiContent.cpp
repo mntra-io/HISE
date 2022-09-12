@@ -521,6 +521,10 @@ void ScriptingApi::Content::ScriptComponent::setScriptObjectPropertyWithChangeMe
 					c.setValue(v);
 				}, true);
 			}
+			else
+			{
+				logErrorAndContinue("Automation ID " + newValue.toString() + " wasn't found");
+			}
 		}
 		else
 			currentAutomationData = nullptr;
@@ -4815,6 +4819,7 @@ colour(Colour(0xff777777))
 	setMethod("createLocalLookAndFeel", Wrapper::createLocalLookAndFeel);
 	setMethod("isMouseDown", Wrapper::isMouseDown);
 	setMethod("getComponentUnderMouse", Wrapper::getComponentUnderMouse);
+	setMethod("callAfterDelay", Wrapper::callAfterDelay);
 }
 
 ScriptingApi::Content::~Content()
@@ -5775,6 +5780,20 @@ String ScriptingApi::Content::getComponentUnderMouse()
 	}
 
 	return "";
+}
+
+void ScriptingApi::Content::callAfterDelay(int milliSeconds, var function, var thisObject)
+{
+	WeakCallbackHolder cb(getScriptProcessor(), function, 0);
+	cb.incRefCount();
+
+	if (auto obj = thisObject.getObject())
+		cb.setThisObject(obj);
+
+	Timer::callAfterDelay(milliSeconds, [cb]() mutable
+		{
+			cb.call(nullptr, 0);
+		});
 }
 
 #undef ADD_TO_TYPE_SELECTOR

@@ -269,6 +269,7 @@ struct ScriptingApi::Message::Wrapper
 	API_VOID_METHOD_WRAPPER_1(Message, store);
 	API_METHOD_WRAPPER_0(Message, makeArtificial);
 	API_METHOD_WRAPPER_0(Message, isArtificial);
+	API_VOID_METHOD_WRAPPER_0(Message, sendToMidiOut);
 	API_VOID_METHOD_WRAPPER_1(Message, setAllNotesOffCallback);
 
 };
@@ -316,6 +317,7 @@ allNotesOffCallback(p, var(), 0)
 	ADD_API_METHOD_0(makeArtificial);
 	ADD_API_METHOD_0(isArtificial);
 	ADD_API_METHOD_1(setAllNotesOffCallback);
+	ADD_API_METHOD_0(sendToMidiOut);
 }
 
 
@@ -777,6 +779,24 @@ void ScriptingApi::Message::setAllNotesOffCallback(var onAllNotesOffCallback)
 {
 	allNotesOffCallback = WeakCallbackHolder(getScriptProcessor(), onAllNotesOffCallback, 0);
 	allNotesOffCallback.incRefCount();
+}
+
+void ScriptingApi::Message::sendToMidiOut()
+{
+#if USE_BACKEND
+    
+    auto mc = getScriptProcessor()->getMainController_();
+    
+    auto midiOutputEnabled = dynamic_cast<GlobalSettingManager*>(mc)->getSettingsObject().getSetting(HiseSettings::Project::EnableMidiOut);
+    
+    if(!midiOutputEnabled)
+    {
+        reportScriptError("You need to enable EnableMidiOut in the project settings for this function to work");
+    }
+#endif
+    
+	makeArtificial();
+	getScriptProcessor()->getMainController_()->sendToMidiOut(*messageHolder);
 }
 
 void ScriptingApi::Message::setHiseEvent(HiseEvent &m)
@@ -1601,17 +1621,20 @@ void ScriptingApi::Engine::showYesNoWindow(String title, String markdownMessage,
 	//auto p = dynamic_cast<JavascriptProcessor*>(getScriptProcessor());
 	auto p = getScriptProcessor();
 
-	auto f = [markdownMessage, title, callback, p]
+	WeakCallbackHolder cb(p, callback, 1);
+
+	auto f = [markdownMessage, title, cb]() mutable
 	{
 		auto ok = PresetHandler::showYesNoWindow(title, markdownMessage);
 
 		std::array<var, 1> args = { var(ok) };
-		WeakCallbackHolder cb(p, callback, 1);
 		cb.call({ var(ok) });
 	};
 
 	MessageManager::callAsync(f);
 }
+
+
 
 String ScriptingApi::Engine::decodeBase64ValueTree(const String& b64Data)
 {
@@ -6411,7 +6434,11 @@ void ScriptingApi::FileSystem::browseInternally(File f, bool forSaving, bool isD
 {
 	auto p_ = p;
 
-	auto cb = [forSaving, f, wildcard, callback, p_, isDirectory]()
+	WeakCallbackHolder wc(p_, callback, 1);
+	wc.setHighPriority();
+	wc.incRefCount();
+
+	auto cb = [forSaving, f, wildcard, isDirectory, wc, p_]() mutable
 	{
 		String title;
 
@@ -6439,9 +6466,7 @@ void ScriptingApi::FileSystem::browseInternally(File f, bool forSaving, bool isD
 
 		if (a.isObject())
 		{
-			WeakCallbackHolder cb(p_, callback, 1);
-			cb.setHighPriority();
-			cb.call(&a, 1);
+			wc.call(&a, 1);
 		}
 	};
 
@@ -6899,7 +6924,7 @@ void ScriptingApi::TransportHandler::tempoChanged(double newTempo)
 
 
 
-void ScriptingApi::TransportHandler::onTransportChange(bool isPlaying)
+void ScriptingApi::TransportHandler::onTransportChange(bool isPlaying, double /*ppqPosition*/)
 {
 	play = isPlaying;
 

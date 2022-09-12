@@ -427,11 +427,11 @@ namespace ScriptingObjects
 		/** Draws a rectangle. */
 		void drawRect(var area, float borderSize);
 
-		/** Fills a rounded rectangle. */
-		void fillRoundedRectangle(var area, float cornerSize);
+		/** Fills a rounded rectangle. cornerData can be either a float number (for the corner size) or a JSON object for more customization options. */
+		void fillRoundedRectangle(var area, var cornerData);
 
-		/** Draws a rounded rectangle. */
-		void drawRoundedRectangle(var area, float cornerSize, float borderSize);
+		/** Draws a rounded rectangle. cornerData can be either a float number (for the corner size) or a JSON object for more customization options.*/
+		void drawRoundedRectangle(var area, var cornerData, float borderSize);
 
 		/** Draws a (non interpolated) horizontal line. */
 		void drawHorizontalLine(int y, float x1, float x2);
@@ -641,7 +641,7 @@ namespace ScriptingObjects
 
 			Path createPresetBrowserIcons(const String& id) override;
 			void drawPresetBrowserBackground(Graphics& g, Component* p) override;
-			void drawColumnBackground(Graphics& g, Rectangle<int> listArea, const String& emptyText) override;
+			void drawColumnBackground(Graphics& g, int columnIndex, Rectangle<int> listArea, const String& emptyText) override;
 			void drawTag(Graphics& g, bool blinking, bool active, bool selected, const String& name, Rectangle<int> position) override;
 			void drawModalOverlay(Graphics& g, Rectangle<int> area, Rectangle<int> labelArea, const String& title, const String& command) override;
 			void drawListItem(Graphics& g, int columnIndex, int, const String& itemName, Rectangle<int> position, bool rowIsSelected, bool deleteMode, bool hover) override;
