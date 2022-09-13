@@ -16,10 +16,9 @@
 //==============================================================================
 // [BEGIN_USER_CODE_SECTION]
 
-#define JUCE_ENABLE_AUDIO_GUARD 0
-#define JUCE_DONT_ASSERT_ON_GLSL_COMPILE_ERROR 1
-
 // (You can add your own code in this section, and the Projucer will not overwrite it)
+
+#define DONT_SET_USING_JUCE_NAMESPACE 1
 
 // [END_USER_CODE_SECTION]
 
@@ -77,6 +76,7 @@
 #define JUCE_MODULE_AVAILABLE_juce_gui_basics             1
 #define JUCE_MODULE_AVAILABLE_juce_gui_extra              1
 #define JUCE_MODULE_AVAILABLE_juce_opengl                 1
+#define JUCE_MODULE_AVAILABLE_juce_osc                    1
 #define JUCE_MODULE_AVAILABLE_juce_product_unlocking      1
 
 #define JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED 1
@@ -196,6 +196,10 @@
 
 #ifndef    HISE_ENABLE_MIDI_INPUT_FOR_FX
  #define   HISE_ENABLE_MIDI_INPUT_FOR_FX 1
+#endif
+
+#ifndef    HISE_COMPLAIN_ABOUT_ILLEGAL_BUFFER_SIZE
+ //#define HISE_COMPLAIN_ABOUT_ILLEGAL_BUFFER_SIZE 1
 #endif
 
 #ifndef    ENABLE_ALL_PEAK_METERS
