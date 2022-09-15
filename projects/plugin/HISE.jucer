@@ -112,7 +112,7 @@
     <VS2017 targetFolder="Builds/VisualStudio2017" vstFolder="c:\SDKs\vstsdk2.4"
             smallIcon="" useIPP="Sequential" aaxFolder="D:\Development\SDKs\AAX"
             IPPLibrary="Sequential" windowsTargetPlatformVersion="10.0.16299.0"
-            extraCompilerFlags="/bigobj" extraDefs="USE_IPP=1">
+            extraCompilerFlags="/bigobj" extraDefs="USE_IPP=1" IPP1ALibrary="true">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" winWarningLevel="4" generateManifest="1" winArchitecture="x64"
                        isDebug="1" optimisation="1" targetName="HISE x64 Debug" binaryPath="C:\Program Files\VSTPlugins"
@@ -251,7 +251,7 @@
                USE_CUSTOM_FRONTEND_TOOLBAR="0" IS_STANDALONE_FRONTEND="0" USE_GLITCH_DETECTION="1"
                ENABLE_PLOTTER="1" ENABLE_SCRIPTING_SAFE_CHECKS="1" ENABLE_ALL_PEAK_METERS="1"
                ENABLE_HOST_INFO="1" ENABLE_CPU_MEASUREMENT="1" USE_HARD_CLIPPER="1"
-               USE_IPP="0" USE_VDSP_FFT="0" ENABLE_SCRIPTING_BREAKPOINTS="1"
+               USE_IPP="1" USE_VDSP_FFT="0" ENABLE_SCRIPTING_BREAKPOINTS="1"
                HLAC_MEASURE_DECODING_PERFORMANCE="0" HLAC_DEBUG_LOG="0" HLAC_INCLUDE_TEST_SUITE="0"
                STANDALONE_STREAMING="0" JUCE_ASSERTION_FIRFILTER="0" JUCE_DSP_USE_INTEL_MKL="0"
                JUCE_DSP_USE_SHARED_FFTW="0" JUCE_DSP_USE_STATIC_FFTW="0"/>
