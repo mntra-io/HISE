@@ -362,10 +362,10 @@ namespace ScriptingObjects
 		bool rename(String newName);
 
 		/** Moves the file. */
-		bool move(String target);
+		bool move(var target);
 
 		/** Copies the file. */
-		bool copy(String target);
+		bool copy(var target);
 
 		/** Loads the given file as audio file. */
 		var loadAsAudioFile() const;
