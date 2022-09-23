@@ -501,6 +501,9 @@ namespace ScriptingObjects
 		/** Resets the state. */
 		void reset();
 
+		/** Resends the current state. */
+		void resendLastMessage(bool isSync);
+
 		/** Registers this broadcaster to be called when one of the properties of the given components change. */
 		void attachToComponentProperties(var componentIds, var propertyIds);
 
@@ -544,6 +547,7 @@ namespace ScriptingObjects
 
         bool realtimeSafe = false;
 		bool enableQueue = false;
+		bool forceSend = false;
 
 		struct DelayedFunction : public Timer
 		{
