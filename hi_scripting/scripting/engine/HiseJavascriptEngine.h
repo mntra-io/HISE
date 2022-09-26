@@ -465,6 +465,54 @@ public:
 		struct CodeLocation;
 		struct CallStackEntry;
 		struct Scope;
+        
+        struct LocalScopeCreator
+        {
+            using Ptr = WeakReference<LocalScopeCreator>;
+            
+			struct ScopedSetter
+			{
+				ScopedSetter(ReferenceCountedObjectPtr<RootObject> r_, LocalScopeCreator::Ptr p):
+					r(r_.get())
+				{
+#if ENABLE_SCRIPTING_BREAKPOINTS
+					auto isMessageThread = MessageManager::getInstanceWithoutCreating()->isThisTheMessageThread();
+
+					if (!isMessageThread)
+					{
+						auto& cp = r->currentLocalScopeCreator.get();
+						prevValue = p;
+						std::swap(prevValue, cp);
+						ok = true;
+					}
+#endif
+				}
+
+				~ScopedSetter()
+				{
+#if ENABLE_SCRIPTING_BREAKPOINTS
+					if (ok)
+					{
+						auto& cp = r->currentLocalScopeCreator.get();
+						std::swap(cp, prevValue);
+					}
+#endif
+				};
+
+				RootObject* r;
+				LocalScopeCreator::Ptr prevValue;
+				bool ok = false;
+			};
+
+            virtual ~LocalScopeCreator() {};
+            
+            virtual DynamicObject::Ptr createScope(RootObject* r) = 0;
+            
+            JUCE_DECLARE_WEAK_REFERENCEABLE(LocalScopeCreator);
+        };
+        
+		ThreadLocalValue<LocalScopeCreator::Ptr> currentLocalScopeCreator;
+        
 		struct Statement;
 		struct Expression;
 		
@@ -649,14 +697,15 @@ public:
 		static var typeof_internal(Args a);
 		static var exec(Args a);
 		static var eval(Args a);
-
+                            
 		void addToCallStack(const Identifier& id, const CodeLocation* location);
 		void removeFromCallStack(const Identifier& id);
 		String dumpCallStack(const Error& lastError, const Identifier& rootFunctionName);
 		void setCallStackEnabled(bool shouldeBeEnabled) { enableCallstack = shouldeBeEnabled; }
 
 		class Callback:  public DynamicObject,
-					     public DebugableObject
+					     public DebugableObject,
+                         public LocalScopeCreator
 		{
 		public:
 
@@ -678,6 +727,19 @@ public:
 
 			String getDebugName() const override { return callbackName.toString() + "()"; }
 
+            DynamicObject::Ptr createScope(RootObject* r) override
+            {
+                DynamicObject::Ptr obj = new DynamicObject();
+                
+                for (int i = 0; i < numArgs; i++)
+                    obj->setProperty(parameters[i], parameterValues[i]);
+
+                for (int i = 0; i < localProperties.size(); i++)
+                    obj->setProperty(localProperties.getName(i), localProperties.getValueAt(i));
+
+                return obj;
+            }
+            
 			int getNumChildElements() const override
 			{
 				return getNumArgs() + localProperties.size();
