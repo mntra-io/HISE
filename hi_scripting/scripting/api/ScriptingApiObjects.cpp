@@ -725,14 +725,20 @@ bool ScriptingObjects::ScriptFile::rename(String newName)
 	return f.moveFileTo(newFile);
 }
 
-bool ScriptingObjects::ScriptFile::move(String target)
+bool ScriptingObjects::ScriptFile::move(var target)
 {	
-	return f.moveFileTo(target);
+	if (auto sf = dynamic_cast<ScriptFile*>(target.getObject()))
+		return f.moveFileTo(sf->f);
+	else
+		reportScriptError("target is not a file");
 }
 
-bool ScriptingObjects::ScriptFile::copy(String target)
+bool ScriptingObjects::ScriptFile::copy(var target)
 {	
-	return f.copyFileTo(target);
+	if (auto sf = dynamic_cast<ScriptFile*>(target.getObject()))
+		return f.copyFileTo(sf->f);
+	else
+			reportScriptError("target is not a file");
 }
 
 juce::var ScriptingObjects::ScriptFile::loadAsAudioFile() const
@@ -7719,6 +7725,7 @@ struct ScriptingObjects::ScriptBroadcaster::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptBroadcaster, setReplaceThisReference);
 	API_VOID_METHOD_WRAPPER_1(ScriptBroadcaster, setEnableQueue);
     API_VOID_METHOD_WRAPPER_1(ScriptBroadcaster, setRealtimeMode);
+	API_VOID_METHOD_WRAPPER_1(ScriptBroadcaster, resendLastMessage);
 };
 
 struct ScriptingObjects::ScriptBroadcaster::Display: public Component,
@@ -7762,6 +7769,9 @@ struct ScriptingObjects::ScriptBroadcaster::Display: public Component,
 		addAndMakeVisible(resetButton);
 		addAndMakeVisible(breakpointButton);
 
+        resetButton.setTooltip("Reset to initial value");
+        breakpointButton.setTooltip("Set a breakpoint when a message is sent");
+        
 		input.setColour(TextEditor::ColourIds::textColourId, Colours::black);
 		input.setColour(Label::ColourIds::backgroundColourId, Colours::white.withAlpha(0.35f));
 		input.setColour(TextEditor::ColourIds::focusedOutlineColourId, Colour(SIGNAL_COLOUR));
@@ -8052,6 +8062,7 @@ ScriptingObjects::ScriptBroadcaster::ScriptBroadcaster(ProcessorWithScriptingCon
 	ADD_API_METHOD_1(setReplaceThisReference);
 	ADD_API_METHOD_1(setEnableQueue);
     ADD_API_METHOD_1(setRealtimeMode);
+	ADD_API_METHOD_1(resendLastMessage);
     
 	if (auto obj = defaultValue.getDynamicObject())
 	{
@@ -8273,7 +8284,7 @@ void ScriptingObjects::ScriptBroadcaster::sendMessage(var args, bool isSync)
 		newValues.add(v);
 	}
 
-	if (somethingChanged || enableQueue)
+	if (somethingChanged || enableQueue || forceSend)
 	{
 		{
 			SimpleReadWriteLock::ScopedWriteLock sl(lastValueLock);
@@ -8347,6 +8358,13 @@ void ScriptingObjects::ScriptBroadcaster::reset()
 
 	if (!ok.wasOk())
 		reportScriptError(ok.getErrorMessage());
+}
+
+void ScriptingObjects::ScriptBroadcaster::resendLastMessage(bool isSync)
+{
+	ScopedValueSetter<bool> svs(forceSend, true);
+
+	sendMessage(var(lastValues), isSync);
 }
 
 Array<ScriptingApi::Content::ScriptComponent*> getComponentsFromVar(ProcessorWithScriptingContent* p, var componentIds)

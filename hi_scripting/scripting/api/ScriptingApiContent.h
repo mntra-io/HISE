@@ -406,6 +406,13 @@ public:
 		String getDebugDataType() const override { return getObjectName().toString(); }
 		virtual void doubleClickCallback(const MouseEvent &e, Component* componentToNotify) override;
 
+		Location getLocation() const override
+		{
+			return location;
+		}
+
+		Location location;
+
 		bool isLocked() const
 		{
 			return getScriptObjectProperty(locked);
@@ -613,6 +620,8 @@ public:
 		void fadeComponent(bool shouldBeVisible, int milliseconds);
 
 		// End of API Methods ============================================================================================
+
+		var getLookAndFeelObject();
 
 		void attachValueListener(WeakCallbackHolder::CallableObject* obj)
 		{
@@ -2218,7 +2227,7 @@ public:
 	};
 
 
-	using ScreenshotListener = ScreenshotListener;
+	using ScreenshotListener = hise::ScreenshotListener;
 
 	struct VisualGuide
 	{
@@ -2412,6 +2421,8 @@ public:
 
 	int getContentHeight() const { return height; }
 	int getContentWidth() const { return width; }
+
+	void recompileAndThrowAtDefinition(ScriptComponent* sc);
 
 	bool usesDoubleResolution() const
 	{
@@ -2644,6 +2655,8 @@ private:
 	void sendRebuildMessage();
 
 	Array<WeakReference<RebuildListener>> rebuildListeners;
+
+	WeakReference<ScriptComponent> componentToThrowAtDefinition;
 
 	var templateFunctions;
 	var valuePopupData;
