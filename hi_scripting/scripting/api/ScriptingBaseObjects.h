@@ -276,12 +276,61 @@ struct WeakCallbackHolder : private ScriptingObject
 
 		virtual void addAsSource(DebugableObjectBase* b, const Identifier& callbackId) { ignoreUnused(b, callbackId); };
 
+		virtual String getComment() const { return {}; }
+
 	protected:
 
 		Result lastResult;
 		ReferenceCountedObject* thisAsRef = nullptr;
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(CallableObject);
+	};
+
+	struct CallableObjectManager
+	{
+		virtual ~CallableObjectManager() {};
+
+		template <typename T> T* getRegisteredCallableObject(int index)
+		{
+			static_assert(std::is_base_of<CallableObject, T>(), "not a base class");
+
+			if (isPositiveAndBelow(index, registeredObjects.size()))
+			{
+				return dynamic_cast<T*>(registeredObjects[index].get());
+			}
+
+			return nullptr;
+		}
+
+		int getNumRegisteredCallableObjects() const { return registeredObjects.size(); }
+
+		void registerCallableObject(CallableObject* obj)
+		{
+			registeredObjects.addIfNotAlreadyThere(obj);
+		}
+
+		void deregisterCallableObject(CallableObject* obj)
+		{
+			registeredObjects.removeAllInstancesOf(obj);
+		}
+
+		template <typename T> void addCallbackObjectClearListener(T& obj, const std::function<void(T&, bool)>& f)
+		{
+			clearMessageBroadcaster.addListener(obj, f, false);
+		}
+
+	protected:
+
+		void clearCallableObjects()
+		{
+			registeredObjects.clear();
+			clearMessageBroadcaster.sendMessage(sendNotificationAsync, true);
+		}
+
+	private:
+
+		LambdaBroadcaster<bool> clearMessageBroadcaster;
+		Array<WeakReference<CallableObject>> registeredObjects;
 	};
 
 	WeakCallbackHolder(ProcessorWithScriptingContent* p, ApiClass* parentObject, const var& callback, int numExpectedArgs);
@@ -339,8 +388,6 @@ struct WeakCallbackHolder : private ScriptingObject
 	{
 		anonymousFunctionRef = var(dynamic_cast<ReferenceCountedObject*>(weakCallback.get()));
 	}
-
-	
 
 	DebugInformationBase* createDebugObject(const String& n) const;
 

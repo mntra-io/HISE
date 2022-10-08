@@ -34,6 +34,8 @@ namespace hise { using namespace juce;
 
 namespace ScriptBroadcasterMapIcons
 {
+	static const unsigned char commentIcon[] = { 110,109,10,63,148,68,61,138,215,68,108,184,214,148,68,215,107,214,68,108,143,42,156,68,61,42,218,68,108,246,208,148,68,20,222,221,68,108,41,52,148,68,41,172,220,68,108,51,83,153,68,154,17,218,68,108,10,63,148,68,61,138,215,68,99,101,0,0 };
+
 	static const unsigned char complexDataIcon[] = { 110,109,102,214,170,68,72,233,196,68,108,154,41,158,68,72,233,196,68,108,154,41,158,68,246,184,233,68,108,154,249,194,68,246,184,233,68,108,154,249,194,68,41,12,221,68,108,102,214,170,68,72,233,196,68,99,109,123,252,187,68,92,63,208,68,108,184,230,181,
 68,154,41,202,68,108,133,83,188,68,205,188,195,68,108,31,173,182,68,102,22,190,68,108,174,15,200,68,102,22,190,68,108,174,15,200,68,246,120,207,68,108,72,105,194,68,143,210,201,68,108,123,252,187,68,92,63,208,68,99,101,0,0 };
 
@@ -142,7 +144,7 @@ ScriptBroadcasterMap::MessageWatcher::MessageWatcher(ScriptBroadcasterMap& map) 
 
 	for (auto b : parent.allBroadcasters)
 	{
-		parent.filteredBroadcasters.add(b->currentExpression);
+		parent.filteredBroadcasters.add(b->metadata);
 		times.add({ b });
 	}
 
@@ -161,7 +163,7 @@ void ScriptBroadcasterMap::MessageWatcher::timerCallback()
 	{
 		if (t.hasChanged())
 		{
-			parent.filteredBroadcasters.removeString(t.getName());
+			parent.filteredBroadcasters.removeAllInstancesOf(t.bc->metadata);
 			doSomething = true;
 		}
 	}
@@ -224,10 +226,12 @@ ScriptBroadcasterMap::ScriptBroadcasterMap(JavascriptProcessor* p_) :
 
 	childLayout = ComponentWithPreferredSize::Layout::ChildrenAreRows;
 
+	
+
 	getMainController()->addScriptListener(this);
 
 	factory.registerWithCreate<SimpleVarBody>();
-	factory.registerWithCreate<JSONBody>();
+	//factory.registerWithCreate<JSONBody>();
 
 	setInterceptsMouseClicks(false, true);
 
@@ -235,6 +239,13 @@ ScriptBroadcasterMap::ScriptBroadcasterMap(JavascriptProcessor* p_) :
 	{
 		m.updateTagFilter();
 	}, false);
+
+	p->addCallbackObjectClearListener<ScriptBroadcasterMap>(*this, [](ScriptBroadcasterMap& m, bool)
+	{
+		m.children.clear();
+		m.addChildWithPreferredSize(new PrefferedSizeWrapper<EmptyDisplay, 400, 400>("Recompiling..."));
+		m.resetSize();
+	});
 
 	rebuild();
 }
@@ -259,7 +270,7 @@ void ScriptBroadcasterMap::rebuild()
 
 	for (auto b : allBroadcasters)
 	{
-		if (filteredBroadcasters.contains(b->currentExpression))
+		if (filteredBroadcasters.contains(b->metadata))
 			continue;
 
 		auto be = new BroadcasterRow(factory, b);
@@ -268,7 +279,7 @@ void ScriptBroadcasterMap::rebuild()
 	}
 
 	if (children.isEmpty())
-		addChildWithPreferredSize(new PrefferedSizeWrapper<EmptyDisplay, 400, 400>());
+		addChildWithPreferredSize(new PrefferedSizeWrapper<EmptyDisplay, 400, 400>("No broadcasters available"));
 
 	resetSize();
 
@@ -334,13 +345,29 @@ void ScriptBroadcasterMap::forEachDebugInformation(DebugInformationBase::Ptr di,
 	f(di);
 
 	for (int i = 0; i < di->getNumChildElements(); i++)
-		f(di->getChildElement(i));
+	{
+		if (auto c = di->getChildElement(i))
+		{
+			f(di->getChildElement(i));
+		}
+		else
+			jassertfalse;
+		
+	}
+		
 }
 
 hise::ScriptingObjects::ScriptBroadcasterMap::BroadcasterList ScriptBroadcasterMap::createBroadcasterList()
 {
 	BroadcasterList list;
 
+	for (int i = 0; i < p->getNumRegisteredCallableObjects(); i++)
+	{
+		if(auto b = p->getRegisteredCallableObject<ScriptBroadcaster>(i))
+			list.addIfNotAlreadyThere(b);
+	}
+
+#if 0
 	if (auto ah = dynamic_cast<ApiProviderBase::Holder*>(p.get()))
 	{
 		if (auto provider = ah->getProviderBase())
@@ -351,10 +378,16 @@ hise::ScriptingObjects::ScriptBroadcasterMap::BroadcasterList ScriptBroadcasterM
 					list.add(sb);
 			};
 
+			ScopedReadLock sl(ah->getDebugLock());
+
 			for (int i = 0; i < provider->getNumDebugObjects(); i++)
-				forEachDebugInformation(provider->getDebugInformation(i), check);
+			{
+				auto di = provider->getDebugInformation(i);
+				forEachDebugInformation(di, check);
+			}
 		}
 	}
+#endif
 
 	return list;
 }
@@ -429,6 +462,24 @@ void ScriptBroadcasterMap::paintOverChildren(Graphics& g)
 		paintCablesForOutputs(g, b);
 		return false;
 	});
+}
+
+void ScriptBroadcasterMap::setShowComments(bool shouldShowComments)
+{
+	commentsShown = shouldShowComments;
+
+	Component::callRecursive<CommentDisplay>(this, [this, shouldShowComments](CommentDisplay* c)
+	{
+		auto matchesTag = currentTags.isEmpty();
+
+		for (auto h : currentTags)
+			matchesTag |= c->matchesTag(h, tagFilterOptions);
+
+		c->setVisible(shouldShowComments && matchesTag);
+		return false;
+	});
+
+	resetSize();
 }
 
 struct ScriptBroadcasterMapViewport : public WrapperWithMenuBarBase
@@ -548,7 +599,7 @@ struct ScriptBroadcasterMapViewport : public WrapperWithMenuBarBase
 			Path p;
 
 			LOAD_PATH_IF_URL("watch", BackendBinaryData::ToolbarIcons::viewPanel);
-			LOAD_PATH_IF_URL("clear", SampleMapIcons::deleteSamples);
+			LOAD_PATH_IF_URL("clear", ColumnIcons::moveIcon);
 			LOAD_PATH_IF_URL("error", ScriptnodeIcons::errorIcon);
 			LOAD_PATH_IF_URL("showall", ScriptnodeIcons::zoomFit);
 			LOAD_PATH_IF_URL("filter", ColumnIcons::filterIcon);
@@ -556,6 +607,7 @@ struct ScriptBroadcasterMapViewport : public WrapperWithMenuBarBase
 			LOAD_PATH_IF_URL("dim", ScriptBroadcasterMapIcons::dimIcon);
 			LOAD_PATH_IF_URL("and", ScriptBroadcasterMapIcons::andIcon);
 			LOAD_PATH_IF_URL("not", ScriptBroadcasterMapIcons::notIcon);
+			LOAD_PATH_IF_URL("comment", ScriptBroadcasterMapIcons::commentIcon);
 			LOAD_PATH_IF_URL("neighbour", ScriptBroadcasterMapIcons::neighbourIcon);
 
 			return p;
@@ -577,7 +629,7 @@ struct ScriptBroadcasterMapViewport : public WrapperWithMenuBarBase
 
 	void rebuildAfterContentChange() override
 	{
-		addButton("error");
+		
 		addSpacer(10);
 		
 
@@ -593,7 +645,9 @@ struct ScriptBroadcasterMapViewport : public WrapperWithMenuBarBase
 		addSpacer(10);
 
 		//addButton("filter");
+		addButton("comment");
 		addButton("showall");
+		addButton("error");
 	}
 
 	struct Actions
@@ -629,11 +683,19 @@ struct ScriptBroadcasterMapViewport : public WrapperWithMenuBarBase
 
 		static bool isError(ScriptBroadcasterMap& m) { return !m.ok; }
 
+		static bool toggleComments(ScriptBroadcasterMap& m) 
+		{
+			m.setShowComments(!m.showComments());
+			m.findParentComponentOfClass<ZoomableViewport>()->zoomToRectangle(m.getLocalBounds());
+			return false;
+		}
+
+		static bool showComments(ScriptBroadcasterMap& m) { return m.showComments(); }
+
 		static bool hasTags(ScriptBroadcasterMap& m) { return !m.availableTags.isEmpty(); }
 
 		static bool showAll(ScriptBroadcasterMap& m)
 		{
-			m.rebuild();
 			m.findParentComponentOfClass<ZoomableViewport>()->zoomToRectangle(m.getLocalBounds());
 			return false;
 		}
@@ -660,12 +722,19 @@ struct ScriptBroadcasterMapViewport : public WrapperWithMenuBarBase
 			b->setTooltip("Hide broadcasters until they are used");
 		}
 
+		if (name == "comment")
+		{
+			b->actionFunction = Actions::toggleComments;
+			b->stateFunction = Actions::showComments;
+			b->setTooltip("Show comments");
+		}
+
 		if (name == "clear")
 		{
 			b->actionFunction = [](ScriptBroadcasterMap& m)
 			{
-				for (auto b : m.allBroadcasters)
-					m.filteredBroadcasters.add(b->currentExpression);
+				m.filteredBroadcasters.clear();
+				m.rebuild();
 
 				Actions::showAll(m);
 
@@ -673,7 +742,7 @@ struct ScriptBroadcasterMapViewport : public WrapperWithMenuBarBase
 			};
 
 			
-			b->setTooltip("Clear displayed broadcasters");
+			b->setTooltip("Refresh Map and show all broadcasters");
 		}
 
 		if (name == "tags")
@@ -737,15 +806,12 @@ struct ScriptBroadcasterMapViewport : public WrapperWithMenuBarBase
 
 	void bookmarkUpdated(const juce::StringArray& list) override
 	{
-		map->filteredBroadcasters = list;
-		map->rebuild();
+		
 	}
-
-	ValueTree bookmarks;
 
 	juce::ValueTree getBookmarkValueTree() override
 	{
-		return bookmarks;
+		return {};
 	}
 
 	
@@ -792,7 +858,7 @@ juce::Path ScriptBroadcasterMapFactory::createPath(const String& url) const
     LOAD_PATH_IF_URL("queue", ScriptBroadcasterMapIcons::queueIcon);
 	LOAD_PATH_IF_URL("error", ColumnIcons::errorIcon);
     LOAD_PATH_IF_URL("realtime", HnodeIcons::jit);
-    
+	LOAD_PATH_IF_URL("comment", ScriptBroadcasterMapIcons::commentIcon);
     return p;
 }
 
