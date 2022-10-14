@@ -581,31 +581,42 @@ Component* FloatingPanelTemplates::createCodeEditorPanel(FloatingTile* root)
 	ib.getPanel(codeEditor)->getLayoutData().setKeyPress(false, FloatingTileKeyPressIds::fold_editor);
 	ib.getContent<FloatingTabComponent>(codeTabs)->setCycleKeyPress(FloatingTileKeyPressIds::cycle_editor);
 
-
+	const int navTabs = ib.addChild<FloatingTabComponent>(codeVertical);
 
 	ib.setId(codeTabs, "ScriptEditorTabs");
 	ib.addChild<CodeEditorPanel>(codeTabs);
     ib.addChild<SnexEditorPanel>(codeTabs);
     
-	const int variableWatch = ib.addChild<ScriptWatchTablePanel>(codeVertical);
+	
 
+	const int variableWatch = ib.addChild<ScriptWatchTablePanel>(navTabs);
+	ib.setDynamic(navTabs, false);
+
+	const int broadcasterMap = ib.addChild<ScriptingObjects::ScriptBroadcaster::Panel>(navTabs);
 	const int consoleId = ib.addChild<ConsolePanel>(codeEditor);
+
+    ib.getPanel(broadcasterMap)->getLayoutData().setKeyPress(false, FloatingTileKeyPressIds::fold_map);
 
 	ib.getPanel(variableWatch)->getLayoutData().setKeyPress(false, FloatingTileKeyPressIds::fold_watch);
 
 	ib.getPanel(consoleId)->getLayoutData().setKeyPress(false, FloatingTileKeyPressIds::fold_console);
 
 	ib.setCustomName(codeEditor, "Code Editor");
-	ib.setSizes(codeEditor, { -0.75, -0.25 });
+	ib.setSizes(codeEditor, { -0.7, -0.3 });
 	ib.setSizes(codeVertical, { -0.8, -0.2 });
 
+
+
 	ib.getContent<FloatingTileContent>(variableWatch)->setStyleProperty("showConnectionBar", false);
+	ib.getContent<FloatingTileContent>(broadcasterMap)->setStyleProperty("showConnectionBar", false);
 
 	ib.getContent(codeVertical)->setPanelColour(FloatingTileContent::PanelColourId::itemColour1, Colours::transparentBlack);
 	ib.getContent(codeEditor)->setPanelColour(FloatingTileContent::PanelColourId::itemColour1, Colours::transparentBlack);
 	ib.setId(codeEditor, "ScriptingWorkspaceCodeEditor");
 
 	ib.getPanel(codeEditor)->getLayoutData().setVisible(true);
+
+	ib.setFoldable(codeVertical, false, { false, true });
 
 	return ib.getPanel(codeEditor);
 #endif

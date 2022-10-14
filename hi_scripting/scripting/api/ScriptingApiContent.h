@@ -2822,6 +2822,98 @@ struct ContentValueTreeHelpers
 	}
 };
 
+struct MapItemWithScriptComponentConnection : public Component,
+	public ComponentWithPreferredSize,
+	public PooledUIUpdater::SimpleTimer
+{
+	MapItemWithScriptComponentConnection(ScriptComponent* c, int width, int height);;
+
+	int getPreferredWidth() const override { return w; }
+	int getPreferredHeight() const override { return h; }
+
+	int w = 0;
+	int h = 0;
+
+	WeakReference<ScriptComponent> sc;
+};
+
+
+
+struct SimpleVarBody : public ComponentWithPreferredSize,
+	public Component
+{
+	SimpleVarBody(const var& v);
+
+	void paint(Graphics& g) override;
+
+	static ComponentWithPreferredSize* create(Component* root, const var& v)
+	{
+		return new SimpleVarBody(v);
+	};
+
+	void mouseDown(const MouseEvent& e);
+
+
+
+	String getSensibleStringRepresentation() const;
+
+	int getPreferredWidth() const override { return 128; }
+	int getPreferredHeight() const override { return 32; };
+
+	var value;
+	String s;
+};
+
+struct LiveUpdateVarBody : public SimpleVarBody,
+	public PooledUIUpdater::SimpleTimer
+{
+	enum DisplayType
+	{
+		Text,
+		Bool,
+		Colour,
+		numDisplayType
+	};
+
+	static DisplayType getDisplayType(const Identifier& id);
+
+	LiveUpdateVarBody(PooledUIUpdater* updater, const Identifier& id_, const std::function<var()>& f);;
+
+	void timerCallback() override;
+
+	String getTextToDisplay() const;
+
+	int getPreferredWidth() const override { return 35 + GLOBAL_MONOSPACE_FONT().getStringWidth(getTextToDisplay()); }
+
+	void paint(Graphics& g) override;
+
+	ModValue alpha;
+	const Identifier id;
+	std::function<var()> valueFunction;
+	const DisplayType displayType;
+};
+
+struct PrimitiveArrayDisplay : public SimpleVarBody,
+	public PooledUIUpdater::SimpleTimer
+{
+	PrimitiveArrayDisplay(Processor* jp, const var& obj);;
+
+	void timerCallback() override;
+
+	int h;
+	int w;
+
+	String id;
+
+	int getPreferredWidth() const override { return w; };
+	int getPreferredHeight() const override { return h; }
+
+	void paint(Graphics& g) override;
+
+	static ComponentWithPreferredSize* create(Component* r, const var& obj);
+
+	Array<var> lastValues;
+};
 
 
 } // namespace hise
