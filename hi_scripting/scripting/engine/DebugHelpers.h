@@ -70,6 +70,9 @@ public:
 		
 		static void gotoLocation(ModulatorSynthChain* mainSynthChain, const String& encodedState);
 
+		/** This will try to resolve the location from the provider if the obj has not a valid location. */
+		static Location getLocationFromProvider(Processor* p, DebugableObjectBase* obj);
+
 		static Component* showProcessorEditorPopup(const MouseEvent& e, Component* table, Processor* p);
 
 		static Component* createJSONEditorForObject(const MouseEvent& e, Component* table, var object, const String& id);
@@ -79,6 +82,8 @@ public:
 		static var getCleanedVar(const var& value);
 
 		static var getCleanedObjectForJSONDisplay(const var& object);
+
+		static DebugInformationBase::Ptr getDebugInformation(DebugInformationBase::Ptr parent, DebugableObjectBase* object);
 
 		static DebugInformationBase::Ptr getDebugInformation(ApiProviderBase* engine, DebugableObjectBase* object);
 
@@ -266,7 +271,7 @@ public:
 
 	using ValueFunction = std::function<var()>;
 
-	LambdaValueInformation(const ValueFunction& f, const Identifier &id_, const Identifier& namespaceId_, Type t, DebugableObjectBase::Location location_):
+	LambdaValueInformation(const ValueFunction& f, const Identifier &id_, const Identifier& namespaceId_, Type t, DebugableObjectBase::Location location_, const String& comment_=String()):
 		DebugInformation(t),
 		vf(f),
 		namespaceId(namespaceId_),
@@ -275,11 +280,19 @@ public:
 	{
 		cachedValue = f();
 		DebugableObjectBase::updateLocation(location, cachedValue);
+
+		if (comment_.isNotEmpty())
+			comment.append(comment_, GLOBAL_FONT(), Colours::white);;
 	}
 
 	DebugableObjectBase::Location getLocation() const override
 	{
 		return location;
+	}
+
+	AttributedString getDescription() const override
+	{
+		return comment;
 	}
 
 	String getTextForDataType() const override { return getVarType(getCachedValueFunction(false)); }
@@ -448,6 +461,7 @@ public:
 
 private:
 
+	AttributedString comment;
 	bool autocompleteable = true;
 	ValueFunction vf;
 
@@ -458,12 +472,17 @@ private:
 class DebugableObjectInformation : public DebugInformation
 {
 public:
-	DebugableObjectInformation(DebugableObjectBase *object_, const Identifier &id_, Type t, const Identifier& namespaceId_=Identifier()) :
+	DebugableObjectInformation(DebugableObjectBase *object_, const Identifier &id_, Type t, const Identifier& namespaceId_=Identifier(), const String& comment_=String()) :
 		DebugInformation(t),
 		object(object_),
 		id(id_),
 		namespaceId(namespaceId_)
-		{};
+	{
+		if (comment_.isNotEmpty())
+		{
+			comment.append(comment_, GLOBAL_FONT(), Colours::white);
+		}
+	};
 
 	String getTextForDataType() const override { return object != nullptr ? object->getDebugDataType() : ""; }
 	String getTextForName() const override 
@@ -475,7 +494,8 @@ public:
 									  namespaceId.toString() + "." + object->getDebugName(); 
 	}
 	String getTextForValue() const override { return object != nullptr ? object->getDebugValue() : ""; }
-	AttributedString getDescription() const override { return AttributedString(); }
+	AttributedString getDescription() const override 
+	{ return comment; }
 
 	bool isWatchable() const override { return object != nullptr ? object->isWatchable() : false; }
 
@@ -505,6 +525,7 @@ public:
 	DebugableObjectBase *getObject() override { return object.get(); }
 	const DebugableObjectBase *getObject() const override { return object.get(); }
 
+	AttributedString comment;
 	WeakReference<DebugableObjectBase> object;
 	const Identifier id;
 	const Identifier namespaceId;

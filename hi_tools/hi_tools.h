@@ -97,6 +97,16 @@ END_JUCE_MODULE_DECLARATION
 #endif
 
 
+/** Config: HISE_USE_EXTENDED_TEMPO_VALUES
+
+If this is true, the tempo mode will contain lower values than 1/1. This allows eg. the LFO to run slower, however it 
+will break compatibility with older projects / presets because the tempo indexes will change.
+
+*/
+#ifndef HISE_USE_EXTENDED_TEMPO_VALUES
+#define HISE_USE_EXTENDED_TEMPO_VALUES 0
+#endif
+
 #include "../JUCE/modules/juce_core/juce_core.h"
 #include "../JUCE/modules/juce_audio_basics/juce_audio_basics.h"
 
@@ -219,6 +229,7 @@ END_JUCE_MODULE_DECLARATION
 #include "hi_standalone_components/CodeEditorApiBase.h"
 #include "hi_standalone_components/AdvancedCodeEditor.h"
 #include "hi_standalone_components/ScriptWatchTable.h"
+#include "hi_standalone_components/ComponentWithPreferredSize.h"
 #endif
 
 #if HISE_INCLUDE_RLOTTIE
