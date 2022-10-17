@@ -466,7 +466,24 @@ Node::Ptr ValueTreeBuilder::parseNode(const ValueTree& n)
 		newNode = wrapNode(newNode, NamespacedIdentifier::fromString("wrap::no_process"));
 	}
 
-	return parseRoutingNode(newNode);
+	return parseFaustNode(newNode);
+}
+
+Node::Ptr ValueTreeBuilder::parseFaustNode(Node::Ptr u)
+{
+	if (u->nodeTree[PropertyIds::FactoryPath].toString() == "core.faust")
+	{
+		auto nodeProperties = u->nodeTree.getChildWithName(PropertyIds::Properties);
+		auto faustClass = nodeProperties.getChildWithProperty(PropertyIds::ID, PropertyIds::ClassId.toString())[PropertyIds::Value].toString();
+		auto faustPath = "project::" + faustClass;
+		u = createNode(u->nodeTree, getNodeId(u->nodeTree).getIdentifier(), faustPath);
+		// add Template argument "1" (polyphony)
+		(*u) << 1;
+		faustClassIds->insert(faustClass);
+		DBG("Exporting faust scriptnode, class: " + faustClass);
+	}
+		
+	return parseRoutingNode(u);
 }
 
 Node::Ptr ValueTreeBuilder::parseRoutingNode(Node::Ptr u)
@@ -689,7 +706,12 @@ Node::Ptr ValueTreeBuilder::parseContainer(Node::Ptr u)
 
 		auto realPath = u->nodeTree[PropertyIds::FactoryPath].toString().fromFirstOccurrenceOf("container.", false, false);
 
-        ScopedChannelSetter sns(*this, numToUse, false);
+        auto isSidechain = realPath.startsWith("sidechain");
+        
+        if(isSidechain)
+            numToUse *= 2;
+        
+        ScopedChannelSetter sns(*this, numToUse, isSidechain);
         
 		for (auto c : u->nodeTree.getChildWithName(PropertyIds::Nodes))
         {
@@ -734,6 +756,10 @@ Node::Ptr ValueTreeBuilder::parseContainer(Node::Ptr u)
 		{
 			u = wrapNode(u, NamespacedIdentifier::fromString("wrap::offline"));
 		}
+        if (isSidechain)
+        {
+            u = wrapNode(u, NamespacedIdentifier::fromString("wrap::sidechain"));
+        }
 		if (realPath.startsWith("no_midi"))
 		{
 			u = wrapNode(u, NamespacedIdentifier::fromString("wrap::no_midi"));

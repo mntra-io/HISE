@@ -821,6 +821,15 @@ void ScriptingApi::Content::ScriptComponent::changed()
 
 	controlSender.sendControlCallbackMessage();
 	sendValueListenerMessage();
+
+	if (auto jp = dynamic_cast<JavascriptProcessor*>(getScriptProcessor()))
+	{
+		// We need to throw an error again to stop the execution of the script
+		// (a recursive function call to this method will not be terminated because
+		// (the error is already consumed by the control callback handling).
+		if (!jp->getLastErrorMessage().wasOk())
+			reportScriptError("Aborting script execution after error occured during changed() callback");
+	}
 }
 
 
@@ -6747,8 +6756,6 @@ hise::ComponentWithPreferredSize* hise::PrimitiveArrayDisplay::create(Component*
 
 void PrimitiveArrayDisplay::paint(Graphics& g)
 {
-	auto bounds = getLocalBounds().reduced(5);
-
 	AttributedString c;
 
 	auto f = GLOBAL_MONOSPACE_FONT();
