@@ -6377,6 +6377,8 @@ var ScriptingApi::FileSystem::findFiles(var directory, String wildcard, bool rec
 	{
 		if (root->isDirectory())
 		{
+			HiseJavascriptEngine::TimeoutExtender ts(dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine());
+
 			auto list = root->f.findChildFiles(File::findFilesAndDirectories | File::ignoreHiddenFiles, recursive, wildcard);
 
 			for (auto sf : list)
