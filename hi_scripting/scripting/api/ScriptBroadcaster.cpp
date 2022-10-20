@@ -878,6 +878,8 @@ juce::Result ScriptBroadcaster::OtherBroadcasterTarget::callSync(const Array<var
 		target->sendMessage(var(args), async);
 		return target->lastResult;
 	}
+    
+    return Result::ok();
 }
 
 
@@ -1484,6 +1486,8 @@ void ScriptBroadcaster::RadioGroupListener::setButtonValueFromIndex(int newIndex
 {
 	if (currentIndex != newIndex)
 	{
+		currentIndex = newIndex;
+
 		for (int i = 0; i < items.size(); i++)
 		{
 			items[i]->radioButton->setValue(newIndex == i);
@@ -1640,6 +1644,8 @@ void ScriptBroadcaster::DebugableObjectListener::registerSpecialBodyItems(Compon
 				if (auto dbo = dynamic_cast<DebugableObjectBase*>(o))
 					return new DebugableObjectItem(p, dbo);
 			}
+            
+            return nullptr;
 		}
 
 		WeakReference<DebugableObjectBase> obj;
@@ -2741,7 +2747,7 @@ void ScriptBroadcaster::attachToComplexData(String dataTypeAndEvent, var moduleI
         {
             if(!isPositiveAndBelow(idx, h->getNumDataObjects(type)))
             {
-                reportScriptError("illegal index: " + idx);
+                reportScriptError("illegal index: " + String(idx));
             }
         }
     }

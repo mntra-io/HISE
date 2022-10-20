@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 
 <JUCERPROJECT id="jUHBuI" name="HISE Standalone" projectType="guiapp" version="2.1.0"
               bundleIdentifier="com.hartinstruments.HISEStandalone" includeBinaryInAppConfig="1"
@@ -56,7 +56,7 @@
                        isDebug="0" optimisation="3" targetName="HISE" linkTimeOptimisation="1"
                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
                        macOSDeploymentTarget="10.14" libraryPath="/usr/local/lib" headerPath="/usr/local/include"/>
-        <CONFIGURATION name="CI" osxCompatibility="10.9 SDK" osxArchitecture="64BitIntel"
+        <CONFIGURATION name="CI" osxCompatibility="10.14 SDK" osxArchitecture="64BitIntel"
                        isDebug="0" optimisation="4" targetName="HISE" linkTimeOptimisation="0"
                        cppLanguageStandard="c++11" cppLibType="libc++" libraryPath="/opt/intel/ipp/lib"
                        headerPath="/opt/intel/ipp/include" enablePluginBinaryCopyStep="1"
@@ -93,6 +93,10 @@
         <MODULEPATH id="hi_snex" path="../../"/>
         <MODULEPATH id="hi_rlottie" path="../../"/>
         <MODULEPATH id="juce_osc" path="../../JUCE/modules"/>
+        <MODULEPATH id="hi_faust" path="../../"/>
+        <MODULEPATH id="hi_faust_jit" path="../../"/>
+        <MODULEPATH id="hi_faust_lib" path="../../"/>
+        <MODULEPATH id="hi_faust_types" path="../../"/>
       </MODULEPATHS>
     </XCODE_MAC>
     <XCODE_IPHONE targetFolder="Builds/iOS" iosScreenOrientation="UIInterfaceOrientationLandscapeLeft,UIInterfaceOrientationLandscapeRight"
@@ -141,6 +145,10 @@
         <MODULEPATH id="hi_snex" path="../../"/>
         <MODULEPATH id="hi_rlottie" path="../../"/>
         <MODULEPATH id="juce_osc" path="../../JUCE/modules"/>
+        <MODULEPATH id="hi_faust" path="../../"/>
+        <MODULEPATH id="hi_faust_jit" path="../../"/>
+        <MODULEPATH id="hi_faust_lib" path="../../"/>
+        <MODULEPATH id="hi_faust_types" path="../../"/>
       </MODULEPATHS>
     </XCODE_IPHONE>
     <VS2017 targetFolder="Builds/VisualStudio2017" smallIcon="ho3qQy" bigIcon="ho3qQy"
@@ -192,6 +200,10 @@
         <MODULEPATH id="hi_snex" path="../../"/>
         <MODULEPATH id="hi_rlottie" path="../../"/>
         <MODULEPATH id="juce_osc" path="../../JUCE/modules"/>
+        <MODULEPATH id="hi_faust" path="../../"/>
+        <MODULEPATH id="hi_faust_jit" path="../../"/>
+        <MODULEPATH id="hi_faust_lib" path="../../"/>
+        <MODULEPATH id="hi_faust_types" path="../../"/>
       </MODULEPATHS>
     </VS2017>
     <LINUX_MAKE targetFolder="Builds/LinuxMakefile" extraDefs="USE_IPP=0&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=20000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1&#10;HISE_DEACTIVATE_OVERLAY=1"
@@ -235,6 +247,10 @@
         <MODULEPATH id="hi_snex" path="../../"/>
         <MODULEPATH id="hi_rlottie" path="../../"/>
         <MODULEPATH id="juce_osc" path="../../JUCE/modules"/>
+        <MODULEPATH id="hi_faust" path="../../"/>
+        <MODULEPATH id="hi_faust_jit" path="../../"/>
+        <MODULEPATH id="hi_faust_lib" path="../../"/>
+        <MODULEPATH id="hi_faust_types" path="../../"/>
       </MODULEPATHS>
     </LINUX_MAKE>
   </EXPORTFORMATS>
@@ -244,6 +260,10 @@
     <MODULE id="hi_core" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_dsp" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_dsp_library" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="hi_faust" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="hi_faust_jit" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="hi_faust_lib" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="hi_faust_types" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
     <MODULE id="hi_lac" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_modules" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_rlottie" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>

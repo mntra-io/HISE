@@ -134,17 +134,22 @@ public:
 		}
 
 		items.add({ n, e });
+
+		errorBroadcaster.sendMessage(sendNotificationAsync, n, e);
 	}
 
 	void removeError(NodeBase* n, Error::ErrorCode errorToRemove=Error::numErrorCodes)
 	{
 		customErrorMessage = {};
 
+		bool didSomething = false;
+
 		for (int i = 0; i < items.size(); i++)
 		{
 			if(items[i].node == nullptr)
 			{
 				items.remove(i--);
+				didSomething = true;
 				continue;
 			}
 
@@ -156,8 +161,16 @@ public:
 				  e != Error::ErrorCode::IllegalBypassConnection);
 
 			if ((n == nullptr || (items[i].node == n)) && isErrorCode)
+			{
 				items.remove(i--);
+				didSomething = true;
+			}
 		}
+
+		auto lastItem = items.getLast();
+
+		if(didSomething)
+			errorBroadcaster.sendMessage(sendNotificationAsync, lastItem.node, lastItem.error);
 	}
 
 	static String getErrorMessage(Error e)
@@ -180,6 +193,12 @@ public:
 		case Error::NodeDebuggerEnabled: return "Node is being debugged";
 		case Error::DeprecatedNode:		 return DeprecationChecker::getErrorMessage(e.actual);
 		case Error::IllegalPolyphony: return "Can't use this node in a polyphonic network";
+		case Error::IllegalFaustNode: return "Faust is disabled. Enable faust and recompile HISE.";
+		case Error::IllegalFaustChannelCount: 
+			s << "Faust node channel mismatch. Expected channels: `" << String(e.expected) << "`";
+			s << "  \nActual input channels: `" << String(e.actual / 1000) << "`";
+			s << "  \nActual output channels: `" << String(e.actual % 1000) << "`";
+			return s;
 		case Error::IllegalBypassConnection: return "Use a `container.soft_bypass` node";
 		case Error::CloneMismatch:	return "Clone container must have equal child nodes";
 		case Error::IllegalCompilation: return "Can't compile networks with this node. Uncheck the `AllowCompilation` flag to remove the error.";
@@ -194,7 +213,7 @@ public:
 		return s;
 	}
 
-	String getErrorMessage(NodeBase* n = nullptr) const
+	String getErrorMessage(const NodeBase* n = nullptr) const
 	{
 		for (auto& i : items)
 		{
@@ -206,6 +225,8 @@ public:
 
 		return {};
 	}
+
+	LambdaBroadcaster<NodeBase*, Error> errorBroadcaster;
 
 private:
 
@@ -407,6 +428,69 @@ public:
 	DspNetwork(ProcessorWithScriptingContent* p, ValueTree data, bool isPolyphonic, ExternalDataHolder* dataHolder=nullptr);
 	~DspNetwork();
 
+    /** The faust manager will handle the IDE editing features by sending out compilation and selection messages to its registered listeners. */
+    struct FaustManager
+    {
+        struct FaustListener
+        {
+            virtual ~FaustListener() {};
+            
+            /** This message will be sent out synchronously when the faust file is selected for editing. */
+            virtual void faustFileSelected(const File& f) = 0;
+            
+			/** This message will be sent out synchronously before compileFaustCode and can be overriden to indicate a pending compilation. */
+			virtual void preCompileFaustCode(const File& f) {};
+
+            /** This message is sent out on the sample loading thread when the faust code needs to be recompiled. */
+            virtual Result compileFaustCode(const File& f) = 0;
+            
+            /** This message will be sent out on the message thread after the faust code was recompiled. */
+            virtual void faustCodeCompiled(const File& f, const Result& compileResult) = 0;
+            
+            JUCE_DECLARE_WEAK_REFERENCEABLE(FaustListener);
+        };
+        
+        /** Adds a listener and calls all messages with the current state. */
+        void addFaustListener(FaustListener* l);
+        
+        /** Removes a listener. */
+        void removeFaustListener(FaustListener* l);
+        
+        /** Call this function when you want to set a FAUST file to be selected for editing.
+            There is only a single edited file per faust_manager instance and the listeners
+            will receive a message that the edited file changed.
+        */
+        void setSelectedFaustFile(const File& f, NotificationType n);
+        
+        /** Send a message that this file is about to be compiled.
+            The listeners will be called with `compileFaustCode()` which can be override
+            to implement the actual compilation.
+         
+            After the compilation the `faustCodeCompiled()` function will be called with the
+            file and the compile result.
+        */
+        void sendCompileMessage(const File& f, NotificationType n);
+        
+        FaustManager(DspNetwork& n);;
+        
+        virtual ~FaustManager() {};
+        
+    private:
+        
+		void sendPostCompileMessage();
+
+        Result lastCompileResult;
+        File currentFile;
+        File lastCompiledFile;
+        
+		WeakReference<Processor> processor;
+
+        Array<WeakReference<FaustListener>> listeners;
+        
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FaustManager);
+		JUCE_DECLARE_WEAK_REFERENCEABLE(FaustManager);
+    } faustManager;
+    
 #if HISE_INCLUDE_SNEX
 	struct CodeManager
 	{
@@ -850,6 +934,11 @@ public:
 	}
 
 	ScriptnodeExceptionHandler& getExceptionHandler()
+	{
+		return exceptionHandler;
+	}
+
+	const ScriptnodeExceptionHandler& getExceptionHandler() const
 	{
 		return exceptionHandler;
 	}

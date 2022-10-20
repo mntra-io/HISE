@@ -1750,9 +1750,29 @@ namespace core
 template <typename T> using dp = wrap::data<T, data::dynamic::displaybuffer>;
 
 
+#if !HISE_INCLUDE_FAUST_JIT
+struct faust : public mothernode
+{
+	SNEX_NODE(faust);
 
+	constexpr bool isPolyphonic() const { return false; }
 
-
+	SN_EMPTY_CREATE_PARAM;
+	
+	SN_EMPTY_MOD;
+	SN_EMPTY_PROCESS;
+	SN_EMPTY_PROCESS_FRAME;
+	SN_EMPTY_RESET;
+	SN_EMPTY_HANDLE_EVENT;
+    
+    template <int P> void setParameter(double){};
+    
+	void prepare(PrepareSpecs )
+	{
+		Error::throwError(Error::IllegalFaustNode);
+	}
+};
+#endif
 
 
 Factory::Factory(DspNetwork* network) :
@@ -1782,6 +1802,12 @@ Factory::Factory(DspNetwork* network) :
 	registerModNode<core::snex_node, core::snex_node::editor>();
 	registerNode<waveshapers::dynamic::NodeType, waveshapers::dynamic::editor>();
 #endif
+
+#if HISE_INCLUDE_FAUST_JIT
+	registerNodeRaw<faust::faust_jit_node>();
+#else
+	registerNode<faust>();
+#endif // HISE_INCLUDE_FAUST_JIT
 
 	registerModNode<dp<extra_mod>, data::ui::displaybuffer_editor>();
 	registerModNode<dp<pitch_mod>, data::ui::displaybuffer_editor>();

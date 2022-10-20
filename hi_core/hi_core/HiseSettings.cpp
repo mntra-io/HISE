@@ -113,6 +113,8 @@ Array<juce::Identifier> HiseSettings::Compiler::getAllIds()
 	ids.add(RebuildPoolFiles);
 	ids.add(Support32BitMacOS);
 	ids.add(CustomNodePath);
+	ids.add(FaustPath);
+    ids.add(FaustExternalEditor);
 
 	return ids;
 }
@@ -438,11 +440,22 @@ Array<juce::Identifier> HiseSettings::SnexWorkbench::getAllIds()
 		P_();
 
 		P(HiseSettings::Compiler::UseIPP);
-		D("If enabled, HISE uses the FFT routines from the Intel Performance Primitive library (which can be downloaded for free) in order");
+		D("If enabled, HISE uses the FFT routines from the Intel Performance Primitive library (which can be downloaded for free) in order ");
 		D("to speed up the convolution reverb");
 		D("> If you use the convolution reverb in your project, this is almost mandatory, but there are a few other places that benefit from having this library");
 		P_();
 
+		P(HiseSettings::Compiler::FaustPath);
+		D("Set the path to your Faust installation here. ");
+		D("It will be used to look up the standard faust libraries on platforms which don't have a default path. ");
+		D("There should be at least the following directories inside: \"share\", \"lib\", \"include\"");
+		P_();
+
+        P(HiseSettings::Compiler::FaustExternalEditor);
+        D("If enabled, the edit button in the faust node will launch an external editor for ");
+        D("editing the faust source files. If disabled, it will use a FaustCodeEditor floating tile");
+        P_();
+        
         P(HiseSettings::Compiler::LegacyCPUSupport);
 		D("If enabled, then all SSE instructions are replaced by their native implementation. This can be used to compile a version that runs on legacy CPU models."); 
 		P_();
@@ -625,15 +638,19 @@ juce::File HiseSettings::Data::getFileForSetting(const Identifier& id) const
 
 	auto handler_ = &GET_PROJECT_HANDLER(mc->getMainSynthChain());
 
-	if (id == SettingFiles::ProjectSettings)	return handler_->getWorkDirectory().getChildFile("project_info.xml");
-	else if (id == SettingFiles::UserSettings)		return handler_->getWorkDirectory().getChildFile("user_info.xml");
-	else if (id == SettingFiles::CompilerSettings)	return appDataFolder.getChildFile("compilerSettings.xml");
+	auto wd = handler_->getWorkDirectory();
+
+	if (wd.isDirectory())
+	{
+		if (id == SettingFiles::ProjectSettings)	return handler_->getWorkDirectory().getChildFile("project_info.xml");
+		else if (id == SettingFiles::UserSettings)	return handler_->getWorkDirectory().getChildFile("user_info.xml");
+	}
+
+	if (id == SettingFiles::CompilerSettings)	return appDataFolder.getChildFile("compilerSettings.xml");
 	else if (id == SettingFiles::ScriptingSettings)	return appDataFolder.getChildFile("ScriptSettings.xml");
 	else if (id == SettingFiles::OtherSettings)		return appDataFolder.getChildFile("OtherSettings.xml");
 	else if (id == SettingFiles::DocSettings)		return appDataFolder.getChildFile("DocSettings.xml");
 	else if (id == SettingFiles::SnexWorkbenchSettings) return appDataFolder.getChildFile("SnexWorkbench.xml");
-
-	jassertfalse;
 
 #endif
 	
@@ -719,6 +736,7 @@ juce::StringArray HiseSettings::Data::getOptionsFor(const Identifier& id)
 		id == Other::EnableShaderLineNumbers ||
 		id == Compiler::RebuildPoolFiles ||
 		id == Compiler::Support32BitMacOS ||
+        id == Compiler::FaustExternalEditor ||
 		id == Project::SupportMonoFX ||
 		id == Project::EnableMidiInputFX ||
         id == Project::EnableMidiOut ||
@@ -827,6 +845,7 @@ bool HiseSettings::Data::isFileId(const Identifier& id)
 		   id == Scripting::GlobalScriptPath || 
 		   id == Project::RedirectSampleFolder ||
 		   id == Compiler::CustomNodePath ||
+		   id == Compiler::FaustPath ||
 		   id == Other::GlobalSamplePath ||
 		   id == Other::ExternalEditorPath ||
 		   id == Documentation::DocRepository;
@@ -935,6 +954,7 @@ var HiseSettings::Data::getDefaultSetting(const Identifier& id) const
 	else if (id == Compiler::LegacyCPUSupport) 		return "No";
 	else if (id == Compiler::RebuildPoolFiles)		return "Yes";
 	else if (id == Compiler::Support32BitMacOS)		return "Yes";
+    else if (id == Compiler::FaustExternalEditor)   return "No";
 	else if (id == SnexWorkbench::AddFade)			return "Yes";
 	else if (id == SnexWorkbench::PlayOnRecompile)  return "Yes";
 	else if (id == User::CompanyURL)				return "http://yourcompany.com";

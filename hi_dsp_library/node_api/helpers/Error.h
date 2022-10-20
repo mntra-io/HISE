@@ -69,6 +69,8 @@ struct Error
 		IllegalPolyphony,
 		IllegalBypassConnection,
 		IllegalCompilation,
+		IllegalFaustNode,
+		IllegalFaustChannelCount,
 		CloneMismatch,
 		IllegalMod,
 		UnscaledModRangeMismatch,
