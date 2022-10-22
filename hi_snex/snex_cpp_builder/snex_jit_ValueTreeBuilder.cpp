@@ -60,11 +60,6 @@ namespace FactoryIds
 	{
 		return id.toString() == "container::multi";
 	}
-
-	static bool isParameter(const NamespacedIdentifier& id)
-	{
-		return id.getParent().getIdentifier() == parameter;
-	}
 };
 
 struct CloneHelpers
@@ -401,8 +396,6 @@ Node::Ptr ValueTreeBuilder::getNode(const ValueTree& n, bool allowZeroMatch)
 	}
 	else
 	{
-		
-
 		if (allowZeroMatch)
 			return nullptr;
 		else
@@ -411,8 +404,6 @@ Node::Ptr ValueTreeBuilder::getNode(const ValueTree& n, bool allowZeroMatch)
 			e.v = n;
 			e.errorMessage = "Can't find node";
 			throw e;
-
-			RETURN_IF_NO_THROW(nullptr);
 		}
 	}
 }
@@ -431,8 +422,6 @@ Node::Ptr ValueTreeBuilder::getNode(const NamespacedIdentifier& id, bool allowZe
 	Error e;
 	e.errorMessage = "Can't find node " + id.toString();
 	throw e;
-
-	RETURN_IF_NO_THROW(nullptr);
 }
 
 
@@ -477,8 +466,9 @@ Node::Ptr ValueTreeBuilder::parseFaustNode(Node::Ptr u)
 		auto faustClass = nodeProperties.getChildWithProperty(PropertyIds::ID, PropertyIds::ClassId.toString())[PropertyIds::Value].toString();
 		auto faustPath = "project::" + faustClass;
 		u = createNode(u->nodeTree, getNodeId(u->nodeTree).getIdentifier(), faustPath);
-		// add Template argument "1" (polyphony)
-		(*u) << 1;
+		// add Template argument "NV" (polyphony)
+		u->addTemplateIntegerArgument("NV", true);
+
 		faustClassIds->insert(faustClass);
 		DBG("Exporting faust scriptnode, class: " + faustClass);
 	}
@@ -1949,8 +1939,6 @@ snex::cppgen::Node::Ptr ValueTreeBuilder::RootContainerBuilder::parse()
 		{
 			StatementBlock sb(parent);
 
-			int index = 0;
-
 			parent.addComment("Node References", Base::CommentType::FillTo80Light);
 			
 			createStackVariablesForChildNodes();
@@ -2066,17 +2054,9 @@ void ValueTreeBuilder::RootContainerBuilder::addDefaultParameters()
 
 	for (auto sv : stackVariables)
 	{
-		int pIndex = 0;
-
 		auto child = sv->nodeTree;
 
-        auto isCloneContainer = CloneHelpers::isCloneContainer(child);
-        
 		auto pTree = child.getChildWithName(PropertyIds::Parameters);
-
-		
-
-		auto numParameters = getNumParametersToInitialise(child);
 
 		for (auto p : pTree)
 		{
@@ -2203,16 +2183,12 @@ void ValueTreeBuilder::RootContainerBuilder::addMetadata()
 
 	parent.addEmptyLine();
 
-	auto numChannels = parent.numChannelsToCompile;
-
 	Macro(parent, "SNEX_METADATA_ID", { root->nodeTree[PropertyIds::ID].toString() });
 	Macro(parent, "SNEX_METADATA_NUM_CHANNELS", { String(parent.numChannelsToCompile) });
 
 	auto pCopy = root->nodeTree.getChildWithName(PropertyIds::Parameters).createCopy();
 
 	scriptnode::parameter::encoder encoder(pCopy);
-
-	int ssi = sizeof(NormalisableRange<double>);
 
 	cppgen::EncodedParameterMacro(parent, encoder);
 	m.flushIfNot();
@@ -2221,8 +2197,6 @@ void ValueTreeBuilder::RootContainerBuilder::addMetadata()
 
 void ValueTreeBuilder::RootContainerBuilder::addParameterConnections()
 {
-	auto index = 0;
-
 	auto pList = getContainersWithParameter();
 
 	if (!pList.isEmpty())

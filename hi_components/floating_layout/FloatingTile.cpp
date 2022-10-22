@@ -38,12 +38,12 @@ juce::Rectangle<int> FloatingTilePopup::getRectangle(RectangleType t) const
 {
 	static constexpr int BoxMargin = 12;
 	static constexpr int ContentMargin = 8;
-	static constexpr int TitleHeight = 22;
+	static constexpr int PopupTitleHeight = 22;
 	static constexpr int CloseButtonWidth = 24;
 
 	auto b = content->getLocalBounds();
 
-	auto th = hasTitle() ? TitleHeight : 0;
+	auto th = hasTitle() ? PopupTitleHeight : 0;
 
 	if (t == RectangleType::FullBounds)
 		return b.expanded(BoxMargin + ContentMargin, BoxMargin + ContentMargin + th / 2)
@@ -2106,17 +2106,28 @@ FloatingTileDocumentWindow::FloatingTileDocumentWindow(BackendRootWindow* parent
 	if (useOpenGL)
 		setEnableOpenGL(this);
 
+    loadKeyPressMap();
+    
 	centreWithSize(500, 500);
 }
 
 FloatingTileDocumentWindow::~FloatingTileDocumentWindow()
 {
+    saved = true;
 	detachOpenGl();
 }
 
 void FloatingTileDocumentWindow::closeButtonPressed()
 {
 	parent->removeFloatingWindow(this);
+}
+
+void FloatingTileDocumentWindow::initialiseAllKeyPresses()
+{
+    mcl::FullEditor::initKeyPresses(this);
+    PopupIncludeEditor::initKeyPresses(this);
+    scriptnode::DspNetwork::initKeyPresses(this);
+    ScriptContentPanel::initKeyPresses(this);
 }
 
 bool FloatingTileDocumentWindow::keyPressed(const KeyPress& key)
@@ -2180,6 +2191,8 @@ void FloatingTilePopup::CloseButton::resized()
 	p.lineTo(1.0f, 0.0f);
 	PathFactory::scalePath(p, b.reduced(JUCE_LIVE_CONSTANT_OFF(7.0f)));
 }
+
+
 
 juce::Path FloatingTilePopup::Factory::createPath(const String& url) const
 {

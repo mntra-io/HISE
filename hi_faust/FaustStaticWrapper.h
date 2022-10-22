@@ -4,7 +4,7 @@
 namespace scriptnode {
 namespace faust{
 
-template <int NV, class FaustClass, class MC, int nChannels> struct faust_static_wrapper: public data::base, public faust_base_wrapper
+template <int NV, class FaustClass, class MC, int nChannels> struct faust_static_wrapper: public data::base, public faust_base_wrapper<NV>
 {
 	// Metadata Definitions ------------------------------------------------------
 
@@ -25,19 +25,34 @@ template <int NV, class FaustClass, class MC, int nChannels> struct faust_static
 	static constexpr int NumFilters = 0;
 	static constexpr int NumDisplayBuffers = 0;
 
-	FaustClass faust_obj;
+	PolyData<FaustClass, NV> faust_obj;
 
 	faust_static_wrapper():
-		faust_base_wrapper(&faust_obj)
+		faust_base_wrapper<NV>()
 	{
-		faust_obj.buildUserInterface(&ui);
+		auto basePointer = this->faustDsp.begin();
+		auto objPointer = faust_obj.begin();
+
+		for (int i = 0; i < NV; i++)
+		{
+			basePointer[i] = &objPointer[i];
+			objPointer[i].buildUserInterface(&this->ui);
+		}
 	}
 
 	// Scriptnode Callbacks ------------------------------------------------------
 
+	void prepare(PrepareSpecs ps) override
+	{
+		faust_obj.prepare(ps);
+
+		faust_base_wrapper<NV>::prepare(ps);
+	}
+
 	template <typename T> void process(T& data)
 	{
-		faust_base_wrapper::process(data.template as<ProcessDataDyn>());
+        
+		faust_base_wrapper<NV>::process(data.template as<ProcessDataDyn>());
 	}
 
 	template <typename T> void processFrame(T& data)
@@ -53,17 +68,21 @@ template <int NV, class FaustClass, class MC, int nChannels> struct faust_static
 
 	template <int P> void setParameter(double v)
 	{
-		jassert(P < ui.parameters.size());
-		*(ui.parameters[P]->zone) = (float)v;
+		jassert(P < this->ui.parameters.size());
+
+		for (auto z : this->ui.parameters[P]->zone)
+			*z = (float)v;
 	}
 
 	void createParameters(ParameterDataList& data)
 	{
 		int i = 0;
-		for (const auto& p : ui.parameters)
+		for (const auto& p : this->ui.parameters)
 		{
 			auto pd = p->toParameterData();
-			pd.callback.referTo((void*)p->zone, [](void* obj, double newValue) { *((float*)obj) = (float)newValue; });
+
+			pd.callback.referTo(p.get(), faust_ui<NV>::Parameter::setParameter);
+
 			pd.info.index = i++;
 			data.add(std::move(pd));
 		}

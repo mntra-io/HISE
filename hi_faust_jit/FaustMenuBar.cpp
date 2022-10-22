@@ -391,7 +391,7 @@ struct FaustGraphViewer : public Component,
 	FaustGraphViewer(DspNetwork* n, const File& faustFile_):
 		ControlledObject(n->getScriptProcessor()->getMainController_()),
 		SimpleTimer(n->getScriptProcessor()->getMainController_()->getGlobalUIUpdater()),
-		Thread("SVG Creator"),
+		Thread("SVG Creator", HISE_DEFAULT_STACK_SIZE),
         network(n),
 		faustFile(faustFile_)
 	{
@@ -473,7 +473,7 @@ struct FaustGraphViewer : public Component,
 
 	void setCurrentlyViewedContent(Map* m)
 	{
-		if (currentlyViewedContent = m)
+		if ((currentlyViewedContent = m) != nullptr)
 		{
             for (auto br : breadcrumbs)
 			{
@@ -566,7 +566,7 @@ struct FaustGraphViewer : public Component,
 	OwnedArray<Breadcrumb> breadcrumbs;
 };
 
-FaustMenuBar::FaustMenuBar(faust_jit_node *n) :
+FaustMenuBar::FaustMenuBar(faust_jit_node_base *n) :
 	addButton("add", this, factory),
 	editButton("edit", this, factory),
 	reloadButton("reset", this, factory),
@@ -624,7 +624,7 @@ void FaustMenuBar::createNewFile()
 
 	if (name.isNotEmpty())
 	{
-		if (!faust_jit_wrapper::isValidClassId(name))
+		if (!faust_jit_helpers::isValidClassId(name))
 		{
 			// We want a clear and modal feedback that that wasn't a good idea...
 			PresetHandler::showMessageWindow("Illegal file name", "Can't add file, because its name is not a valid class identifier: " + name, PresetHandler::IconType::Error);
@@ -667,7 +667,7 @@ void FaustMenuBar::importFile(String extension)
 	}
 
 	auto classId = destFile.getFileNameWithoutExtension();
-	if (extension == "dsp" && !faust_jit_wrapper::isValidClassId(classId)) {
+	if (extension == "dsp" && !faust_jit_helpers::isValidClassId(classId)) {
 		DBG("Can't import file, because its name is not a valid class identifier: " + classId);
 		return;
 	}
@@ -763,7 +763,7 @@ void FaustMenuBar::executeMenuAction(int option)
 
 		// add code for more functions here
 	default:
-		std::cerr << "FaustMenuBar: Unknown MenuOption: " + option << std::endl;
+		std::cerr << "FaustMenuBar: Unknown MenuOption: " << String(option) << std::endl;
 	}
 }
 

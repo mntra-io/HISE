@@ -29,8 +29,6 @@ SimpleDocumentTokenProvider class.
 class TokenCollection : public Thread,
 						public AsyncUpdater
 {
-	
-
 public:
 
 	/** A Token is the entry that is being used in the autocomplete popup (or any other IDE tools
@@ -259,7 +257,7 @@ public:
 	}
 
 	TokenCollection():
-		Thread("TokenRebuildThread")
+		Thread("TokenRebuildThread", HISE_DEFAULT_STACK_SIZE)
 	{
 
 	}
@@ -492,10 +490,12 @@ struct SimpleDocumentTokenProvider : public TokenCollection::Provider,
 };
 
 
-struct Autocomplete : public Component,
+class Autocomplete : public Component,
 	public KeyListener,
 	public ScrollBar::Listener
 {
+public:
+
 	using Token = TokenCollection::Token;
 
 	struct ParameterSelection: public ReferenceCountedObject

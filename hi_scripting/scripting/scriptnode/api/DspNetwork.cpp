@@ -269,6 +269,8 @@ void DspNetwork::createAllNodesOnce()
 		if (isProjectFactory)
 			continue;
 
+		getScriptProcessor()->getMainController_()->setAllowFlakyThreading(true);
+
 		for (auto id : f->getModuleList())
 		{
 			ScopedPointer<NodeBase::Holder> s = new NodeBase::Holder();
@@ -280,6 +282,8 @@ void DspNetwork::createAllNodesOnce()
 
 			s = nullptr;
 		}
+
+		getScriptProcessor()->getMainController_()->setAllowFlakyThreading(false);
 	}
 
 #if USE_BACKEND
@@ -550,7 +554,7 @@ void DspNetwork::prepareToPlay(double sampleRate, double blockSize)
             
             initialised = true;
 		}
-		catch (String& errorMessage)
+		catch (String& )
 		{
 			jassertfalse;
 		}
@@ -1482,7 +1486,7 @@ juce::File DspNetwork::CodeManager::getCodeFolder() const
 }
 
 DspNetwork::CodeManager::SnexSourceCompileHandler::SnexSourceCompileHandler(snex::ui::WorkbenchData* d, ProcessorWithScriptingContent* sp_) :
-	Thread("SNEX Compile Thread"),
+	Thread("SNEX Compile Thread", HISE_DEFAULT_STACK_SIZE),
 	CompileHandler(d),
 	ControlledObject(sp_->getMainController_()),
 	sp(sp_)
@@ -1589,7 +1593,6 @@ void DeprecationChecker::throwIf(DeprecationId id)
 
 bool DeprecationChecker::check(DeprecationId id)
 {
-	
 	switch (id)
 	{
 	case DeprecationId::OpTypeNonSet:
@@ -1598,8 +1601,6 @@ bool DeprecationChecker::check(DeprecationId id)
 		return !v.hasProperty("Converter") || v["Converter"] == var("Identity");
     default: return false;
 	}
-
-	return false;
 }
 
 DspNetwork::AnonymousNodeCloner::AnonymousNodeCloner(DspNetwork& p, NodeBase::Holder* other):
