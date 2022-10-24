@@ -102,7 +102,12 @@ struct VectorMathFunction
 #define INT_TARGET INT_REG_W(d->target)
 #define FP_TARGET FP_REG_W(d->target)
 #define ARGS(i) d->args[i]
-#define SETUP_MATH_INLINE(name) auto d = d_->toAsmInlineData(); auto& cc = d->gen.cc; auto type = d->target->getType(); d->target->createRegister(cc); cc.setInlineComment(name);
+#define SETUP_MATH_INLINE(name) auto d = d_->toAsmInlineData(); \
+								auto& cc = d->gen.cc; \
+								auto type = d->target->getType(); \
+								d->target->createRegister(cc); \
+								cc.setInlineComment(name); \
+								ignoreUnused(d, cc, type);
 
 
 MathFunctions::MathFunctions(bool addInlinedFunctions, ComplexType::Ptr blockType) :
@@ -505,6 +510,8 @@ void ConsoleFunctions::registerAllObjectFunctions(GlobalScope*)
 	}
 }
 
+
+
 juce::Result MathFunctions::Inliners::abs(InlineData* d_)
 {
 	SETUP_MATH_INLINE("inline abs");
@@ -518,7 +525,8 @@ juce::Result MathFunctions::Inliners::abs(InlineData* d_)
 
 	IF_(float)
 	{
-		auto c = cc.newXmmConst(asmjit::ConstPool::kScopeGlobal, Data128::fromU32(0x7fffffff));
+        auto cv = Data128::fromU32(0x7fffffff);
+		auto c = cc.newConst(asmjit::ConstPoolScope::kGlobal, cv.getData(), cv.size());
 
 		FP_OP(cc.movss, d->target, ARGS(0));
 
@@ -527,7 +535,8 @@ juce::Result MathFunctions::Inliners::abs(InlineData* d_)
 	}
 	IF_(double)
 	{
-		auto c = cc.newXmmConst(asmjit::ConstPool::kScopeGlobal, Data128::fromU64(0x7fffffffffffffff));
+        auto cv = Data128::fromU64(0x7fffffffffffffff);
+		auto c = cc.newConst(asmjit::ConstPoolScope::kGlobal, cv.getData(), cv.size());
 		cc.movsd(FP_TARGET, FP_REG_R(ARGS(0)));
 		cc.andps(FP_TARGET, c);
 	}
@@ -639,7 +648,10 @@ juce::Result MathFunctions::Inliners::sign(InlineData* d_)
 	{
 		auto input = FP_REG_R(ARGS(0));
 		auto t = FP_REG_W(d->target);
-		auto mem = cc.newMmConst(ConstPool::kScopeGlobal, Data64::fromF32(-1.0f, 1.0f));
+        
+        auto cv = Data128::fromF32(-1.0f, 1.0f);
+        
+        auto mem = cc.newConst(ConstPoolScope::kGlobal, cv.getData(), cv.size());
 		auto i = cc.newGpq();
 		auto r2 = cc.newGpq();
 		auto zero = cc.newXmmSs();
@@ -655,7 +667,12 @@ juce::Result MathFunctions::Inliners::sign(InlineData* d_)
 	{
 		auto input = FP_REG_R(ARGS(0));
 		auto t = FP_REG_W(d->target);
-		auto mem = cc.newXmmConst(ConstPool::kScopeGlobal, Data128::fromF64(-1.0, 1.0));
+        
+        auto cv = Data128::fromF64(-1.0, 1.0);
+        
+        jassert(cv.size() == 16);
+        
+		auto mem = cc.newConst(ConstPoolScope::kGlobal, cv.getData(), cv.size());
 		auto i = cc.newGpq();
 		auto r2 = cc.newGpq();
 		auto zero = cc.newXmmSd();
@@ -852,7 +869,7 @@ juce::Result MathFunctions::Inliners::sin(InlineData* d_)
 	{
 		idx = cc.newXmmSd();
 		tmpFloat = cc.newXmmSd();
-		tableSize = cc.newDoubleConst(ConstPool::kScopeGlobal, (double)TableSize / (2.0 * double_Pi));
+		tableSize = cc.newDoubleConst(ConstPoolScope::kGlobal, (double)TableSize / (2.0 * double_Pi));
 
 		if (d->args[0]->isMemoryLocation())
 			cc.movsd(idx, d->args[0]->getAsMemoryLocation());
@@ -868,7 +885,7 @@ juce::Result MathFunctions::Inliners::sin(InlineData* d_)
 	{
 		idx = cc.newXmmSs();
 		tmpFloat = cc.newXmmSs();
-		tableSize = cc.newFloatConst(ConstPool::kScopeGlobal, (float)TableSize / (2.0f * float_Pi));
+		tableSize = cc.newFloatConst(ConstPoolScope::kGlobal, (float)TableSize / (2.0f * float_Pi));
 
 		if (d->args[0]->isMemoryLocation())
 			cc.movss(idx, d->args[0]->getAsMemoryLocation());

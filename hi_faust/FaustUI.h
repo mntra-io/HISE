@@ -9,7 +9,56 @@
 namespace scriptnode {
 namespace faust {
 
-struct faust_ui : public ::faust::UI {
+/** This struct will take a snapshot of the current values and reset the zone pointers
+    to this value when it goes out of scope.
+ 
+    It is used by the `faust->init()` call to prevent resetting the internal values everytime
+    it is called which happens when changing the processing context.
+*/
+struct ScopedZoneSetter
+{
+    struct Item
+    {
+        Item(float* zone_): zone(zone_), value(*zone) {};
+        
+        void reset()
+        {
+            jassert(zone != nullptr);
+            *zone = value;
+        }
+        
+        float* zone;
+        float value;
+    };
+    
+    Array<Item> items;
+    
+    template <typename UIClass> ScopedZoneSetter(UIClass& ui)
+    {
+        for (auto p : ui.parameters)
+        {
+            for(const auto& z: p->zone)
+                items.add({ z });
+        }
+    }
+    
+    ~ScopedZoneSetter()
+    {
+        for(auto& i: items)
+            i.reset();
+    }
+};
+
+/** This UI subclass is templated to handle monophonic / polyphonic faust nodes.
+
+	Depending on the voice amount, the internal Parameter object will either hold a 
+	single pointer to the faust zone (float*) or a PolyData object that contains the 
+	zone pointers for every faust object of each voice.
+*/
+template <int NV> struct faust_ui : public ::faust::UI 
+{
+	static constexpr int NumVoices = NV;
+
 	enum ControlType {
 		NONE = 0,
 		BUTTON,
@@ -36,47 +85,13 @@ struct faust_ui : public ::faust::UI {
 		numHardcodedMidiZones
 	};
 
-    /** This struct will take a snapshot of the current values and reset the zone pointers
-        to this value when it goes out of scope.
-     
-        It is used by the `faust->init()` call to prevent resetting the internal values everytime
-        it is called which happens when changing the processing context.
-    */
-    struct ScopedZoneSetter
-    {
-        struct Item
-        {
-            Item(float* zone_): zone(zone_), value(*zone) {};
-            
-            void reset()
-            {
-                jassert(zone != nullptr);
-                *zone = value;
-            }
-            
-            float* zone;
-            float value;
-        };
-        
-        Array<Item> items;
-        
-        ScopedZoneSetter(faust_ui& ui)
-        {
-            for(auto p: ui.parameters)
-                items.add({p->zone});
-        }
-        
-        ~ScopedZoneSetter()
-        {
-            for(auto& i: items)
-                i.reset();
-        }
-    };
     
-	struct Parameter {
+    
+	struct Parameter 
+	{
 		ControlType type;
 		String label;
-		float* zone;
+		PolyData<float*, NumVoices> zone;
 		float init;
 		float min;
 		float max;
@@ -86,22 +101,37 @@ struct faust_ui : public ::faust::UI {
 
 		Parameter(ControlType type,
 				  String label,
-				  float* zone,
+				  float* zone_,
 				  float init,
 				  float min,
 				  float max,
 				  float step) :
 			type(type),
 			label(label),
-			zone(zone),
 			init(init),
 			min(min),
 			max(max),
-			step(step) {}
+			step(step)
+		{
+			for (auto& z : zone)
+				z = nullptr;
+
+			*zone.begin() = zone_;
+		}
 
         static void setParameter(void* obj, double newValue)
         {
-            *static_cast<Parameter*>(obj)->zone = (float)newValue;
+			auto typed = static_cast<Parameter*>(obj);
+
+            for(auto z: typed->zone)
+				*z = (float)newValue;
+        }
+        
+        /** Skip parameter creation for those, as they are used as draggable modulation source. */
+        bool isModParameter() const
+        {
+            return type == ControlType::HORIZONTAL_BARGRAPH ||
+                   type == ControlType::VERTICAL_BARGRAPH;
         }
         
 		parameter::data toParameterData() const {
@@ -132,6 +162,39 @@ struct faust_ui : public ::faust::UI {
 
 	};
 
+	struct MidiZones
+	{
+		MidiZones()
+		{
+			reset();
+		}
+
+		void reset()
+		{
+			memset(zones, 0, sizeof(float*) * (size_t)HardcodedMidiZones::numHardcodedMidiZones);
+		}
+
+		float* zones[(int)HardcodedMidiZones::numHardcodedMidiZones];
+		
+	};
+
+	struct ModZone
+	{
+		ModZone()
+		{
+			reset();
+		}
+
+		void reset()
+		{
+			zone = nullptr;
+			modValue.reset();
+		}
+
+		float* zone;
+		ModValue modValue;
+	};
+
 	faust_ui() 
 	{
 		reset();
@@ -139,11 +202,10 @@ struct faust_ui : public ::faust::UI {
 
 	std::vector<std::shared_ptr<Parameter>> parameters;
 
-	float* midiZones[(int)HardcodedMidiZones::numHardcodedMidiZones];
-	bool anyMidiZonesActive = false;
+	PolyData<MidiZones, NumVoices> midiZones;
+	PolyData<ModZone, NumVoices> modZones;
     
-    float* modZone = nullptr;
-    ModValue modValue;
+	bool anyMidiZonesActive = false;
 
 	/** This checks the parameter name and stores the zone pointer to be updated when a MIDI event is received. */
 	void addHardcodedMidiZone(const String& parameterName, float* zonePtr)
@@ -156,18 +218,36 @@ struct faust_ui : public ::faust::UI {
 
 		if (idx != -1)
 		{
-			midiZones[idx] = zonePtr;
-			anyMidiZonesActive = true;
+			for (auto& mz : midiZones)
+			{
+				if (mz.zones[idx] == nullptr)
+				{
+					mz.zones[idx] = zonePtr;
+					anyMidiZonesActive = true;
+					break;
+				}
+			}
 		}
+	}
+
+	void prepare(PrepareSpecs ps)
+	{
+		for (auto p : parameters)
+			p->zone.prepare(ps);
+
+		modZones.prepare(ps);
+		midiZones.prepare(ps);
 	}
 
     bool handleModulation(double& v)
     {
-        if(modZone != nullptr)
+		auto& mz = modZones.get();
+
+        if(mz.zone != nullptr)
         {
-            if(modValue.setModValueIfChanged((double)*modZone))
+            if(mz.modValue.setModValueIfChanged((double)*mz.zone))
             {
-                v = modValue.getModValue();
+                v = mz.modValue.getModValue();
                 return true;
             }
         }
@@ -183,16 +263,20 @@ struct faust_ui : public ::faust::UI {
 
 		if (e.isNoteOn())
 		{
-			if (auto gatePtr = midiZones[(int)HardcodedMidiZones::Gate])
+			auto& mz = midiZones.get();
+
+			if (auto gatePtr = mz.zones[(int)HardcodedMidiZones::Gate])
 				*gatePtr = 1.0f;
-			if (auto freqPtr = midiZones[(int)HardcodedMidiZones::Frequency])
+			if (auto freqPtr = mz.zones[(int)HardcodedMidiZones::Frequency])
 				*freqPtr = e.getFrequency();
-			if (auto gainPtr = midiZones[(int)HardcodedMidiZones::Gain])
+			if (auto gainPtr = mz.zones[(int)HardcodedMidiZones::Gain])
 				*gainPtr = e.getFloatVelocity();
 		}
 		else
 		{
-			if (auto gatePtr = midiZones[(int)HardcodedMidiZones::Gate])
+			auto& mz = midiZones.get();
+
+			if (auto gatePtr = mz.zones[(int)HardcodedMidiZones::Gate])
 				*gatePtr = 0.0f;
 		}
 	}
@@ -200,9 +284,14 @@ struct faust_ui : public ::faust::UI {
 	void reset()
 	{
 		parameters.clear();
-		memset(midiZones, 0, sizeof(float*)*(int)HardcodedMidiZones::numHardcodedMidiZones);
+
+		for (auto& mz : midiZones)
+			mz.reset();
+
+		for (auto& mz : modZones)
+			mz.reset();
+
 		anyMidiZonesActive = false;
-        modZone = nullptr;
 	}
 
 	std::optional<std::shared_ptr<Parameter>> getParameterByLabel(String label)
@@ -219,7 +308,7 @@ struct faust_ui : public ::faust::UI {
 	{
 		for (auto p : parameters)
 		{
-			if (p->zone == zone)
+			if (p->zone.getFirst() == zone)
 				return p;
 		}
 		return {};
@@ -242,9 +331,40 @@ struct faust_ui : public ::faust::UI {
 		for (auto p : parameters)
 		{
 			if (p->label == label)
-				return p->zone;
+				return p->zone.getFirst();
 		}
 		return nullptr;
+	}
+
+	bool attachZoneVoiceToExistingParameter(const char* label, float* zone)
+	{
+		auto existing = getParameterByLabel(label);
+
+		if (existing.has_value())
+		{
+			for (auto& z : (*existing)->zone)
+			{
+				if (z == nullptr)
+				{
+					z = zone;
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	void attachZoneVoiceToModZones(float* zone)
+	{
+		for (auto& mz : modZones)
+		{
+			if (mz.zone == nullptr)
+			{
+				mz.zone = zone;
+				return;
+			}
+		}
 	}
 
 	std::pair<std::string, std::map<float,std::string>> parseMetaData(std::string style)
@@ -329,9 +449,14 @@ struct faust_ui : public ::faust::UI {
 
 	// -- active widgets
 
+
+
 	virtual void addButton(const char* label, float* zone) override
 	{
 		addHardcodedMidiZone(label, zone);
+
+		if (attachZoneVoiceToExistingParameter(label, zone))
+			return;
 
 		parameters.push_back(std::make_shared<Parameter>(ControlType::BUTTON,
 														 String(label),
@@ -344,6 +469,9 @@ struct faust_ui : public ::faust::UI {
 	virtual void addCheckButton(const char* label, float* zone) override
 	{
 		addHardcodedMidiZone(label, zone);
+
+		if (attachZoneVoiceToExistingParameter(label, zone))
+			return;
 
 		parameters.push_back(std::make_shared<Parameter>(ControlType::CHECK_BUTTON,
 														 String(label),
@@ -358,6 +486,9 @@ struct faust_ui : public ::faust::UI {
 	{
 		addHardcodedMidiZone(label, zone);
 
+		if (attachZoneVoiceToExistingParameter(label, zone))
+			return;
+
 		parameters.push_back(std::make_shared<Parameter>(ControlType::VERTICAL_SLIDER,
 														 String(label),
 														 zone,
@@ -370,6 +501,9 @@ struct faust_ui : public ::faust::UI {
 	{
 		addHardcodedMidiZone(label, zone);
 
+		if (attachZoneVoiceToExistingParameter(label, zone))
+			return;
+
 		parameters.push_back(std::make_shared<Parameter>(ControlType::HORIZONTAL_SLIDER,
 														 String(label),
 														 zone,
@@ -381,6 +515,9 @@ struct faust_ui : public ::faust::UI {
 	virtual void addNumEntry(const char* label, float* zone, float init, float min, float max, float step) override
 	{
 		addHardcodedMidiZone(label, zone);
+
+		if (attachZoneVoiceToExistingParameter(label, zone))
+			return;
 
 		parameters.push_back(std::make_shared<Parameter>(ControlType::NUM_ENTRY,
 														 String(label),
@@ -395,37 +532,12 @@ struct faust_ui : public ::faust::UI {
 
 	virtual void addHorizontalBargraph(const char* label, float* zone, float min, float max) override
 	{
-		addHardcodedMidiZone(label, zone);
-
-        // only a single mod value output is supported
-        jassert(modZone != nullptr);
-        
-        modZone = zone;
-        
-		parameters.push_back(std::make_shared<Parameter>(ControlType::HORIZONTAL_BARGRAPH,
-														 String(label),
-														 zone,
-														 0.f,
-														 min,
-														 max,
-														 1.f));
+		attachZoneVoiceToModZones(zone);
 	}
+
 	virtual void addVerticalBargraph(const char* label, float* zone, float min, float max) override
 	{
-		addHardcodedMidiZone(label, zone);
-
-        // only a single mod value output is supported
-        jassert(modZone != nullptr);
-        
-        modZone = zone;
-        
-		parameters.push_back(std::make_shared<Parameter>(ControlType::VERTICAL_BARGRAPH,
-														 String(label),
-														 zone,
-														 0.f,
-														 min,
-														 max,
-														 1.f));
+		attachZoneVoiceToModZones(zone);
 	}
 
 	// -- soundfiles -- TODO
