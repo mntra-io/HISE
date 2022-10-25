@@ -5441,7 +5441,7 @@ var ScriptingObjects::ScriptDisplayBufferSource::getDisplayBuffer(int index)
 		reportScriptError("Can't find buffer at index " + String(index));
 	}
 	
-	RETURN_IF_NO_THROW(var());
+	RETURN_IF_NO_THROW({});
 }
 
 

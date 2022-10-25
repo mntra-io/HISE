@@ -827,11 +827,13 @@ Result ScriptBroadcaster::ScriptTarget::callSync(const Array<var>& args)
 		return Result::ok();
 #endif
 
+#if JUCE_DEBUG
 	for (const auto& v : args)
 	{
 		// This should never happen...
 		jassert(!v.isUndefined() && !v.isVoid());
 	}
+#endif
 
 	auto a = var::NativeFunctionArgs(obj, args.getRawDataPointer(), args.size());
 	return callback.callSync(a, nullptr);
@@ -1308,6 +1310,70 @@ Array<juce::var> ScriptBroadcaster::MouseEventListener::createChildArray() const
 	
 	return list;
 }
+
+struct ScriptBroadcaster::ContextMenuListener::InternalMenuListener
+{
+	InternalMenuListener(ScriptBroadcaster* parent, ScriptComponent* l, var stateFunction, const StringArray& itemList):
+		stateCallback(parent->getScriptProcessor(), parent, stateFunction, 2)
+	{
+		stateCallback.incRefCount();
+		stateCallback.setThisObject(l);
+
+		l->attachMouseListener(parent, 
+			MouseCallbackComponent::CallbackLevel::PopupMenuOnly, 
+			BIND_MEMBER_FUNCTION_1(InternalMenuListener::itemIsTicked),
+			BIND_MEMBER_FUNCTION_1(InternalMenuListener::itemIsEnabled),
+			BIND_MEMBER_FUNCTION_1(InternalMenuListener::getDynamicItemText),
+			itemList);
+	};
+
+	var itemIsEnabled(int index)
+	{
+		var args[2] = { var("enabled"), var(index) };
+		var rv(false);
+
+		if (stateCallback)
+			auto ok = stateCallback.callSync(args, 2, &rv);
+
+		return rv;
+	}
+
+	var itemIsTicked(int index)
+	{
+		var args[2] = { var("active"), var(index) };
+		var rv(false);
+
+		if(stateCallback)
+			auto ok = stateCallback.callSync(args, 2, &rv);
+
+		return rv;
+	}
+
+	var getDynamicItemText(int index)
+	{
+		var args[2] = { var("text"), var(index) };
+		var rv("");
+
+		if (stateCallback)
+			auto ok = stateCallback.callSync(args, 2, &rv);
+
+		return rv;
+	}
+
+	WeakCallbackHolder stateCallback;
+};
+
+ScriptBroadcaster::ContextMenuListener::ContextMenuListener(ScriptBroadcaster* parent, 
+															var componentIds, 
+															var stateFunction, 
+															const StringArray& itemList, 
+															const var& metadata):
+	ListenerBase(metadata)
+{
+	for (auto l : BroadcasterHelpers::getComponentsFromVar(parent->getScriptProcessor(), componentIds))
+		items.add(new InternalMenuListener(parent, l, stateFunction, itemList));
+}
+
 
 struct ScriptBroadcaster::ComponentValueListener::InternalListener
 {
@@ -1932,9 +1998,138 @@ juce::Result ScriptBroadcaster::ComponentPropertyItem::callSync(const Array<var>
 	return r;
 }
 
+ScriptBroadcaster::ComponentRefreshItem::ComponentRefreshItem(ScriptBroadcaster* sb, const var& obj, const String refreshMode_, const var& metadata):
+	TargetBase(obj, {}, metadata),
+	refreshModeString(refreshMode_)
+{
+	if (refreshMode_ == "repaint")
+		refreshMode = RefreshType::repaint;
+	else if (refreshMode_ == "changed")
+		refreshMode = RefreshType::changed;
+	else if (refreshMode_ == "updateValueFromProcessorConnection")
+		refreshMode = RefreshType::updateValueFromProcessorConnection;
+	else if (refreshMode_ == "loseFocus")
+		refreshMode = RefreshType::loseFocus;
+	else if (refreshMode_ == "resetValueToDefault")
+		refreshMode = RefreshType::resetValueToDefault;
+
+	for (int i = 0; i < obj.size(); i++)
+		timeSlots.add(new RefCountedTime());
+}
+
+Array<juce::var> ScriptBroadcaster::ComponentRefreshItem::createChildArray() const
+{
+	Array<var> objWithTime;
+
+	for (int i = 0; i < obj.size(); i++)
+	{
+		Array<var> item;
+		item.add(obj[i]);
+		item.add(var(timeSlots[i].get()));
+		item.add(var(refreshModeString));
+
+		objWithTime.add(var(item));
+	}
+
+	return objWithTime;
+}
+
+void ScriptBroadcaster::ComponentRefreshItem::registerSpecialBodyItems(ComponentWithPreferredSize::BodyFactory& factory)
+{
+	struct RefreshBlinkComponent : public MapItemWithScriptComponentConnection
+	{
+		RefreshBlinkComponent(ScriptComponent* sc, const var& t, const String& mode_) :
+			MapItemWithScriptComponentConnection(sc, GLOBAL_MONOSPACE_FONT().getStringWidth(mode_) + 50, 32),
+			mode(mode_),
+			time(dynamic_cast<RefCountedTime*>(t.getObject()))
+		{
+			jassert(time != nullptr);
+		};
+
+		void timerCallback() override
+		{
+			auto changed = lastTime != time->lastTime;
+
+			if (changed)
+			{
+				lastTime = time->lastTime;
+				alpha.setModValue(1.0);
+			}
+			
+			if (alpha.setModValueIfChanged(jmax(0.0, alpha.getModValue() - 0.05)))
+				repaint();
+		}
+
+		static ComponentWithPreferredSize* create(Component* c, const var& v)
+		{
+			if (auto sc = dynamic_cast<ScriptComponent*>(v[0].getObject()))
+				return new RefreshBlinkComponent(sc, v[1], v[2].toString());
+
+			return nullptr;
+		}
+
+		void paint(Graphics& g) override
+		{
+			auto b = getLocalBounds().toFloat().reduced(5.0f);
+
+			auto circle = b.removeFromLeft(b.getHeight()).reduced(5.0f);
+
+			g.setColour(Colours::white.withAlpha(0.8f));
+
+			g.drawEllipse(circle, 1.0f);
+
+			g.setFont(GLOBAL_MONOSPACE_FONT());
+			g.drawText(mode, b, Justification::centredLeft);
+
+			g.setColour(Colours::white.withAlpha((float)alpha.getModValue()));
+
+			g.fillEllipse(circle.reduced(3.0f));
+		}
+
+		const String mode;
+		ModValue alpha;
+		RefCountedTime::Ptr time;
+		uint32 lastTime;
+	};
+
+	factory.registerFunction(RefreshBlinkComponent::create);
+}
+
+juce::Result ScriptBroadcaster::ComponentRefreshItem::callSync(const Array<var>& )
+{
+	jassert(obj.isArray());
+
+	for (int i = 0; i < obj.size(); i++)
+	{
+		auto sc = dynamic_cast<ScriptComponent*>(obj[i].getObject());
+
+		timeSlots[i]->lastTime = Time::getMillisecondCounter();
+
+		jassert(sc != nullptr);
+
+		if (refreshMode == RefreshType::changed)
+			sc->changed();
+
+		if (refreshMode == RefreshType::repaint)
+			sc->sendRepaintMessage();
+
+		if (refreshMode == RefreshType::updateValueFromProcessorConnection)
+			sc->updateValueFromProcessorConnection();
+
+		if (refreshMode == RefreshType::loseFocus)
+			sc->loseFocus();
+
+		if (refreshMode == RefreshType::resetValueToDefault)
+			sc->resetValueToDefault();
+	}
+
+	return Result::ok();
+}
+
 ScriptBroadcaster::ComponentValueItem::ComponentValueItem(ScriptBroadcaster* sb, const var& obj, const var& f, const var& metadata):
 	TargetBase(obj, f, metadata)
 {
+	
 	auto numArgs = sb->defaultValues.size();
 
 	if (HiseJavascriptEngine::isJavascriptFunction(f))
@@ -2018,6 +2213,7 @@ struct ScriptBroadcaster::Wrapper
 	API_METHOD_WRAPPER_4(ScriptBroadcaster, addDelayedListener);
 	API_METHOD_WRAPPER_4(ScriptBroadcaster, addComponentPropertyListener);
 	API_METHOD_WRAPPER_3(ScriptBroadcaster, addComponentValueListener);
+	API_METHOD_WRAPPER_3(ScriptBroadcaster, addComponentRefreshListener);
 	API_METHOD_WRAPPER_1(ScriptBroadcaster, removeListener);
 	API_METHOD_WRAPPER_1(ScriptBroadcaster, removeSource);
 	API_VOID_METHOD_WRAPPER_0(ScriptBroadcaster, removeAllListeners);
@@ -2028,6 +2224,7 @@ struct ScriptBroadcaster::Wrapper
 	API_VOID_METHOD_WRAPPER_3(ScriptBroadcaster, attachToComponentProperties);
 	API_VOID_METHOD_WRAPPER_2(ScriptBroadcaster, attachToComponentVisibility);
 	API_VOID_METHOD_WRAPPER_3(ScriptBroadcaster, attachToComponentMouseEvents);
+	API_VOID_METHOD_WRAPPER_4(ScriptBroadcaster, attachToContextMenu);
 	API_VOID_METHOD_WRAPPER_2(ScriptBroadcaster, attachToComponentValue);
 	API_VOID_METHOD_WRAPPER_3(ScriptBroadcaster, attachToModuleParameter);
 	API_VOID_METHOD_WRAPPER_2(ScriptBroadcaster, attachToRadioGroup);
@@ -2053,6 +2250,7 @@ ScriptBroadcaster::ScriptBroadcaster(ProcessorWithScriptingContent* p, const var
 	ADD_API_METHOD_4(addDelayedListener);
 	ADD_API_METHOD_4(addComponentPropertyListener);
 	ADD_API_METHOD_3(addComponentValueListener);
+	ADD_API_METHOD_3(addComponentRefreshListener);
 	ADD_API_METHOD_1(removeListener);
 	ADD_API_METHOD_1(removeSource);
 	ADD_API_METHOD_0(removeAllListeners);
@@ -2066,6 +2264,7 @@ ScriptBroadcaster::ScriptBroadcaster(ProcessorWithScriptingContent* p, const var
 	ADD_API_METHOD_3(attachToModuleParameter);
 	ADD_API_METHOD_2(attachToRadioGroup);
     ADD_API_METHOD_4(attachToComplexData);
+	ADD_API_METHOD_4(attachToContextMenu);
 	ADD_API_METHOD_4(attachToOtherBroadcaster);
 	ADD_API_METHOD_3(callWithDelay);
 	ADD_API_METHOD_1(setReplaceThisReference);
@@ -2314,6 +2513,33 @@ bool ScriptBroadcaster::addComponentValueListener(var object, var metadata, var 
     
 	items.addSorted(sorter, ni.release());
 
+
+	return true;
+}
+
+bool ScriptBroadcaster::addComponentRefreshListener(var componentIds, String refreshType, var metadata)
+{
+	auto list = BroadcasterHelpers::getComponentsFromVar(getScriptProcessor(), componentIds);
+
+	if (list.isEmpty())
+		reportScriptError("Can't find components for the given componentId object");
+
+	Array<var> l;
+
+	for (auto sc : list)
+		l.add(var(sc));
+
+	auto newObject = new ComponentRefreshItem(this, var(l), refreshType, metadata);
+
+	ScopedPointer<TargetBase> ni = newObject;
+
+	if (newObject->refreshMode == ComponentRefreshItem::RefreshType::numRefreshTypes)
+		reportScriptError("Unknown refresh mode: " + refreshType);
+
+	initItem(ni);
+
+	ItemBase::PrioritySorter sorter;
+	items.addSorted(sorter, ni.release());
 
 	return true;
 }
@@ -2575,6 +2801,29 @@ void ScriptBroadcaster::attachToComponentMouseEvents(var componentIds, var callb
 	auto cLevel = (MouseCallbackComponent::CallbackLevel)clValue;
 
 	attachedListeners.add(new MouseEventListener(this, componentIds, cLevel, optionalMetadata));
+	checkMetadata(attachedListeners.getLast());
+}
+
+void ScriptBroadcaster::attachToContextMenu(var componentIds, var stateFunction, var itemList, var optionalMetadata)
+{
+	throwIfAlreadyConnected();
+
+	if (defaultValues.size() != 2)
+		reportScriptError("If you want to attach a broadcaster to context menu events, it needs to parameters (component, menuItemIndex)");
+
+	StringArray sa;
+
+	if (itemList.isString())
+		sa.add(itemList.toString());
+	else if (itemList.isArray())
+	{
+		for (const auto& v : *itemList.getArray())
+			sa.add(v.toString());
+	}
+
+	enableQueue = true;
+
+	attachedListeners.add(new ContextMenuListener(this, componentIds, stateFunction, sa, optionalMetadata));
 	checkMetadata(attachedListeners.getLast());
 }
 

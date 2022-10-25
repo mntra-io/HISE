@@ -301,8 +301,13 @@ public:
 
 		struct MouseListenerData
 		{
+			using StateFunction = std::function<var(int)>;
+
 			WeakReference<WeakCallbackHolder::CallableObject> listener;
 			MouseCallbackComponent::CallbackLevel mouseCallbackLevel = MouseCallbackComponent::CallbackLevel::NoCallbacks;
+			StateFunction tickedFunction, enabledFunction, textFunction;
+			StringArray popupMenuItems;
+
 		};
 
 		// ============================================================================================================
@@ -473,7 +478,7 @@ public:
 
 		void updateContentPropertyInternal(const Identifier& propertyId, const var& newValue);
 
-        void updateValueFromProcessorConnection();
+        
         
 		virtual void cancelPendingFunctions() {};
 
@@ -611,13 +616,17 @@ public:
 		void setLocalLookAndFeel(var lafObject);
 
 		/** Manually sends a repaint message for the component. */
-		void sendRepaintMessage();
+		virtual void sendRepaintMessage();
 
 		/** Returns the ID of the component. */
 		String getId() const;
 
 		/** Toggles the visibility and fades a component using the global animator. */
 		void fadeComponent(bool shouldBeVisible, int milliseconds);
+
+		/** Updates the value from the processor connection. Call this method whenever the module state has changed and you want
+			to refresh the knob value to show the current state. */
+		void updateValueFromProcessorConnection();
 
 		// End of API Methods ============================================================================================
 
@@ -629,10 +638,18 @@ public:
 			sendValueListenerMessage();
 		}
 
-		void attachMouseListener(WeakCallbackHolder::CallableObject* obj, MouseCallbackComponent::CallbackLevel cl)
+		void attachMouseListener(WeakCallbackHolder::CallableObject* obj, MouseCallbackComponent::CallbackLevel cl, const MouseListenerData::StateFunction& sf = {}, const MouseListenerData::StateFunction& ef = {}, const MouseListenerData::StateFunction& tf = {}, const StringArray& popupItems = {})
 		{
-			mouseListeners.add({ obj, cl });
+			for (int i = 0; i < mouseListeners.size(); i++)
+			{
+				if (mouseListeners[i].listener == nullptr)
+					mouseListeners.remove(i--);
+			}
+
+			mouseListeners.add({ obj, cl, sf, ef, tf, popupItems });
 		}
+
+		
 
 		const Array<MouseListenerData>& getMouseListeners() const { return mouseListeners; }
 
@@ -1771,7 +1788,11 @@ public:
 
 		DebugInformationBase::Ptr createChildElement(DebugWatchIndex index) const;
 
-		
+		void sendRepaintMessage() override
+		{
+			ScriptComponent::sendRepaintMessage();
+			repaint();
+		}
 
 		// ======================================================================================================== API Methods
 

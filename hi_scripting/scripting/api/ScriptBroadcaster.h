@@ -120,6 +120,9 @@ struct ScriptBroadcaster :  public ConstScriptingObject,
 	/** Adds a listener that sets the value of the given components when the broadcaster receives a message. */
 	bool addComponentValueListener(var object, var metadata, var optionalFunction);
 
+	/** Adds a listener that will cause a refresh message (eg. repaint(), changed()) to be send out to the given components. */
+	bool addComponentRefreshListener(var componentIds, String refreshType, var metadata);
+
 	/** Removes the listener that was assigned with the given object. */
 	bool removeListener(var idFromMetadata);
 
@@ -158,6 +161,9 @@ struct ScriptBroadcaster :  public ConstScriptingObject,
 
 	/** Registers this broadcaster to be notified for mouse events for the given components. */
 	void attachToComponentMouseEvents(var componentIds, var callbackLevel, var optionalMetadata);
+
+	/** Registers this broadcaster to be notified when a context menu item from the given components was selected. */
+	void attachToContextMenu(var componentIds, var stateFunction, var itemList, var optionalMetadata);
 
     /** Registers this broadcaster to be notified when a complex data object changes. */
     void attachToComplexData(String dataTypeAndEvent, var moduleIds, var dataIndexes, var optionalMetadata);
@@ -410,6 +416,43 @@ private:
 		ScopedPointer<WeakCallbackHolder> optionalCallback;
 	};
 
+	struct ComponentRefreshItem : public TargetBase
+	{
+		enum class RefreshType
+		{
+			repaint,
+			changed,
+			updateValueFromProcessorConnection,
+			loseFocus,
+			resetValueToDefault,
+			numRefreshTypes
+		};
+
+		ComponentRefreshItem(ScriptBroadcaster* sb, const var& obj, const String refreshMode, const var& metadata);
+
+
+		Identifier getItemId() const override { RETURN_STATIC_IDENTIFIER("ComponentRefreshItem"); }
+
+		Array<var> createChildArray() const override;
+
+		void registerSpecialBodyItems(ComponentWithPreferredSize::BodyFactory& factory) override;;
+
+		Result callSync(const Array<var>& args) override;
+
+		struct RefCountedTime : public ReferenceCountedObject
+		{
+			using List = ReferenceCountedArray<RefCountedTime>;
+			using Ptr = ReferenceCountedObjectPtr<RefCountedTime>;
+
+			uint32 lastTime = 0;
+		};
+
+		RefCountedTime::List timeSlots;
+		String refreshModeString;
+
+		RefreshType refreshMode = RefreshType::numRefreshTypes;
+	};
+
 	struct ComponentValueItem : public TargetBase
 	{
 		ComponentValueItem(ScriptBroadcaster* sb, const var& obj, const var& f, const var& metadata);
@@ -581,6 +624,21 @@ private:
 
 		OwnedArray<InternalMouseListener> items;
 		MouseCallbackComponent::CallbackLevel level;
+	};
+
+	struct ContextMenuListener : public ListenerBase
+	{
+		struct InternalMenuListener;
+
+		ContextMenuListener(ScriptBroadcaster* parent, var componentIds, var stateFunction, const StringArray& itemList, const var& metadata);
+
+		Identifier getItemId() const override { RETURN_STATIC_IDENTIFIER("ContextMenu"); }
+
+		Result callItem(TargetBase*) override { return Result::ok(); }
+
+		Array<var> createChildArray() const override { return {}; }
+
+		OwnedArray<InternalMenuListener> items;
 	};
 
 	struct ComponentValueListener : public ListenerBase
