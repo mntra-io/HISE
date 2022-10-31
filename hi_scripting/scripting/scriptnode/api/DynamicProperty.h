@@ -119,8 +119,18 @@ struct dynamic_base_holder: public dynamic_base
 
 	virtual void updateRange(const ValueTree& v) override
 	{
-		// Do nothing here because the holder is not supposed to 
-		// change the range?
+        if(!allowForwardToParameter)
+        {
+            // If we do not allow forwarding of parameters
+            // we need to at least forward the range call
+            if(base != nullptr)
+                base->updateRange(v);
+        }
+        else
+        {
+            // Do nothing here because the holder is not supposed to
+            // change the range.
+        }
 	}
 
 	virtual double getDisplayValue() const
@@ -131,12 +141,25 @@ struct dynamic_base_holder: public dynamic_base
 		return dynamic_base::getDisplayValue();
 	}
 
+    /** If this parameter is assigned to another dynamic_base_holder, it will "bypass" this
+        parameter and directly connect the other holder to this target. If you don't want that,
+        call this function with `false`.
+    */
+    void setAllowForwardToParameter(bool forwardParameter)
+    {
+        allowForwardToParameter = forwardParameter;
+    }
+    
 	virtual void setParameter(NodeBase* n, dynamic_base::Ptr b)
 	{
 		dynamic_base::Ptr old = base;
 
 		if (auto s = dynamic_cast<dynamic_base_holder*>(b.get()))
-			b = s->base;
+        {
+            if(s->allowForwardToParameter)
+                b = s->base;
+        }
+			
 
 		auto oldValue = getDisplayValue();
 
@@ -155,11 +178,15 @@ struct dynamic_base_holder: public dynamic_base
 		return true;
 	}
 
-	dynamic_base::Ptr base;
+    dynamic_base::Ptr base;
 	
 protected:
 
 	mutable SimpleReadWriteLock connectionLock;
+    
+private:
+    
+    bool allowForwardToParameter = true;
 };
 
 

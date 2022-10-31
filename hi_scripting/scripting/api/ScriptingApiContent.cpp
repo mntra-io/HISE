@@ -821,6 +821,15 @@ void ScriptingApi::Content::ScriptComponent::changed()
 
 	controlSender.sendControlCallbackMessage();
 	sendValueListenerMessage();
+
+	if (auto jp = dynamic_cast<JavascriptProcessor*>(getScriptProcessor()))
+	{
+		// We need to throw an error again to stop the execution of the script
+		// (a recursive function call to this method will not be terminated because
+		// (the error is already consumed by the control callback handling).
+		if (!jp->getLastErrorMessage().wasOk())
+			reportScriptError("Aborting script execution after error occured during changed() callback");
+	}
 }
 
 
@@ -3516,7 +3525,7 @@ bool ScriptingApi::Content::ScriptPanel::internalRepaintIdle(bool forceRepaint, 
 
 	if (!engine->isInitialising())
 	{
-		engine->maximumExecutionTime = RelativeTime(0.2);
+		engine->maximumExecutionTime = HiseJavascriptEngine::getDefaultTimeOut();
 	}
 
 	engine->callExternalFunction(paintRoutine, args, &r);
@@ -3966,7 +3975,7 @@ bool ScriptingApi::Content::ScriptPanel::timerCallbackInternal(MainController * 
 		var thisObject(this);
 		var::NativeFunctionArgs args(thisObject, nullptr, 0);
 
-		engine->maximumExecutionTime = RelativeTime(0.5);
+		engine->maximumExecutionTime = HiseJavascriptEngine::getDefaultTimeOut();
 		engine->callExternalFunction(timerRoutine, args, &r);
 
 		if (r.failed())
@@ -4458,7 +4467,7 @@ void ScriptingApi::Content::ScriptedViewport::setTableMode(var tableMetadata)
 	if (!getScriptProcessor()->getScriptingContent()->interfaceCreationAllowed())
 	{
 		reportScriptError("Table Metadata must be set in the onInit callback");
-		RETURN_IF_NO_THROW();
+		RETURN_VOID_IF_NO_THROW();
 	}
 
 	tableModel = new ScriptTableListModel(getScriptProcessor(), tableMetadata);
@@ -4486,13 +4495,13 @@ void ScriptingApi::Content::ScriptedViewport::setTableColumns(var columnMetadata
 	if (!getScriptProcessor()->getScriptingContent()->interfaceCreationAllowed())
 	{
 		reportScriptError("Table Metadata must be set in the onInit callback");
-		RETURN_IF_NO_THROW();
+		RETURN_VOID_IF_NO_THROW();
 	}
 
 	if (tableModel == nullptr)
 	{
 		reportScriptError("You need to call setTableMode first");
-		RETURN_IF_NO_THROW();
+		RETURN_VOID_IF_NO_THROW();
 	}
 
 	tableModel->setTableColumnData(columnMetadata);
@@ -4503,7 +4512,7 @@ void ScriptingApi::Content::ScriptedViewport::setTableRowData(var tableData)
 	if (tableModel == nullptr)
 	{
 		reportScriptError("You need to call setTableMode first");
-		RETURN_IF_NO_THROW();
+		RETURN_VOID_IF_NO_THROW();
 	}
 
 	
@@ -4516,13 +4525,13 @@ void ScriptingApi::Content::ScriptedViewport::setTableCallback(var callbackFunct
 	if (tableModel == nullptr)
 	{
 		reportScriptError("You need to call setTableMode first");
-		RETURN_IF_NO_THROW();
+		RETURN_VOID_IF_NO_THROW();
 	}
 
 	if (!getScriptProcessor()->getScriptingContent()->interfaceCreationAllowed())
 	{
 		reportScriptError("Table callback must be set in the onInit callback");
-		RETURN_IF_NO_THROW();
+		RETURN_VOID_IF_NO_THROW();
 	}
 
 	tableModel->setCallback(callbackFunction);
@@ -6747,8 +6756,6 @@ hise::ComponentWithPreferredSize* hise::PrimitiveArrayDisplay::create(Component*
 
 void PrimitiveArrayDisplay::paint(Graphics& g)
 {
-	auto bounds = getLocalBounds().reduced(5);
-
 	AttributedString c;
 
 	auto f = GLOBAL_MONOSPACE_FONT();

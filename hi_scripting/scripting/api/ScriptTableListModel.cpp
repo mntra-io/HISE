@@ -183,7 +183,6 @@ Component* ScriptTableListModel::refreshComponentForCell(int rowNumber, int colu
 		{
 			jassertfalse;
 			break;
-			return existingComponentToUpdate;
 		}
 		}
 
@@ -636,8 +635,6 @@ void ScriptTableListModel::TableRepainter::repaintIfCellChange(const MouseEvent&
 	Point<int> s;
 
 	s.y = t.getComponent()->getRowContainingPosition(pos.x, pos.y);
-
-	int index = 0;
 
 	for (int i = 0; i < parent.columnMetadata.size(); i++)
 	{

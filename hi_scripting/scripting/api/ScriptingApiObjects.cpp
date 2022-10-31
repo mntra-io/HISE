@@ -731,6 +731,8 @@ bool ScriptingObjects::ScriptFile::move(var target)
 		return f.moveFileTo(sf->f);
 	else
 		reportScriptError("target is not a file");
+
+	RETURN_IF_NO_THROW(false);
 }
 
 bool ScriptingObjects::ScriptFile::copy(var target)
@@ -738,7 +740,9 @@ bool ScriptingObjects::ScriptFile::copy(var target)
 	if (auto sf = dynamic_cast<ScriptFile*>(target.getObject()))
 		return f.copyFileTo(sf->f);
 	else
-			reportScriptError("target is not a file");
+		reportScriptError("target is not a file");
+
+	RETURN_IF_NO_THROW(false);
 }
 
 juce::var ScriptingObjects::ScriptFile::loadAsAudioFile() const
@@ -772,8 +776,6 @@ juce::var ScriptingObjects::ScriptFile::loadAsAudioFile() const
 
 		return var(channels);
 	}
-
-	return var();
 }
 
 String ScriptingObjects::ScriptFile::getRelativePathFrom(var otherFile)
@@ -1005,6 +1007,8 @@ struct ScriptingObjects::ScriptDownloadObject::Wrapper
 	API_METHOD_WRAPPER_0(ScriptDownloadObject, getStatusText);
 	API_METHOD_WRAPPER_0(ScriptDownloadObject, getDownloadedTarget);
 	API_METHOD_WRAPPER_0(ScriptDownloadObject, getDownloadSpeed);
+	API_METHOD_WRAPPER_0(ScriptDownloadObject, getNumBytesDownloaded);
+	API_METHOD_WRAPPER_0(ScriptDownloadObject, getDownloadSize);
 };
 
 ScriptingObjects::ScriptDownloadObject::ScriptDownloadObject(ProcessorWithScriptingContent* pwsc, const URL& url, const String& extraHeader_, const File& targetFile_, var callback_) :
@@ -1030,6 +1034,8 @@ ScriptingObjects::ScriptDownloadObject::ScriptDownloadObject(ProcessorWithScript
 	ADD_API_METHOD_0(getStatusText);
 	ADD_API_METHOD_0(getDownloadedTarget);
 	ADD_API_METHOD_0(getDownloadSpeed);
+	ADD_API_METHOD_0(getNumBytesDownloaded);
+	ADD_API_METHOD_0(getDownloadSize);
 }
 
 ScriptingObjects::ScriptDownloadObject::~ScriptDownloadObject()
@@ -2645,7 +2651,7 @@ void ScriptingObjects::ScriptingModulator::restoreState(String base64State)
 		if (!vt.isValid())
 		{
 			reportScriptError("Can't load module state");
-			RETURN_IF_NO_THROW();
+			RETURN_VOID_IF_NO_THROW();
 		}
 
 		ProcessorHelpers::restoreFromBase64String(mod, base64State);
@@ -2948,7 +2954,7 @@ void ScriptingObjects::ScriptingEffect::restoreState(String base64State)
 		if (!vt.isValid())
 		{
 			reportScriptError("Can't load module state");
-			RETURN_IF_NO_THROW();
+			RETURN_VOID_IF_NO_THROW();
 		}
 
 		SuspendHelpers::ScopedTicket ticket(effect->getMainController());
@@ -3622,7 +3628,7 @@ void ScriptingObjects::ScriptingSynth::restoreState(String base64State)
 		if (!vt.isValid())
 		{
 			reportScriptError("Can't load module state");
-			RETURN_IF_NO_THROW();
+			RETURN_VOID_IF_NO_THROW();
 		}
 
 		ProcessorHelpers::restoreFromBase64String(synth, base64State);
@@ -3927,7 +3933,7 @@ void ScriptingObjects::ScriptingMidiProcessor::restoreState(String base64State)
 		if (!vt.isValid())
 		{
 			reportScriptError("Can't load module state");
-			RETURN_IF_NO_THROW();
+			RETURN_VOID_IF_NO_THROW();
 		}
 
 		ProcessorHelpers::restoreFromBase64String(mp, base64State, false);

@@ -852,7 +852,8 @@ public:
 
 			for (auto sl : selectionListeners)
 			{
-				sl->displayedLineRangeChanged(currentlyDisplayedLineRange);
+                if(sl != nullptr)
+                    sl->displayedLineRangeChanged(currentlyDisplayedLineRange);
 			}
 		}
 	}
@@ -960,8 +961,8 @@ private:
 	juce::Array<Selection> selections;
 };
 
-struct TokenCollection;
-struct LanguageManager;
+class TokenCollection;
+class LanguageManager;
 
 
 }

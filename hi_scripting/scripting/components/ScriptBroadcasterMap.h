@@ -290,14 +290,14 @@ struct ComponentWithMetadata
 	- make CodeTemplate creator
 	- show saveInPreset and automationId for all script component value related map items
 */
-struct ScriptBroadcasterMap : public Component,
+class ScriptBroadcasterMap : public Component,
 							  public ComponentWithPreferredSize,
 							  public ControlledObject,
 							  public ProcessorHelpers::ObjectWithProcessor,
 							  public GlobalScriptCompileListener,
 							  public AsyncUpdater
 {
-	
+public:
 
 	struct MessageWatcher : public Timer
 	{
@@ -362,7 +362,6 @@ struct ScriptBroadcasterMap : public Component,
 
 		void drawArrow(Graphics& g, Rectangle<float> area, float rotateFactor)
 		{
-			auto size = jmin(area.getHeight(), area.getWidth());
 			area = area.withSizeKeepingCentre(14.0f, 10.0f);
 			g.setColour(r.getStyleData().headlineColour);
 

@@ -319,6 +319,9 @@ juce::Rectangle<int> NodeBase::getBoundsToDisplay(Rectangle<int> originalHeight)
 		originalHeight.setHeight(jmax<int>(originalHeight.getHeight(), helpBounds.getHeight()));
 	}
 
+	if (getRootNetwork()->getExceptionHandler().getErrorMessage(this).isNotEmpty())
+		originalHeight.setHeight(jmax(originalHeight.getHeight(), 150));
+
 	return originalHeight;
 }
 
@@ -421,6 +424,18 @@ void NodeBase::addParameter(Parameter* p)
 void NodeBase::removeParameter(int index)
 {
 	parameters.remove(index);
+}
+
+void NodeBase::removeParameter(const String& id)
+{
+    for (int i=0; i<getNumParameters(); i++)
+    {
+        if (parameters[i]->getId() == id)
+        {
+            removeParameter(i);
+            return;
+        }
+    }
 }
 
 void NodeBase::setParentNode(Ptr newParentNode)
@@ -1081,7 +1096,7 @@ juce::Array<NodeBase::Parameter*> NodeBase::Parameter::getConnectedMacroParamete
 
 	if (auto n = parent)
 	{
-		while ((n = n->getParentNode()))
+		while ((n = n->getParentNode()) != nullptr)
 		{
 			for (auto m : NodeBase::ParameterIterator(*n))
 			{

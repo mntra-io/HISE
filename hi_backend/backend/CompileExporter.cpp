@@ -1774,13 +1774,54 @@ hise::CompileExporter::CompileExporter::ErrorCodes CompileExporter::createStanda
 }
 
 
+void CompileExporter::ProjectTemplateHelpers::handleCompilerWarnings(String& templateProject)
+{
+	// We'll deactivate these warnings
+	static Array<int> msvcWarnings = {
+		4100, // unused parameter
+		4127, // weird linker error in ASMJIT
+		4244, // possible precision loss (we're lazy here)
+		4661, // incomplete template definition
+		4456, // scope masking
+		4457, // scope masking
+		4458, // scope masking
+		4459  // scope masking
+	};
+
+	String warnings;
+
+	for (auto v : msvcWarnings)
+	{
+		warnings << " /wd&quot;" << String(v) << "&quot;";
+	}
+
+	REPLACE_WILDCARD_WITH_STRING("%MSVC_WARNINGS%", warnings);
+}
+
 void CompileExporter::ProjectTemplateHelpers::handleCompilerInfo(CompileExporter* exporter, String& templateProject)
 {
+	handleCompilerWarnings(templateProject);
+
 	const File jucePath = exporter->hisePath.getChildFile("JUCE/modules");
 
 	REPLACE_WILDCARD_WITH_STRING("%HISE_PATH%", exporter->hisePath.getFullPathName());
 	REPLACE_WILDCARD_WITH_STRING("%JUCE_PATH%", jucePath.getFullPathName());
 	
+	auto includeFaust = BackendDllManager::shouldIncludeFaust(exporter->chainToExport->getMainController());
+
+
+	REPLACE_WILDCARD_WITH_STRING("%HISE_INCLUDE_FAUST%", includeFaust ? "enabled" : "disabled");
+
+	if (includeFaust)
+	{
+		auto headerPath = File(exporter->dataObject.getSetting(HiseSettings::Compiler::FaustPath)).getChildFile("include");
+		REPLACE_WILDCARD_WITH_STRING("%FAUST_HEADER_PATH%", headerPath.getFullPathName());
+	}
+	else
+	{
+		REPLACE_WILDCARD_WITH_STRING("%FAUST_HEADER_PATH%", "");
+	}
+
     REPLACE_WILDCARD_WITH_STRING("%USE_IPP%", exporter->useIpp ? "1" : "0");
     REPLACE_WILDCARD_WITH_STRING("%IPP_WIN_SETTING%", exporter->useIpp ? "Sequential" : String());
 		REPLACE_WILDCARD_WITH_STRING("%UAC_LEVEL%", exporter->dataObject.getSetting(HiseSettings::Project::AdminPermissions) ? "/MANIFESTUAC:level='requireAdministrator'" : String());

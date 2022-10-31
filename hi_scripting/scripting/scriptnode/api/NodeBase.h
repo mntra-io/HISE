@@ -498,6 +498,7 @@ public:
 
 	void addParameter(Parameter* p);
 	void removeParameter(int index);
+	void removeParameter(const String& id);
 
 	void setParentNode(Ptr newParentNode);
 
@@ -531,6 +532,8 @@ public:
 	bool& getPreserveAutomationFlag() { return preserveAutomation; }
 
     int getCurrentChannelAmount() const { return lastSpecs.numChannels; };
+    
+    virtual int getNumChannelsToDisplay() const { return getCurrentChannelAmount(); };
     
 	String getDynamicBypassSource(bool forceUpdate) const;
 

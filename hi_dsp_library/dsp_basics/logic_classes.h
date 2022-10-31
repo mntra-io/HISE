@@ -533,6 +533,18 @@ struct harmonics
     }
 };
 
+struct threshold
+{
+    SN_EMPTY_INITIALISE;
+    
+    template <int Index> double getFadeValue(int numElements, double normalisedInput)
+    {
+        auto tr = (double)(Index) / (double)(numElements);
+        
+        return (double)(normalisedInput >= tr);
+    }
+};
+
 struct linear
 {
     SN_EMPTY_INITIALISE;
@@ -548,8 +560,6 @@ struct linear
             auto v = 1.0 - Math.abs(1.0 - u * (normalisedInput + offset));
             return jlimit(0.0, 1.0, v);
         }
-
-        return 0.0;
     }
 
     hmath Math;

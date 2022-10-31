@@ -144,6 +144,17 @@ struct BroadcasterHelpers
 		return idList;
 	}
 
+	static bool isValidArg(var valueOrList, int index = -1)
+	{
+		if (valueOrList.isArray() && index != -1)
+			valueOrList = valueOrList[index];
+
+		auto v = valueOrList.isVoid();
+		auto u = valueOrList.isUndefined();
+			
+		return !v && !u;
+	}
+
 	static Identifier getIllegalProperty(Array<ScriptingApi::Content::ScriptComponent*>& componentList, const Array<Identifier>& propertyIds)
 	{
 		for (auto sc : componentList)
@@ -878,6 +889,8 @@ juce::Result ScriptBroadcaster::OtherBroadcasterTarget::callSync(const Array<var
 		target->sendMessage(var(args), async);
 		return target->lastResult;
 	}
+    
+    return Result::ok();
 }
 
 
@@ -1401,7 +1414,7 @@ ScriptBroadcaster::RadioGroupListener::RadioGroupListener(ScriptBroadcaster* b, 
 		b->reportScriptError(e);
 	}
 
-	if (currentIndex == -1)
+	if (currentIndex == -1 && BroadcasterHelpers::isValidArg(b->defaultValues[0]))
 		currentIndex = b->defaultValues[0];
 
 #if 0
@@ -1484,6 +1497,8 @@ void ScriptBroadcaster::RadioGroupListener::setButtonValueFromIndex(int newIndex
 {
 	if (currentIndex != newIndex)
 	{
+		currentIndex = newIndex;
+
 		for (int i = 0; i < items.size(); i++)
 		{
 			items[i]->radioButton->setValue(newIndex == i);
@@ -1640,6 +1655,8 @@ void ScriptBroadcaster::DebugableObjectListener::registerSpecialBodyItems(Compon
 				if (auto dbo = dynamic_cast<DebugableObjectBase*>(o))
 					return new DebugableObjectItem(p, dbo);
 			}
+            
+            return nullptr;
 		}
 
 		WeakReference<DebugableObjectBase> obj;
@@ -2687,8 +2704,6 @@ void ScriptBroadcaster::attachToComplexData(String dataTypeAndEvent, var moduleI
         reportScriptError("If you want to attach a broadcaster to complex data events, it needs three parameters (processorId, index, value)");
     }
 
-    dataTypeAndEvent;
-    
     auto synthChain = getScriptProcessor()->getMainController_()->getMainSynthChain();
 
     Array<WeakReference<ExternalDataHolder>> processors;
@@ -2741,7 +2756,7 @@ void ScriptBroadcaster::attachToComplexData(String dataTypeAndEvent, var moduleI
         {
             if(!isPositiveAndBelow(idx, h->getNumDataObjects(type)))
             {
-                reportScriptError("illegal index: " + idx);
+                reportScriptError("illegal index: " + String(idx));
             }
         }
     }

@@ -141,6 +141,9 @@ using namespace juce;
 
 juce::Array<juce::File> BackendDllManager::getNetworkFiles(MainController* mc, bool includeNoCompilers)
 {
+	if (!mc->getCurrentFileHandler().getRootFolder().isDirectory())
+		return {};
+
 	auto networkDirectory = getSubFolder(mc, FolderSubType::Networks);
 
 	auto files = networkDirectory.findChildFiles(File::findFiles, false, "*.xml");
@@ -249,6 +252,9 @@ bool BackendDllManager::unloadDll()
 
 bool BackendDllManager::loadDll(bool forceUnload)
 {
+	if (!getMainController()->getCurrentFileHandler().getRootFolder().isDirectory())
+		return false;
+
 	if (forceUnload)
 		unloadDll();
 
@@ -300,6 +306,23 @@ juce::var BackendDllManager::getStatistics()
 	}
 
 	return var(obj.get());
+}
+
+bool BackendDllManager::shouldIncludeFaust(MainController* mc)
+{
+#if !HISE_INCLUDE_FAUST
+	return false;
+#else
+	auto hasFaustFiles = getSubFolder(mc, FolderSubType::CodeLibrary).getChildFile("faust").getNumberOfChildFiles(File::findFiles) != 0;
+	auto faustPathDefined = dynamic_cast<GlobalSettingManager*>(mc)->getSettingsObject().getSetting(HiseSettings::Compiler::FaustPath).toString().isNotEmpty();
+
+	if (hasFaustFiles && !faustPathDefined)
+	{
+		jassertfalse;
+	}
+
+	return hasFaustFiles && faustPathDefined;
+#endif
 }
 
 bool BackendDllManager::allowCompilation(const File& networkFile)
@@ -371,11 +394,8 @@ juce::File BackendDllManager::getSubFolder(const MainController* mc, FolderSubTy
 	case FolderSubType::Binaries:				return createIfNotDirectory(f.getChildFile("Binaries"));
 	case FolderSubType::Layouts:				return createIfNotDirectory(f.getChildFile("Layouts"));
 	case FolderSubType::ProjucerSourceFolder:	return createIfNotDirectory(f.getChildFile("Binaries").getChildFile("Source"));
-    default: return {};
+	default: jassertfalse; return {};
 	}
-
-	jassertfalse;
-	return {};
 }
 
 }

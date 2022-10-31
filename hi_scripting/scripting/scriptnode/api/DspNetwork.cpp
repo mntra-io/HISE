@@ -59,6 +59,7 @@ DspNetwork::DspNetwork(hise::ProcessorWithScriptingContent* p, ValueTree data_, 
 	data(data_),
 	isPoly(poly),
 	polyHandler(poly),
+	faustManager(*this),
 #if HISE_INCLUDE_SNEX
 	codeManager(*this),
 #endif
@@ -268,6 +269,8 @@ void DspNetwork::createAllNodesOnce()
 		if (isProjectFactory)
 			continue;
 
+		getScriptProcessor()->getMainController_()->setAllowFlakyThreading(true);
+
 		for (auto id : f->getModuleList())
 		{
 			ScopedPointer<NodeBase::Holder> s = new NodeBase::Holder();
@@ -279,6 +282,8 @@ void DspNetwork::createAllNodesOnce()
 
 			s = nullptr;
 		}
+
+		getScriptProcessor()->getMainController_()->setAllowFlakyThreading(false);
 	}
 
 #if USE_BACKEND
@@ -549,7 +554,7 @@ void DspNetwork::prepareToPlay(double sampleRate, double blockSize)
             
             initialised = true;
 		}
-		catch (String& errorMessage)
+		catch (String& )
 		{
 			jassertfalse;
 		}
@@ -1481,7 +1486,7 @@ juce::File DspNetwork::CodeManager::getCodeFolder() const
 }
 
 DspNetwork::CodeManager::SnexSourceCompileHandler::SnexSourceCompileHandler(snex::ui::WorkbenchData* d, ProcessorWithScriptingContent* sp_) :
-	Thread("SNEX Compile Thread"),
+	Thread("SNEX Compile Thread", HISE_DEFAULT_STACK_SIZE),
 	CompileHandler(d),
 	ControlledObject(sp_->getMainController_()),
 	sp(sp_)
@@ -1588,7 +1593,6 @@ void DeprecationChecker::throwIf(DeprecationId id)
 
 bool DeprecationChecker::check(DeprecationId id)
 {
-	
 	switch (id)
 	{
 	case DeprecationId::OpTypeNonSet:
@@ -1597,8 +1601,6 @@ bool DeprecationChecker::check(DeprecationId id)
 		return !v.hasProperty("Converter") || v["Converter"] == var("Identity");
     default: return false;
 	}
-
-	return false;
 }
 
 DspNetwork::AnonymousNodeCloner::AnonymousNodeCloner(DspNetwork& p, NodeBase::Holder* other):
@@ -1881,6 +1883,108 @@ bool DspNetworkListeners::PatchAutosaver::stripValueTree(ValueTree& v)
 	return false;
 }
 #endif
+
+DspNetwork::FaustManager::FaustManager(DspNetwork& n) :
+	lastCompileResult(Result::ok()),
+	processor(dynamic_cast<Processor*>(n.getScriptProcessor()))
+{
+
+}
+
+void DspNetwork::FaustManager::sendPostCompileMessage()
+{
+	for (auto l : listeners)
+	{
+		if (l != nullptr)
+		{
+			l->faustCodeCompiled(lastCompiledFile, lastCompileResult);
+		}
+	}
+}
+
+void DspNetwork::FaustManager::addFaustListener(FaustListener* l)
+{
+	listeners.addIfNotAlreadyThere(l);
+
+	l->faustFileSelected(currentFile);
+	l->faustCodeCompiled(lastCompiledFile, lastCompileResult);
+}
+
+void DspNetwork::FaustManager::removeFaustListener(FaustListener* l)
+{
+	listeners.removeAllInstancesOf(l);
+}
+
+void DspNetwork::FaustManager::setSelectedFaustFile(const File& f, NotificationType n)
+{
+	currentFile = f;
+
+	if (n != dontSendNotification)
+	{
+		for (auto l : listeners)
+		{
+			if (l != nullptr)
+			{
+				l->faustFileSelected(currentFile);
+			}
+		}
+	}
+}
+
+void DspNetwork::FaustManager::sendCompileMessage(const File& f, NotificationType n)
+{
+	WeakReference<FaustManager> safeThis(this);
+
+	lastCompiledFile = f;
+	lastCompileResult = Result::ok();
+
+	for (auto l : listeners)
+	{
+		if (l != nullptr)
+			l->preCompileFaustCode(lastCompiledFile);
+	}
+
+	auto pf = [safeThis, n](Processor* p)
+	{
+		if (safeThis == nullptr)
+			return SafeFunctionCall::Status::nullPointerCall;
+
+		auto file = safeThis->lastCompiledFile;
+
+		p->getMainController()->getSampleManager().setCurrentPreloadMessage("Compile Faust file " + file.getFileNameWithoutExtension());
+
+		for (auto l : safeThis->listeners)
+		{
+			if (l != nullptr)
+			{
+				auto thisOk = l->compileFaustCode(file);
+
+				if (!thisOk.wasOk())
+				{
+					safeThis->lastCompileResult = thisOk;
+					break;
+				}
+			}
+		}
+
+		if (n != dontSendNotification)
+		{
+			SafeAsyncCall::call<FaustManager>(*safeThis, [](FaustManager& m)
+			{
+				m.sendPostCompileMessage();
+			});
+		}
+
+		return SafeFunctionCall::OK;
+	};
+
+	
+
+	processor->getMainController()->getKillStateHandler().killVoicesAndCall(processor, pf, 
+		MainController::KillStateHandler::SampleLoadingThread);
+}
+
+
 
 }
 
