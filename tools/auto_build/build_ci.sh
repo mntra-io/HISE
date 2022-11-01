@@ -12,13 +12,13 @@ chmod +x "tools/Projucer/Projucer.app/Contents/MacOS/Projucer"
 
 echo "Compiling Standalone App..."
 
-xcodebuild -project "$standalone_folder/Builds/MacOSX/HISE Standalone.xcodeproj" -configuration "CI" | xcpretty
+xcodebuild -project "$standalone_folder/Builds/MacOSX/HISE Standalone.xcodeproj" -configuration "CI" | xcpretty || exit 1
 
-if [ $? != "0" ];
+if [ $? != 0 ];
 then
 	echo "========================================================================"
 	echo "Error at compiling. Aborting..."
-    exit
+    exit 1
 fi
 
 echo "OK"
@@ -28,11 +28,11 @@ hise_path="projects/standalone/Builds/MacOSX/build/CI/HISE.app/Contents/MacOS/HI
 
 $hise_path run_unit_tests
 
-if [ $? != "0" ];
+if [ $? != 0 ];
 then
 	echo "========================================================================"
 	echo "Error at unit testing. Aborting..."
-    exit
+    exit 1
 fi
 
 echo "OK"
@@ -49,11 +49,11 @@ $hise_path export_ci "XmlPresetBackups/Demo.xml" -t:standalone -a:x64
 
 "$project_folder/Binaries/batchCompileOSX"
 
-if [ $? != "0" ];
+if [ $? != 0 ];
 then
 	echo "========================================================================"
 	echo "Error at project export. Aborting..."
-    exit
+    exit 1
 fi
 
 echo "OK"
