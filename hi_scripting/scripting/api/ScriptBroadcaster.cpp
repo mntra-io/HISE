@@ -375,7 +375,7 @@ struct ScriptBroadcaster::Display: public Component,
 			{
 				try
 				{
-					obj->sendMessage(values, false);
+					obj->sendAsyncMessage(values);
 				}
 				catch (String& message)
 				{
@@ -628,7 +628,7 @@ struct ScriptBroadcaster::ComponentPropertyListener::InternalListener
 		args.set(1, idSet[id]);
 		args.set(2, newValue);
 
-		parent.sendMessage(var(args), false);
+		parent.sendMessageInternal(var(args), false);
 	}
 
 	NamedValueSet idSet;
@@ -670,10 +670,47 @@ ScriptBroadcaster::ComponentPropertyListener::ComponentPropertyListener(ScriptBr
 		items.add(new InternalListener(*b, sc, propertyIds));
 }
 
+int ScriptBroadcaster::ComponentPropertyListener::getNumInitialCalls() const
+{
+	int numProperties = propertyIds.size();
+	int i = 0;
+
+	for (auto item : items)
+		i += numProperties;
+
+	return i;
+}
+
+Array<juce::var> ScriptBroadcaster::ComponentPropertyListener::getInitialArgs(int callIndex) const
+{
+	int i = 0;
+
+	Array<var> args = { var(), var(), var() };
+
+	for (auto item : items)
+	{
+		for (auto p : propertyIds)
+		{
+			if (i++ == callIndex)
+			{
+				args.set(0, var(item->sc.get()));
+				args.set(1, var(p.toString()));
+				args.set(2, item->sc->getScriptObjectProperty(p));
+
+				return args;
+			}
+		}
+	}
+
+	return args;
+}
+
 void ScriptBroadcaster::ComponentPropertyListener::registerSpecialBodyItems(ComponentWithPreferredSize::BodyFactory& factory)
 {
 	factory.registerWithCreate<ComponentPropertyMapItem>();
 }
+
+
 
 juce::Result ScriptBroadcaster::ComponentPropertyListener::callItem(TargetBase* n)
 {
@@ -735,7 +772,7 @@ struct ScriptBroadcaster::ComponentVisibilityListener::InternalListener
 	{
 		if (tree == componentTree || componentTree.isAChildOf(tree))
 		{
-			parent.sendMessage(getArgs(), false);
+			parent.sendAsyncMessage(getArgs());
 		}
 	}
 
@@ -758,13 +795,21 @@ ScriptBroadcaster::ComponentVisibilityListener::ComponentVisibilityListener(Scri
 		items.add(new InternalListener(*b, sc));
 }
 
+Array<juce::var> ScriptBroadcaster::ComponentVisibilityListener::getInitialArgs(int callIndex) const
+{
+	if (auto item = items[callIndex])
+		return item->getArgs();
 
+	return {};
+}
 
 
 void ScriptBroadcaster::ComponentVisibilityListener::registerSpecialBodyItems(ComponentWithPreferredSize::BodyFactory& factory)
 {
 	factory.registerWithCreate<ComponentPropertyMapItem>();
 }
+
+
 
 juce::Result ScriptBroadcaster::ComponentVisibilityListener::callItem(TargetBase* n)
 {
@@ -882,13 +927,13 @@ juce::Result ScriptBroadcaster::OtherBroadcasterTarget::callSync(const Array<var
 
 		if (rv.isArray())
 		{
-			target->sendMessage(rv, async);
+			target->sendMessageInternal(rv, async);
 			return target->lastResult;
 		}
 	}
 	else
 	{
-		target->sendMessage(var(args), async);
+		target->sendMessageInternal(var(args), async);
 		return target->lastResult;
 	}
     
@@ -941,7 +986,7 @@ struct ScriptBroadcaster::ModuleParameterListener::ProcessorListener : public Sa
 
 				try
 				{
-					sb->sendMessage(args, false);
+					sb->sendAsyncMessage(args);
 				}
 				catch (String& s)
 				{
@@ -1087,6 +1132,45 @@ void ScriptBroadcaster::ModuleParameterListener::registerSpecialBodyItems(Compon
 	factory.registerWithCreate<ModuleConnectionViewer>();
 }
 
+int ScriptBroadcaster::ModuleParameterListener::getNumInitialCalls() const
+{
+	int i = 0;
+
+	for (auto l : listeners)
+	{
+		i += l->parameterIndexes.size();
+	}
+
+	return i;
+}
+
+
+
+Array<juce::var> ScriptBroadcaster::ModuleParameterListener::getInitialArgs(int callIndex) const
+{
+	int i = 0;
+
+	Array<var> args = { var(), var(), var() };
+
+	for (auto l : listeners)
+	{
+		args.set(0, l->p->getId());
+
+		for (auto p : l->parameterIndexes)
+		{
+			if (i++ == callIndex)
+			{
+				args.set(1, p);
+				args.set(2, l->p->getAttribute(p));
+				return args;
+			}
+		}
+	}
+
+	jassertfalse;
+	return args;
+}
+
 Array<juce::var> ScriptBroadcaster::ModuleParameterListener::createChildArray() const
 {
 	Array<var> list;
@@ -1165,7 +1249,7 @@ struct ScriptBroadcaster::ComplexDataListener::Item : public ComplexDataUIUpdate
 		{
 			auto valueToUse = isDisplay ? newData : var(data->toBase64String());
 			args.set(2, valueToUse);
-			parent->sendMessage(args, false);
+			parent->sendAsyncMessage(args);
 		}
 	}
 
@@ -1202,6 +1286,27 @@ ScriptBroadcaster::ComplexDataListener::ComplexDataListener(ScriptBroadcaster* b
 			items.add(new Item(b, d, isDisplayListener, dynamic_cast<Processor*>(eh.get())->getId(), idx));
 		}
 	}
+}
+
+int ScriptBroadcaster::ComplexDataListener::getNumInitialCalls() const
+{
+	return items.size();
+}
+
+Array<juce::var> ScriptBroadcaster::ComplexDataListener::getInitialArgs(int callIndex) const
+{
+	Array<var> args;
+
+	if (auto ci = items[callIndex])
+	{
+		args.add(ci->processorId);
+		args.add(ci->index);
+
+		auto valueToUse = ci->isDisplay ? var(ci->data->getUpdater().getLastDisplayValue()) : var(ci->data->toBase64String());
+		args.add(valueToUse);
+	}
+
+	return args;
 }
 
 Array<juce::var> ScriptBroadcaster::ComplexDataListener::createChildArray() const
@@ -1282,6 +1387,8 @@ void ScriptBroadcaster::ComplexDataListener::registerSpecialBodyItems(ComponentW
 
 	factory.registerFunction(f);
 }
+
+
 
 struct ScriptBroadcaster::MouseEventListener::InternalMouseListener
 {
@@ -1405,6 +1512,23 @@ ScriptBroadcaster::ComponentValueListener::ComponentValueListener(ScriptBroadcas
 void ScriptBroadcaster::ComponentValueListener::registerSpecialBodyItems(ComponentWithPreferredSize::BodyFactory& factory)
 {
 	factory.registerFunction(ComponentValueDisplay::create);
+}
+
+Array<juce::var> ScriptBroadcaster::ComponentValueListener::getInitialArgs(int callIndex) const
+{
+	Array<var> args;
+
+	if (auto it = items[callIndex])
+	{
+		args.add(var(it->sc.get()));
+		args.add(it->sc->getValue());
+	}
+	else
+	{
+		jassertfalse;
+	}
+
+	return args;
 }
 
 juce::Result ScriptBroadcaster::ComponentValueListener::callItem(TargetBase* n)
@@ -2360,7 +2484,7 @@ Result ScriptBroadcaster::call(HiseJavascriptEngine* engine, const var::NativeFu
 				{
 					if (i->radioButton == clickedButton.getObject())
 					{
-						sendMessage(idx, false);
+						sendAsyncMessage(idx);
 						break;
 					}
 
@@ -2383,7 +2507,7 @@ Result ScriptBroadcaster::call(HiseJavascriptEngine* engine, const var::NativeFu
 		{
 			bool shouldBeSync = attachedListeners.isEmpty();
 
-			sendMessage(var(argArray), shouldBeSync);
+			sendMessageInternal(var(argArray), shouldBeSync);
 			return lastResult;
 		}
 		catch (String& s)
@@ -2797,7 +2921,7 @@ void ScriptBroadcaster::attachToComponentValue(var componentIds, var optionalMet
 		reportScriptError(e);
 	}
 
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 }
 
 
@@ -2815,7 +2939,7 @@ void ScriptBroadcaster::attachToComponentVisibility(var componentIds, var option
 		reportScriptError(e);
 	}
 
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 }
 
 void ScriptBroadcaster::attachToComponentMouseEvents(var componentIds, var callbackLevel, var optionalMetadata)
@@ -2836,7 +2960,7 @@ void ScriptBroadcaster::attachToComponentMouseEvents(var componentIds, var callb
 	auto cLevel = (MouseCallbackComponent::CallbackLevel)clValue;
 
 	attachedListeners.add(new MouseEventListener(this, componentIds, cLevel, optionalMetadata));
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 }
 
 void ScriptBroadcaster::attachToContextMenu(var componentIds, var stateFunction, var itemList, var optionalMetadata)
@@ -2859,7 +2983,7 @@ void ScriptBroadcaster::attachToContextMenu(var componentIds, var stateFunction,
 	enableQueue = true;
 
 	attachedListeners.add(new ContextMenuListener(this, componentIds, stateFunction, sa, optionalMetadata));
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 }
 
 void ScriptBroadcaster::attachToModuleParameter(var moduleIds, var parameterIds, var optionalMetadata)
@@ -2916,7 +3040,7 @@ void ScriptBroadcaster::attachToModuleParameter(var moduleIds, var parameterIds,
 	}
 
 	attachedListeners.add(new ModuleParameterListener(this, processors, parameterIndexes, optionalMetadata));
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 
 	enableQueue = true;
 }
@@ -2926,7 +3050,7 @@ void ScriptBroadcaster::attachToRadioGroup(int radioGroupIndex, var optionalMeta
 	throwIfAlreadyConnected();
 
 	attachedListeners.add(new RadioGroupListener(this, radioGroupIndex, optionalMetadata));
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 }
 
 void ScriptBroadcaster::attachToOtherBroadcaster(var otherBroadcaster, var argTransformFunction, bool async, var optionalMetadata)
@@ -2958,7 +3082,7 @@ void ScriptBroadcaster::attachToOtherBroadcaster(var otherBroadcaster, var argTr
 		bc->addBroadcasterAsListener(this, argTransformFunction, async);
 
 	attachedListeners.add(new OtherBroadcasterListener(sources, optionalMetadata));
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 }
 
 void ScriptBroadcaster::attachToComplexData(String dataTypeAndEvent, var moduleIds, var indexList, var optionalMetadata)
@@ -3047,7 +3171,7 @@ void ScriptBroadcaster::attachToComplexData(String dataTypeAndEvent, var moduleI
     
     attachedListeners.add(new ComplexDataListener(this, processors, type, isDisplay, indexListArray, dataTypeAndEvent, optionalMetadata));
     
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 
     enableQueue = processors.size() > 1 || indexListArray.size() > 1;
 }
@@ -3138,7 +3262,7 @@ void ScriptBroadcaster::addAsSource(DebugableObjectBase* b, const Identifier& ca
 
 	attachedListeners.add(new DebugableObjectListener(this, {}, b, callbackId));
 
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 }
 
 bool ScriptBroadcaster::addLocationForFunctionCall(const Identifier& id, const DebugableObjectBase::Location& location)
@@ -3171,7 +3295,7 @@ bool ScriptBroadcaster::addLocationForFunctionCall(const Identifier& id, const D
 	throwIfAlreadyConnected();
 
 	attachedListeners.add(new ScriptCallListener(this, id, location));
-	checkMetadata(attachedListeners.getLast());
+	checkMetadataAndCallWithInitValues(attachedListeners.getLast());
 	return true;
 }
 
@@ -3303,7 +3427,7 @@ void ScriptBroadcaster::sendErrorMessage(ItemBase* i, const String& message, boo
 
 void ScriptBroadcaster::initItem(TargetBase* ni)
 {
-	checkMetadata(ni);
+	checkMetadataAndCallWithInitValues(ni);
 
 	if (!attachedListeners.isEmpty())
 	{
@@ -3333,10 +3457,26 @@ void ScriptBroadcaster::initItem(TargetBase* ni)
 	}
 }
 
-void ScriptBroadcaster::checkMetadata(ItemBase* i)
+void ScriptBroadcaster::checkMetadataAndCallWithInitValues(ItemBase* i)
 {
 	if (!i->metadata.r.wasOk())
 		sendErrorMessage(i, i->metadata.r.getErrorMessage(), true);
+
+	if (auto l = dynamic_cast<ListenerBase*>(i))
+	{
+		if (!items.isEmpty())
+		{
+			int numInitArgs = l->getNumInitialCalls();
+
+			for (int j = 0; j < numInitArgs; j++)
+			{
+				auto args = l->getInitialArgs(j);
+
+				for (auto target : items)
+					target->callSync(args);
+			}
+		}
+	}
 }
 
 void ScriptBroadcaster::throwIfAlreadyConnected()
