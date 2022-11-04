@@ -1297,6 +1297,9 @@ namespace ScriptingObjects
 		/** Transposes the note on. */
 		void setTransposeAmount(int tranposeValue);
 
+		/** Returns a copy of this message holder object. */
+		var clone();
+
 		/** Gets the tranpose value. */
 		int getTransposeAmount() const;
 
@@ -2501,6 +2504,9 @@ namespace ScriptingObjects
 		/** Returns an array containing all notes converted to the space supplied with the target bounds [x, y, w, h]. */
 		var getNoteRectangleList(var targetBounds);
 
+		/** Converts a given array of Message holders to a rectangle list. */
+		var convertEventListToNoteRectangles(var eventList, var targetBounds);
+
 		/** Sets the playback position in the current loop. Input must be between 0.0 and 1.0. */
 		void setPlaybackPosition(var newPosition);
 
@@ -2521,8 +2527,14 @@ namespace ScriptingObjects
 		/** If enabled, it uses the global undo manager for all edits (So you can use Engine.undo()). */
 		void setUseGlobalUndoManager(bool shouldUseGlobalUndoManager);
 
+		/** Sets a inline function that will process every note that is about to be recorded. */
+		void setRecordEventCallback(var recordEventCallback);
+
 		/** Connect this to the panel and it will be automatically updated when something changes. */
 		void connectToPanel(var panel);
+
+		/** Connects this MIDI player to the given metronome. */
+		void connectToMetronome(var metronome);
 
 		/** Creates an array containing all MIDI messages wrapped into MessageHolders for processing. */
 		var getEventList();
@@ -2606,13 +2618,54 @@ namespace ScriptingObjects
 
 		struct Wrapper;
 
-		
-
 	private:
 
-		void callUpdateCallback();
+		struct ScriptEventRecordProcessor : public MidiPlayer::EventRecordProcessor
+		{
+			ScriptEventRecordProcessor(ScriptedMidiPlayer& parent_, const var& function):
+				parent(parent_),
+				eventCallback(parent.getScriptProcessor(), &parent, function, 1),
+				mp(parent.getPlayer())
+			{
+				eventCallback.incRefCount();
+				
+				
+				mp->addEventRecordProcessor(this);
 
-		
+				holder = new ScriptingMessageHolder(parent.getScriptProcessor());
+				args = var(holder);
+			}
+
+			~ScriptEventRecordProcessor()
+			{
+				if (mp != nullptr)
+					mp->removeEventRecordProcessor(this);
+
+				holder = nullptr;
+				args = var();
+			}
+
+			void processRecordedEvent(HiseEvent& e) override
+			{
+				holder->setMessage(e);
+				
+				var thisObject(&parent);
+
+				eventCallback.callSync(var::NativeFunctionArgs(thisObject, &args, 1));
+				e = holder->getMessageCopy();
+			}
+
+			ScriptedMidiPlayer& parent;
+			WeakCallbackHolder eventCallback;
+			var args;
+			ScriptingMessageHolder* holder;
+			
+			WeakReference<MidiPlayer> mp;
+		};
+
+		ScopedPointer<ScriptEventRecordProcessor> recordEventProcessor;
+
+		void callUpdateCallback();
 
 		struct PlaybackUpdater : public PooledUIUpdater::SimpleTimer,
 								 public MidiPlayer::PlaybackListener

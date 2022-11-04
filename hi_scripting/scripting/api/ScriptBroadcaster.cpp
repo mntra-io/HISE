@@ -887,13 +887,13 @@ Result ScriptBroadcaster::ScriptTarget::callSync(const Array<var>& args)
 	return callback.callSync(a, nullptr);
 }
 
-ScriptBroadcaster::DelayedItem::DelayedItem(ScriptBroadcaster* bc, const var& obj_, const var& f_, int milliseconds, const var& metadata) :
-	TargetBase(obj_, f_, metadata),
+ScriptBroadcaster::DelayedItem::DelayedItem(ScriptBroadcaster* bc, const var& obj_, const var& f_, int milliseconds, const var& metadata_) :
+	TargetBase(obj_, f_, metadata_),
 	ms(milliseconds),
 	f(f_),
 	parent(bc)
 {
-
+	metadata.attachCommentFromCallableObject(f_);
 }
 
 Result ScriptBroadcaster::DelayedItem::callSync(const Array<var>& args)
@@ -902,13 +902,14 @@ Result ScriptBroadcaster::DelayedItem::callSync(const Array<var>& args)
 	return Result::ok();
 }
 
-ScriptBroadcaster::OtherBroadcasterTarget::OtherBroadcasterTarget(ScriptBroadcaster* parent_, ScriptBroadcaster* target_, const var& transformFunction, bool async_, const var& metadata):
-	TargetBase(var(target_), transformFunction, metadata),
+ScriptBroadcaster::OtherBroadcasterTarget::OtherBroadcasterTarget(ScriptBroadcaster* parent_, ScriptBroadcaster* target_, const var& transformFunction, bool async_, const var& metadata_):
+	TargetBase(var(target_), transformFunction, metadata_),
 	parent(parent_),
 	target(target_),
 	argTransformFunction(parent->getScriptProcessor(), parent_, transformFunction, parent->defaultValues.size()),
 	async(async_)
 {
+	metadata.attachCommentFromCallableObject(transformFunction);
 	argTransformFunction.incRefCount();
 	
 }
@@ -1759,7 +1760,7 @@ juce::Result ScriptBroadcaster::DebugableObjectListener::callItem(TargetBase* n)
 {
 	for (const auto&v : parent->lastValues)
 	{
-		if (v.isUndefined())
+		if (v.isUndefined() || v.isVoid())
 			return Result::ok();
 	}
 
@@ -2872,7 +2873,7 @@ void ScriptBroadcaster::resendLastMessage(bool isSync)
 
 	ScopedValueSetter<bool> svs(forceSend, true);
 
-	sendMessage(var(lastValues), isSync);
+	sendMessageInternal(var(lastValues), isSync);
 }
 
 void ScriptBroadcaster::setForceSynchronousExecution(bool shouldExecuteSynchronously)
@@ -3467,17 +3468,14 @@ void ScriptBroadcaster::checkMetadataAndCallWithInitValues(ItemBase* i)
 
 	if (auto l = dynamic_cast<ListenerBase*>(i))
 	{
-		if (!items.isEmpty())
+		int numInitArgs = l->getNumInitialCalls();
+
+		for (int j = 0; j < numInitArgs; j++)
 		{
-			int numInitArgs = l->getNumInitialCalls();
+			lastValues = l->getInitialArgs(j);
 
-			for (int j = 0; j < numInitArgs; j++)
-			{
-				auto args = l->getInitialArgs(j);
-
-				for (auto target : items)
-					target->callSync(args);
-			}
+			for (auto target : items)
+				target->callSync(lastValues);
 		}
 	}
 }
@@ -3589,6 +3587,9 @@ void ScriptBroadcaster::Metadata::attachCommentFromCallableObject(const var& cal
 	if (comment.isNotEmpty())
 		return;
 
+#if !JUCE_DEBUG
+	// This takes ages when not in release mode, so let's just skip it...
+
 	if (auto obj = dynamic_cast<WeakCallbackHolder::CallableObject*>(callableObject.getObject()))
 	{
 		comment = obj->getComment();
@@ -3604,6 +3605,7 @@ void ScriptBroadcaster::Metadata::attachCommentFromCallableObject(const var& cal
 			}
 		}
 	}
+#endif
 }
 
 juce::var ScriptBroadcaster::Metadata::toJSON() const
