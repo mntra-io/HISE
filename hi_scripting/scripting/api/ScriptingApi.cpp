@@ -859,6 +859,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_0(Engine, getSampleRate);
 	API_METHOD_WRAPPER_0(Engine, getBufferSize);
 	API_METHOD_WRAPPER_1(Engine, setMinimumSampleRate);
+	API_VOID_METHOD_WRAPPER_1(Engine, setMaximumBlockSize);
 	API_METHOD_WRAPPER_1(Engine, getMidiNoteName);
 	API_METHOD_WRAPPER_1(Engine, getMidiNoteFromName);
 	API_METHOD_WRAPPER_1(Engine, getMacroName);
@@ -996,6 +997,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_0(getSampleRate);
 	ADD_API_METHOD_0(getBufferSize);
 	ADD_API_METHOD_1(setMinimumSampleRate);
+	ADD_API_METHOD_1(setMaximumBlockSize);
 	ADD_API_METHOD_1(getMidiNoteName);
 	ADD_API_METHOD_1(getMidiNoteFromName);
 	ADD_API_METHOD_1(getMacroName);
@@ -1260,6 +1262,11 @@ void ScriptingApi::Engine::setGlobalFont(String fontName)
 bool ScriptingApi::Engine::setMinimumSampleRate(double minimumSampleRate)
 {
 	return getProcessor()->getMainController()->setMinimumSamplerate(minimumSampleRate);
+}
+
+void ScriptingApi::Engine::setMaximumBlockSize(int numSamplesPerBlock)
+{
+	getProcessor()->getMainController()->setMaximumBlockSize(numSamplesPerBlock);
 }
 
 double ScriptingApi::Engine::getSampleRate() const { return const_cast<MainController*>(getProcessor()->getMainController())->getMainSynthChain()->getSampleRate(); }
@@ -1747,7 +1754,7 @@ struct AudioRenderer : public Thread,
 				for (int i = 0; i < numChannelsToRender; i++)
 					channels.add(new VariantBuffer(numSamplesToRender));
 
-				Thread::startThread(Thread::realtimeAudioPriority);
+				Thread::startThread(8);
 			}
 		}
 	}
@@ -6875,6 +6882,7 @@ struct ScriptingApi::TransportHandler::Wrapper
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setEnableGrid);
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, startInternalClock);
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, stopInternalClock);
+	API_VOID_METHOD_WRAPPER_0(TransportHandler, sendGridSyncOnNextCallback);
 };
 
 ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* sp) :
@@ -6899,7 +6907,7 @@ ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* 
 	ADD_API_METHOD_1(startInternalClock);
 	ADD_API_METHOD_1(stopInternalClock);
 	ADD_API_METHOD_2(setEnableGrid);
-	
+	ADD_API_METHOD_0(sendGridSyncOnNextCallback);
 }
 
 ScriptingApi::TransportHandler::~TransportHandler()
@@ -7102,6 +7110,11 @@ void ScriptingApi::TransportHandler::stopInternalClock(int timestamp)
 void ScriptingApi::TransportHandler::setSyncMode(int syncMode)
 {
 	getMainController()->getMasterClock().setSyncMode((MasterClock::SyncModes)syncMode);
+}
+
+void ScriptingApi::TransportHandler::sendGridSyncOnNextCallback()
+{
+	getMainController()->getMasterClock().setNextGridIsFirst();
 }
 
 } // namespace hise

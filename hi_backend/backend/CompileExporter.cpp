@@ -291,6 +291,8 @@ CompileExporter::ErrorCodes CompileExporter::compileFromCommandLine(const String
 
 		CompileExporter exporter(mainSynthChain);
 
+        exporter.noLto = args.contains("-nolto");
+        
 		bool switchBack = false;
 
 		if (currentProjectFolder != projectDirectory)
@@ -480,9 +482,26 @@ CompileExporter::ErrorCodes CompileExporter::exportInternal(TargetTypes type, Bu
 	
 	if (!legacyCpuSupport) legacyCpuSupport = data.getSetting(HiseSettings::Compiler::LegacyCPUSupport);
 	    
-	if(!hisePath.isDirectory()) 
-		hisePath = data.getSetting(HiseSettings::Compiler::HisePath);
+	if (!hisePath.isDirectory())
+	{
+		if (isUsingCIMode())
+		{
+			auto appPath = File::getSpecialLocation(File::currentApplicationFile).getParentDirectory();
 
+			while (!appPath.isRoot() && !appPath.getChildFile("hi_core").isDirectory())
+			{
+				appPath = appPath.getParentDirectory();
+			}
+
+			if (!appPath.isRoot())
+				hisePath = appPath;
+		}
+		else
+		{
+			hisePath = data.getSetting(HiseSettings::Compiler::HisePath);
+		}
+	}
+	
 	if (!hisePath.isDirectory()) 
 		return ErrorCodes::HISEPathNotSpecified;
 
@@ -536,8 +555,13 @@ CompileExporter::ErrorCodes CompileExporter::exportInternal(TargetTypes type, Bu
         const bool embedFiles = !BuildOptionHelpers::isIOS(option);
 #endif
 
+		auto embedUserPresets = data.getSetting(HiseSettings::Project::EmbedUserPresets);
+
+		auto userPresetTree = embedUserPresets ? UserPresetHelpers::collectAllUserPresets(chainToExport):
+												 ValueTree("UserPresets");
+
 		// Embed the user presets and extract them on first load
-		compressValueTree<UserPresetDictionaryProvider>(UserPresetHelpers::collectAllUserPresets(chainToExport), directoryPath, "userPresets");
+		compressValueTree<UserPresetDictionaryProvider>(userPresetTree, directoryPath, "userPresets");
 
 		// Always embed scripts and fonts, but don't embed samplemaps
 		compressValueTree<JavascriptDictionaryProvider>(exportEmbeddedFiles(), directoryPath, "externalFiles");
@@ -1807,6 +1831,8 @@ void CompileExporter::ProjectTemplateHelpers::handleCompilerInfo(CompileExporter
 	REPLACE_WILDCARD_WITH_STRING("%HISE_PATH%", exporter->hisePath.getFullPathName());
 	REPLACE_WILDCARD_WITH_STRING("%JUCE_PATH%", jucePath.getFullPathName());
 	
+    REPLACE_WILDCARD_WITH_STRING("%LINK_TIME_OPTIMISATION%", exporter->noLto ? "0" : "1");
+    
 	auto includeFaust = BackendDllManager::shouldIncludeFaust(exporter->chainToExport->getMainController());
 
 

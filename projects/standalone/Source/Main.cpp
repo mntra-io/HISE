@@ -106,6 +106,8 @@ public:
 		print(" - always use VisualStudio 2017 on Windows" );
 		print(" - don't copy the plugins to the plugin folders" );
 		print(" - use a relative path for the project file" );
+		print(" - ignore the global HISE path and use the HISE repository folder from the");
+		print("   current HISE executable");
 		print("Arguments: " );
 		print("FILE      The path to the project file (either .xml or .hip you want to export)." );
 		print("          In CI mode, this will be the relative path from the current project folder");
@@ -119,6 +121,8 @@ public:
 		print("          (Leave empty for standalone export). Note that if you use the VST2, VST3,");
 		print("           VST23AU it will override the project settings so you can export both versions).");
 		print("           Note: The VST23AU flag will skip AU on Windows and build only VST2 and VST3.");
+        print("-nolto    deactivates link time optimisation. The resulting binary is not as optimized");
+        print("          but the build time is much shorter");
 		print("--test [PLUGIN_FILE]" );
 		print("Tests the given plugin" );
 		print("");

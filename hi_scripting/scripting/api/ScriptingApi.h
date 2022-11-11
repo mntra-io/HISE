@@ -229,6 +229,9 @@ public:
 		/** Sets the minimum sample rate for the global processing (and adds oversampling if the current samplerate is lower). */
 		bool setMinimumSampleRate(double minimumSampleRate);
 
+		/** Sets the maximum buffer size that is processed at once. If the buffer size from the audio driver / host is bigger than this number, it will split up the incoming buffer and call process multiple times. */
+		void setMaximumBlockSize(int numSamplesPerBlock);
+
 		/** Returns the current sample rate. */
 		double getSampleRate() const;
 
@@ -1336,6 +1339,9 @@ public:
 
 		/** Sets the sync mode for the global clock. */
 		void setSyncMode(int syncMode);
+
+		/** sends a message on the next grid callback to resync the external clock. */
+		void sendGridSyncOnNextCallback();
 
 	private:
 
