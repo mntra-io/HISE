@@ -2644,6 +2644,8 @@ juce::File ScriptUnlocker::getLicenseKeyFile()
 struct ScriptUnlocker::RefObject::Wrapper
 {
 	API_METHOD_WRAPPER_0(RefObject, isUnlocked);
+	API_METHOD_WRAPPER_0(RefObject, canExpire);
+	API_METHOD_WRAPPER_1(RefObject, checkExpirationData);
 	API_METHOD_WRAPPER_0(RefObject, loadKeyFile);
 	API_VOID_METHOD_WRAPPER_1(RefObject, setProductCheckFunction);
 	API_METHOD_WRAPPER_1(RefObject, writeKeyFile);
@@ -2673,6 +2675,8 @@ ScriptUnlocker::RefObject::RefObject(ProcessorWithScriptingContent* p) :
 	ADD_API_METHOD_0(getUserEmail);
 	ADD_API_METHOD_0(getRegisteredMachineId);
 	ADD_API_METHOD_1(isValidKeyFile);
+	ADD_API_METHOD_0(canExpire);
+	ADD_API_METHOD_1(checkExpirationData);
 }
 
 ScriptUnlocker::RefObject::~RefObject()
