@@ -288,6 +288,8 @@ struct HiseJavascriptEngine::RootObject::CodeLocation
 	
 };
 
+
+
 #if JUCE_ENABLE_AUDIO_GUARD
 struct HiseJavascriptEngine::RootObject::ScriptAudioThreadGuard: public AudioThreadGuard::Handler
 {
@@ -770,6 +772,9 @@ Result HiseJavascriptEngine::execute(const String& javascriptCode, bool allowCon
 	try
 	{
 		prepareTimeout();
+
+
+
 		root->execute(javascriptCode, allowConstDeclarations);
 
 		
@@ -1164,7 +1169,41 @@ juce::String HiseJavascriptEngine::getHoverString(const String& token)
 	}
 }
 
+void HiseJavascriptEngine::setEnableGlobalPreprocessor(bool shouldBeEnabled)
+{
+#if USE_BACKEND
+	root->preprocessorDefinitions.enableGlobalPreprocessor = shouldBeEnabled;
+#endif
+}
 
+juce::SparseSet<int> HiseJavascriptEngine::getDeactivatedLinesForFile(const String& fileId)
+{
+	jassert(fileId.isNotEmpty());
+
+#if USE_BACKEND
+	return root->preprocessorDefinitions.deactivatedLines[fileId];
+#else
+	return {};
+#endif
+}
+
+hise::DebugableObjectBase::Location HiseJavascriptEngine::getLocationForPreprocessor(const String& preprocessorId)
+{
+#if USE_BACKEND
+	for (const auto& d : root->preprocessorDefinitions.definitions)
+	{
+		if (d.name == preprocessorId)
+		{
+			DebugableObjectBase::Location l;
+			l.charNumber = d.charNumber;
+			l.fileName = d.fileName;
+			return l;
+		}
+	}
+#endif
+
+	return {};
+}
 
 HiseJavascriptEngine::RootObject::Callback::Callback(const Identifier &id, int numArgs_, double bufferTime_) :
 callbackName(id),
@@ -1216,6 +1255,27 @@ hise::DebugInformation* HiseJavascriptEngine::RootObject::Callback::getChildElem
 	}
 
 }
+
+struct IncludeFileToken : public mcl::TokenCollection::Token
+{
+	IncludeFileToken(const File& root_, const File& f):
+		Token(""),
+		sf(f),
+		root(root_)
+	{
+		markdownDescription << "`" << sf.getFullPathName() << "`";
+		
+		tokenContent << "include(" << sf.getRelativePathFrom(root).replaceCharacter('\\', '/').quoted() << ");";
+
+		priority = 100;
+		c = Colours::magenta;
+	}
+
+	
+
+	File root;
+	File sf;
+};
 
 struct TokenWithDot : public mcl::TokenCollection::Token
 {
@@ -1712,6 +1772,37 @@ void HiseJavascriptEngine::TokenProvider::addTokens(mcl::TokenCollection::List& 
 {
 	if (jp != nullptr)
 	{
+		File scriptFolder = dynamic_cast<Processor*>(jp.get())->getMainController()->getCurrentFileHandler().getSubDirectory(FileHandlerBase::Scripts);
+		auto scriptFiles = scriptFolder.findChildFiles(File::findFiles, true, "*.js");
+
+		for (auto sf: scriptFiles)
+		{
+			if (sf.isHidden())
+				continue;
+
+			auto alreadyIncluded = false;
+
+			for (int i = 0; i < jp->getNumWatchedFiles(); i++)
+			{
+				if (jp->getWatchedFile(i) == sf)
+				{
+					alreadyIncluded = true;
+					break;
+				}
+			}
+
+			if (alreadyIncluded)
+				continue;
+
+			auto pf = sf.getParentDirectory().getFullPathName();
+
+			if (pf.contains("ScriptProcessors") || pf.contains("ConnectedScripts"))
+				continue;
+
+			tokens.add(new IncludeFileToken(scriptFolder, sf));
+		}
+		
+
 		ScopedReadLock sl(jp->getDebugLock());
 
 		auto holder = dynamic_cast<ApiProviderBase::Holder*>(jp.get());
@@ -1805,6 +1896,15 @@ void HiseJavascriptEngine::TokenProvider::addTokens(mcl::TokenCollection::List& 
 				}
 			}
 		}
+		
+#if USE_BACKEND
+		for (const auto& def : jp->getScriptEngine()->root->preprocessorDefinitions.definitions)
+		{
+			tokens.add(new snex::debug::PreprocessorMacroProvider::PreprocessorToken(def));
+		}
+#endif
+
+		
 
 #define X(unused, name) tokens.add(new KeywordToken(name));
 
@@ -1817,6 +1917,19 @@ void HiseJavascriptEngine::TokenProvider::addTokens(mcl::TokenCollection::List& 
 		X(isDefined_, "isDefined");
 
 #undef X
+
+		for (int i = 0; i < tokens.size(); i++)
+		{
+			if(tokens[i]->tokenContent.contains("[") ||
+			   tokens[i]->tokenContent.contains("%PARENT%") ||
+			   tokens[i]->tokenContent.endsWith(".args") ||
+			   tokens[i]->tokenContent.endsWith(".locals"))
+			{
+				tokens.remove(i--);
+			}
+		}
+
+
 	}
 }
 
