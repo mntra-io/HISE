@@ -1318,7 +1318,9 @@ void PresetBrowser::selectionChanged(int columnIndex, int /*rowIndex*/, const Fi
 		auto pc = new PresetBrowserColumn::ColumnListModel(this, 2, this);
 		pc->setDisplayDirectories(false);
 		presetColumn->setModel(pc, rootFile);
-
+		
+		loadPresetDatabase(file.getChildFile("UserPresets"));
+		presetColumn->setDatabase(getDataBase());
 		rebuildAllPresets();
 	}
 
