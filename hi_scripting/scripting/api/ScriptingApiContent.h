@@ -371,6 +371,8 @@ public:
 
 			virtual void wantsToLoseFocus() {}
 
+            virtual void wantsToGrabFocus() {};
+            
 			JUCE_DECLARE_WEAK_REFERENCEABLE(ZLevelListener);
 		};
 
@@ -612,6 +614,9 @@ public:
 		/** Call this method in order to give away the focus for this component. */
 		void loseFocus();
 
+        /** Call this method in order to grab the keyboard focus for this component. */
+        void grabFocus();
+        
 		/** Attaches the local look and feel to this component. */
 		void setLocalLookAndFeel(var lafObject);
 
@@ -867,6 +872,8 @@ public:
             ProcessorWithScriptingContent* p;
         };
         
+        
+        
 		struct GlobalCableConnection;
 
 		AsyncControlCallbackSender controlSender;
@@ -877,6 +884,26 @@ public:
 
 		Array<Identifier> scriptChangedProperties;
 
+        struct SubComponentNotifier: public AsyncUpdater
+        {
+            SubComponentNotifier(ScriptComponent& p):
+              parent(p)
+            {};
+            
+            void handleAsyncUpdate() override;
+            
+            struct Item
+            {
+                WeakReference<ScriptComponent> sc;
+                bool wasAdded;
+            };
+            
+            hise::SimpleReadWriteLock lock;
+            Array<Item> pendingItems;
+            
+            ScriptComponent& parent;
+        } subComponentNotifier;
+        
 		Array<WeakReference<SubComponentListener>> subComponentListeners;
 		Array<WeakReference<ZLevelListener>> zLevelListeners;
 
@@ -1030,6 +1057,7 @@ public:
 			radioGroup,
 			isMomentary,
 			enableMidiLearn,
+            setValueOnClick,
 			numProperties
 		};
 
@@ -1709,6 +1737,8 @@ public:
 
 			virtual void animationChanged() = 0;
 
+            virtual void paintRoutineChanged() = 0;
+            
 			JUCE_DECLARE_WEAK_REFERENCEABLE(AnimationListener);
 		};
 
