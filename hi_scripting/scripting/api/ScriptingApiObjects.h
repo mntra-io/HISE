@@ -67,6 +67,20 @@ public:
 		Component::SafePointer<Component> mainEditor;
 	};
 
+    static constexpr int SyncMagicNumber = 911;
+    static constexpr int AsyncMagicNumber = 912;
+    
+    static bool isSynchronous(var syncValue)
+    {
+        if((int)syncValue == SyncMagicNumber)
+            return true;
+        
+        if((int)syncValue == AsyncMagicNumber)
+            return false;
+        
+        return (bool)syncValue;
+    }
+    
 	static var getVarFromPoint(Point<float> pos);
 
 	static Point<float> getPointFromVar(const var& data, Result* r = nullptr);
@@ -170,6 +184,13 @@ namespace ScriptingObjects
 
 		/** Returns an array with the min and max value in the given range. */
 		var getPeakRange(int startSample, int numSamples);
+        
+        /** Trims a buffer at the start and end and returns a copy of it. */
+        var trim(int trimFromStart, int trimFromEnd)
+        {
+            jassertfalse;
+            return {};
+        }
 
 	};
 
@@ -315,6 +336,9 @@ namespace ScriptingObjects
 		
 		/** Returns a reference string with a wildcard. */
 		String toReferenceString(String folderType);
+
+		/** If this file is a folder that contains a HISE redirection file (LinkWindows / LinkOSX file), then it will return the redirection target, otherwise it will return itself. */
+		var getRedirectedFolder();
 
 		/** Checks if this file exists and is a file. */
 		bool isFile() const;
@@ -866,9 +890,9 @@ namespace ScriptingObjects
 
 		snex::ExternalData::DataType getDataType() const { return type; }
 
-		String getDebugName() const override { return snex::ExternalData::getDataTypeName(getDataType()); };
+		String getDebugName() const override { return "Script" + snex::ExternalData::getDataTypeName(getDataType()); };
 		String getDebugValue() const override { return getDebugName(); };
-		Identifier getObjectName() const override { return Identifier(getDebugName()); }
+		
 
 		bool objectDeleted() const override { return complexObject == nullptr; }
 		bool objectExists() const override { return complexObject != nullptr; }
@@ -888,14 +912,15 @@ namespace ScriptingObjects
 
 		void onComplexDataEvent(ComplexDataUIUpdaterBase::EventType t, var data)
 		{
-			if (t == ComplexDataUIUpdaterBase::EventType::DisplayIndex &&
-				displayCallback)
-			{
-				displayCallback.call1(data);
+			if (t == ComplexDataUIUpdaterBase::EventType::DisplayIndex)
+            {
+                if(displayCallback)
+                    displayCallback.call1(data);
 			}
-			else if (contentCallback)
+			else
 			{
-				contentCallback.call1(data);
+                if(contentCallback)
+                    contentCallback.call1(data);
 			}
 		}
 
@@ -958,6 +983,8 @@ namespace ScriptingObjects
 
 		ScriptAudioFile(ProcessorWithScriptingContent* pwsc, int index, ExternalDataHolder* otherHolder = nullptr);
 
+		Identifier getObjectName() const override { return Identifier("AudioFile"); }
+
 		// ============================================================================================================
 
 		void clear();
@@ -1014,6 +1041,8 @@ namespace ScriptingObjects
 
 		ScriptRingBuffer(ProcessorWithScriptingContent* pwsc, int index, ExternalDataHolder* other=nullptr);
 
+		Identifier getObjectName() const override { return Identifier("ScriptRingBuffer"); }
+
 		// ============================================================================================================
 
 		/** Returns a reference to the internal read buffer. */
@@ -1046,6 +1075,8 @@ namespace ScriptingObjects
 	public:
 
 		ScriptTableData(ProcessorWithScriptingContent* pwsc, int index, ExternalDataHolder* externalHolder=nullptr);
+
+		Identifier getObjectName() const override { return Identifier("Table"); }
 
 		Component* createPopupComponent(const MouseEvent& e, Component *c) override;
 
@@ -1106,6 +1137,8 @@ namespace ScriptingObjects
 
 		~ScriptSliderPackData() {};
 
+		Identifier getObjectName() const override { return Identifier("SliderPackData"); }
+
 		// ============================================================================================================
 
 		/** Returns the step size. */
@@ -1135,6 +1168,9 @@ namespace ScriptingObjects
 		/** Sets a callback that is being executed when a point is added / removed / changed. */
 		void setContentCallback(var contentFunction);
 
+        /** Sets a preallocated length that will retain values when the slider pack is resized below that limit. */
+        void setUsePreallocatedLength(int length);
+        
         /** Links the sliderpack to the other slider pack. */
         void linkTo(var other)
         {
@@ -1296,6 +1332,9 @@ namespace ScriptingObjects
 
 		/** Transposes the note on. */
 		void setTransposeAmount(int tranposeValue);
+
+		/** Returns a copy of this message holder object. */
+		var clone();
 
 		/** Gets the tranpose value. */
 		int getTransposeAmount() const;
@@ -1832,7 +1871,15 @@ namespace ScriptingObjects
 		/** Gets the current peak value of the given channelIndex. */
 		float getSourceGainValue(int channelIndex);
 
+		/** Returns one or multiple input channels that is mapped to the given output channel (or -1). */
+		var getSourceChannelsForDestination(var destinationIndex) const;
+
+		/** Returns the output channel that is mapped to the given input channel (or -1). */
+		var getDestinationChannelForSource(var sourceIndex) const;
+
 		// ============================================================================================================ 
+
+		RoutableProcessor* getRoutableProcessor() { return dynamic_cast<RoutableProcessor*>(rp.get()); }
 
 		struct Wrapper;
 
@@ -2328,7 +2375,7 @@ namespace ScriptingObjects
 		void setRangeWithStep(double min, double max, double stepSize);
 
 		/** Registers a function that will be executed whenever a value is sent through the cable. */
-		void registerCallback(var callbackFunction, bool synchronous);
+		void registerCallback(var callbackFunction, var synchronous);
 
 		/** Connects the cable to a macro control. */
 		void connectToMacroControl(int macroIndex, bool macroIsTarget, bool filterRepetitions);
@@ -2501,6 +2548,9 @@ namespace ScriptingObjects
 		/** Returns an array containing all notes converted to the space supplied with the target bounds [x, y, w, h]. */
 		var getNoteRectangleList(var targetBounds);
 
+		/** Converts a given array of Message holders to a rectangle list. */
+		var convertEventListToNoteRectangles(var eventList, var targetBounds);
+
 		/** Sets the playback position in the current loop. Input must be between 0.0 and 1.0. */
 		void setPlaybackPosition(var newPosition);
 
@@ -2521,8 +2571,14 @@ namespace ScriptingObjects
 		/** If enabled, it uses the global undo manager for all edits (So you can use Engine.undo()). */
 		void setUseGlobalUndoManager(bool shouldUseGlobalUndoManager);
 
+		/** Sets a inline function that will process every note that is about to be recorded. */
+		void setRecordEventCallback(var recordEventCallback);
+
 		/** Connect this to the panel and it will be automatically updated when something changes. */
 		void connectToPanel(var panel);
+
+		/** Connects this MIDI player to the given metronome. */
+		void connectToMetronome(var metronome);
 
 		/** Creates an array containing all MIDI messages wrapped into MessageHolders for processing. */
 		var getEventList();
@@ -2594,7 +2650,7 @@ namespace ScriptingObjects
 		void setSequenceCallback(var updateFunction);
 
 		/** Attaches a callback with two arguments (timestamp, playState) that gets executed when the play state changes. */
-		void setPlaybackCallback(var playbackCallback, bool synchronous);
+		void setPlaybackCallback(var playbackCallback, var synchronous);
 
 		/** Returns a typed MIDI processor reference (for setting attributes etc). */
 		var asMidiProcessor();
@@ -2606,13 +2662,54 @@ namespace ScriptingObjects
 
 		struct Wrapper;
 
-		
-
 	private:
 
-		void callUpdateCallback();
+		struct ScriptEventRecordProcessor : public MidiPlayer::EventRecordProcessor
+		{
+			ScriptEventRecordProcessor(ScriptedMidiPlayer& parent_, const var& function):
+				parent(parent_),
+				eventCallback(parent.getScriptProcessor(), &parent, function, 1),
+				mp(parent.getPlayer())
+			{
+				eventCallback.incRefCount();
+				
+				
+				mp->addEventRecordProcessor(this);
 
-		
+				holder = new ScriptingMessageHolder(parent.getScriptProcessor());
+				args = var(holder);
+			}
+
+			~ScriptEventRecordProcessor()
+			{
+				if (mp != nullptr)
+					mp->removeEventRecordProcessor(this);
+
+				holder = nullptr;
+				args = var();
+			}
+
+			void processRecordedEvent(HiseEvent& e) override
+			{
+				holder->setMessage(e);
+				
+				var thisObject(&parent);
+
+				eventCallback.callSync(var::NativeFunctionArgs(thisObject, &args, 1));
+				e = holder->getMessageCopy();
+			}
+
+			ScriptedMidiPlayer& parent;
+			WeakCallbackHolder eventCallback;
+			var args;
+			ScriptingMessageHolder* holder;
+			
+			WeakReference<MidiPlayer> mp;
+		};
+
+		ScopedPointer<ScriptEventRecordProcessor> recordEventProcessor;
+
+		void callUpdateCallback();
 
 		struct PlaybackUpdater : public PooledUIUpdater::SimpleTimer,
 								 public MidiPlayer::PlaybackListener

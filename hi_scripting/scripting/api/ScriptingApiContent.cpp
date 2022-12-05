@@ -132,10 +132,12 @@ struct ScriptingApi::Content::ScriptComponent::Wrapper
 	API_METHOD_WRAPPER_0(ScriptComponent, getAllProperties);
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setKeyPressCallback);
 	API_VOID_METHOD_WRAPPER_0(ScriptComponent, loseFocus);
+    API_VOID_METHOD_WRAPPER_0(ScriptComponent, grabFocus);
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setZLevel);
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setLocalLookAndFeel);
 	API_VOID_METHOD_WRAPPER_0(ScriptComponent, sendRepaintMessage);
 	API_VOID_METHOD_WRAPPER_2(ScriptComponent, fadeComponent);
+	API_VOID_METHOD_WRAPPER_0(ScriptComponent, updateValueFromProcessorConnection);
 };
 
 #define ADD_SCRIPT_PROPERTY(id, name) static const Identifier id(name); propertyIds.add(id);
@@ -233,6 +235,7 @@ ScriptingApi::Content::ScriptComponent::ScriptComponent(ProcessorWithScriptingCo
 	controlSender(this, base),
 	propertyTree(name_.isValid() ? parent->getValueTreeForComponent(name) : ValueTree("Component")),
 	value(0.0),
+    subComponentNotifier(*this),
 	skipRestoring(false),
 	hasChanged(false),
 	customControlCallback(var())
@@ -320,9 +323,11 @@ ScriptingApi::Content::ScriptComponent::ScriptComponent(ProcessorWithScriptingCo
 	ADD_API_METHOD_1(setZLevel);
 	ADD_API_METHOD_1(setKeyPressCallback);
 	ADD_API_METHOD_0(loseFocus);
+    ADD_API_METHOD_0(grabFocus);
 	ADD_API_METHOD_1(setLocalLookAndFeel);
 	ADD_API_METHOD_0(sendRepaintMessage);
 	ADD_API_METHOD_2(fadeComponent);
+	ADD_API_METHOD_0(updateValueFromProcessorConnection);
 
 	//setName(name_.toString());
 
@@ -1312,32 +1317,44 @@ var ScriptingApi::Content::ScriptComponent::getAllProperties()
 	return var(list);
 }
 
+void ScriptingApi::Content::ScriptComponent::SubComponentNotifier::handleAsyncUpdate()
+{
+    Array<Item> items;
+    
+    {
+        hise::SimpleReadWriteLock::ScopedReadLock sl(lock);
+        items.swapWith(pendingItems);
+    }
+    
+    for (auto l : parent.subComponentListeners)
+    {
+        if (l != nullptr)
+        {
+            for(auto i: items)
+            {
+                if(i.sc != nullptr)
+                {
+                    if (i.wasAdded)
+                        l->subComponentAdded(i.sc);
+                    else
+                        l->subComponentRemoved(i.sc);
+                }
+            }
+        }
+    }
+}
+
 void ScriptingApi::Content::ScriptComponent::sendSubComponentChangeMessage(ScriptComponent* s, bool wasAdded, NotificationType notify/*=sendNotificationAsync*/)
 {
-	WeakReference<ScriptComponent> ws(s);
-	WeakReference<ScriptComponent> ts(this);
-
-	auto f = [ts, ws, wasAdded]()
-	{
-		if (ts != nullptr && ws != nullptr)
-		{
-			for (auto l : ts->subComponentListeners)
-			{
-				if (l != nullptr)
-				{
-					if (wasAdded)
-						l->subComponentAdded(ws);
-					else
-						l->subComponentRemoved(ws);
-				}
-			}
-		}
-	};
-
-	if (notify == sendNotificationSync)
-		f();
-	else
-		MessageManager::callAsync(f);
+    {
+        hise::SimpleReadWriteLock::ScopedWriteLock sl(subComponentNotifier.lock);
+        subComponentNotifier.pendingItems.add({s, wasAdded});
+    }
+    
+    if(notify == sendNotificationSync)
+        subComponentNotifier.handleAsyncUpdate();
+    else
+        subComponentNotifier.triggerAsyncUpdate();
 }
 
 
@@ -1449,6 +1466,20 @@ void ScriptingApi::Content::ScriptComponent::loseFocus()
 		if (l != nullptr)
 			l->wantsToLoseFocus();
 	}
+}
+
+void ScriptingApi::Content::ScriptComponent::grabFocus()
+{
+    for (auto l : zLevelListeners)
+    {
+        if (l != nullptr)
+        {
+            l->wantsToGrabFocus();
+            
+            return; // this is a exclusive operation so we don't
+                    // need to continue the loop
+        }
+    }
 }
 
 juce::LookAndFeel* ScriptingApi::Content::ScriptComponent::createLocalLookAndFeel()
@@ -2062,6 +2093,7 @@ ScriptComponent(base, name)
 	ADD_NUMBER_PROPERTY(i05, "radioGroup");
 	ADD_SCRIPT_PROPERTY(i04, "isMomentary");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 	ADD_SCRIPT_PROPERTY(i06, "enableMidiLearn"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+    ADD_SCRIPT_PROPERTY(i07, "setValueOnClick"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 
 	handleDefaultDeactivatedProperties();
 
@@ -2076,6 +2108,7 @@ ScriptComponent(base, name)
 	setDefaultValue(ScriptButton::Properties::radioGroup, 0);
 	setDefaultValue(ScriptButton::Properties::isMomentary, 0);
 	setDefaultValue(ScriptButton::Properties::enableMidiLearn, true);
+    setDefaultValue(ScriptButton::Properties::setValueOnClick, false);
 
 	initInternalPropertyFromValueTreeOrDefault(filmstripImage);
 
@@ -2620,6 +2653,7 @@ struct ScriptingApi::Content::ScriptSliderPack::Wrapper
 	API_METHOD_WRAPPER_1(ScriptSliderPack, registerAtParent);
 	API_METHOD_WRAPPER_0(ScriptSliderPack, getDataAsBuffer);
 	API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, setAllValueChangeCausesCallback);
+	API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, setUsePreallocatedLength);
 };
 
 ScriptingApi::Content::ScriptSliderPack::ScriptSliderPack(ProcessorWithScriptingContent *base, Content* /*parentContent*/, Identifier name_, int x, int y, int , int ) :
@@ -2636,6 +2670,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	setDefaultValue(ScriptComponent::Properties::y, y);
 	setDefaultValue(ScriptComponent::Properties::width, 200);
 	setDefaultValue(ScriptComponent::Properties::height, 100);
+	setDefaultValue(ScriptComponent::defaultValue, 1.0f);
 	setDefaultValue(bgColour, 0x00000000);
 	setDefaultValue(itemColour, 0x77FFFFFF);
 	setDefaultValue(itemColour2, 0x77FFFFFF);
@@ -2676,6 +2711,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	ADD_API_METHOD_1(registerAtParent);
 	ADD_API_METHOD_0(getDataAsBuffer);
 	ADD_API_METHOD_1(setAllValueChangeCausesCallback);
+	ADD_API_METHOD_1(setUsePreallocatedLength);
 }
 
 ScriptingApi::Content::ScriptSliderPack::~ScriptSliderPack()
@@ -2774,6 +2810,11 @@ void ScriptingApi::Content::ScriptSliderPack::setScriptObjectPropertyWithChangeM
 
 		if(auto d = getCachedSliderPack())
 			d->setNumSliders((int)newValue);
+	}
+	else if (id == getIdFor(defaultValue))
+	{
+		if (auto d = getCachedSliderPack())
+			d->setDefaultValue((float)newValue);
 	}
 	else if (id == getIdFor(ScriptComponent::Properties::min))
 	{
@@ -2893,6 +2934,11 @@ juce::var ScriptingApi::Content::ScriptSliderPack::getDataAsBuffer()
 void ScriptingApi::Content::ScriptSliderPack::setAllValueChangeCausesCallback(bool shouldBeEnabled)
 {
 	allValueChangeCausesCallback = shouldBeEnabled;
+}
+
+void ScriptingApi::Content::ScriptSliderPack::setUsePreallocatedLength(int numMaxSliders)
+{
+	getCachedSliderPack()->setUsePreallocatedLength(numMaxSliders);
 }
 
 struct ScriptingApi::Content::ScriptAudioWaveform::Wrapper
@@ -3460,6 +3506,12 @@ void ScriptingApi::Content::ScriptPanel::setPaintRoutine(var paintFunction)
 	if (HiseJavascriptEngine::isJavascriptFunction(paintFunction) && !parent->allowGuiCreation)
 	{
 		repaint();
+        
+        for(auto l: animationListeners)
+        {
+            if(l != nullptr)
+                l->paintRoutineChanged();
+        }
 	}
 
 }
@@ -4852,6 +4904,7 @@ colour(Colour(0xff777777))
 	setMethod("createPath", Wrapper::createPath);
 	setMethod("createShader", Wrapper::createShader);
 	setMethod("createMarkdownRenderer", Wrapper::createMarkdownRenderer);
+    setMethod("createSVG", Wrapper::createSVG);
 	setMethod("getScreenBounds", Wrapper::getScreenBounds);
 	setMethod("getCurrentTooltip", Wrapper::getCurrentTooltip);
 	setMethod("createLocalLookAndFeel", Wrapper::createLocalLookAndFeel);
@@ -5036,9 +5089,11 @@ var ScriptingApi::Content::getAllComponents(String regex)
 {
 	Array<var> list;
 
+    bool getAll = regex == ".*";
+    
 	for (int i = 0; i < getNumComponents(); i++)
 	{	    
-		if (RegexFunctions::matchesWildcard(regex, components[i]->getName().toString()))
+		if (getAll || RegexFunctions::matchesWildcard(regex, components[i]->getName().toString()))
 		{
 			list.add(var(components[i].get()));
 		}
@@ -5801,6 +5856,11 @@ String ScriptingApi::Content::getCurrentTooltip()
 		return ttc->getTooltip();
 
 	return {};
+}
+
+var ScriptingApi::Content::createSVG(const String& b64)
+{
+    return var(new ScriptingObjects::SVGObject(getScriptProcessor(), b64));
 }
 
 juce::var ScriptingApi::Content::createMarkdownRenderer()
@@ -6692,6 +6752,7 @@ void LiveUpdateVarBody::paint(Graphics& g)
 			g.fillEllipse(circle.reduced(2.0f));
 
 		break;
+    default: break;
 	}
 	}
 

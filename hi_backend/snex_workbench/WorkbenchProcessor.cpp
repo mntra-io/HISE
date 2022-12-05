@@ -784,13 +784,10 @@ DspNetworkCompileExporter::DspNetworkCompileExporter(Component* e, BackendProces
 		if (PresetHandler::showYesNoWindow("No DSP Network detected", "You need an active DspNetwork for the compilation process.  \n> Press OK to create a Script FX with an empty embedded Network"))
 		{
 			raw::Builder builder(bp);
-
-			bp->setAllowFlakyThreading(true);
+			MainController::ScopedBadBabysitter sb(bp);
 
 			auto jmp = builder.create<JavascriptMasterEffect>(bp->getMainSynthChain(), raw::IDs::Chains::FX);
 			jmp->getOrCreate("internal_dsp");
-
-			bp->setAllowFlakyThreading(false);
 		}
 	}
 
@@ -844,13 +841,28 @@ void DspNetworkCompileExporter::writeDebugFileAndShowSolution()
     auto projectName = settings.getSetting(HiseSettings::Project::Name).toString();
     auto debugExecutable = File(hisePath).getChildFile("projects/standalone/Builds/");
     
+	
+
+	
+	
+	auto currentExecutable = File::getSpecialLocation(File::currentExecutableFile);
+
+
 #if JUCE_WINDOWS
-    debugExecutable = debugExecutable.getChildFile("VisualStudio2017/x64/Debug/App/HISE Debug.exe");
-    solutionFolder = solutionFolder.getChildFile("VisualStudio2017");
+    auto isUsingVs2017 = HelperClasses::isUsingVisualStudio2017(settings);
+    auto vsString = isUsingVs2017 ? "VisualStudio2017" : "VisualStudio2022";
+    auto vsVersion = isUsingVs2017 ? "15.0" : "17.0";
+    
+    debugExecutable = debugExecutable.getChildFile(vsString).getChildFile("x64/Debug/App/HISE Debug.exe");
+
+	// If this hits, then you have a mismatch between VS2022 and VS2017...
+	jassertEqual(debugExecutable, currentExecutable);
+	
+    solutionFolder = solutionFolder.getChildFile(vsString);
     auto solutionFile = solutionFolder.getChildFile(projectName).withFileExtension("sln");
     
 	ScopedPointer<XmlElement> xml = new XmlElement("Project");
-	xml->setAttribute("ToolsVersion", "15.0");
+	xml->setAttribute("ToolsVersion", vsVersion);
 	xml->setAttribute("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003");
 	auto pg = new XmlElement("PropertyGroup");
 	pg->setAttribute("Condition", "'$(Configuration)|$(Platform)'=='Debug|x64'");
@@ -884,7 +896,7 @@ void DspNetworkCompileExporter::writeDebugFileAndShowSolution()
 #elif JUCE_MAC
     debugExecutable = debugExecutable.getChildFile("MacOSX/build/Debug/HISE Debug.app");
     
-    jassert(debugExecutable.existsAsFile());
+    jassert(debugExecutable.isDirectory());
     solutionFolder = solutionFolder.getChildFile("MacOSX");
     auto solutionFile = solutionFolder.getChildFile(projectName).withFileExtension("xcodeproj");
     
@@ -1142,9 +1154,12 @@ void DspNetworkCompileExporter::run()
 		std::vector<std::string> faustLibraryPaths = {codeLibDirPath};
 		// lookup FaustPath from settings
 		auto& settings = dynamic_cast<GlobalSettingManager*>(getMainController())->getSettingsObject();
-		juce::String faustPath = settings.getSetting(hise::HiseSettings::Compiler::FaustPath);
-		if (faustPath.length() > 0) {
-			auto globalFaustLibraryPath = juce::File(faustPath).getChildFile("share").getChildFile("faust");
+        
+        auto faustPath = settings.getFaustPath();
+        
+		if (faustPath.isDirectory()) {
+			auto globalFaustLibraryPath = faustPath.getChildFile("share").getChildFile("faust");
+            
 			if (globalFaustLibraryPath.isDirectory()) {
 				faustLibraryPaths.push_back(globalFaustLibraryPath.getFullPathName().toStdString());
 			}
@@ -1565,6 +1580,10 @@ void DspNetworkCompileExporter::createProjucerFile()
 
 	ProjectTemplateHelpers::handleCompilerWarnings(templateProject);
 	
+	auto& dataObject = dynamic_cast<GlobalSettingManager*>(getMainController())->getSettingsObject();
+
+	ProjectTemplateHelpers::handleVisualStudioVersion(dataObject, templateProject);
+
 	const File jucePath = hisePath.getChildFile("JUCE/modules");
 
 	auto projectName = GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::Project::Name).toString();
@@ -1604,7 +1623,8 @@ void DspNetworkCompileExporter::createProjucerFile()
 
 	if (includeFaust)
 	{
-		auto headerPath = File(GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::Compiler::FaustPath).toString()).getChildFile("include");
+        auto faustPath = dynamic_cast<GlobalSettingManager*>(getMainController())->getSettingsObject().getFaustPath();
+		auto headerPath = faustPath.getChildFile("include");
 		REPLACE_WILDCARD_WITH_STRING("%FAUST_HEADER_PATH%", headerPath.getFullPathName());
 	}
 	else

@@ -41,6 +41,7 @@ struct ScriptUserPresetHandler::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptUserPresetHandler, setCustomAutomation);
 	API_VOID_METHOD_WRAPPER_3(ScriptUserPresetHandler, setUseCustomUserPresetModel);
 	API_METHOD_WRAPPER_1(ScriptUserPresetHandler, isOldVersion);
+    API_METHOD_WRAPPER_0(ScriptUserPresetHandler, isInternalPresetLoad);
 	API_VOID_METHOD_WRAPPER_0(ScriptUserPresetHandler, clearAttachedCallbacks);
 	API_VOID_METHOD_WRAPPER_3(ScriptUserPresetHandler, attachAutomationCallback);
 	API_VOID_METHOD_WRAPPER_3(ScriptUserPresetHandler, updateAutomationValues);
@@ -63,6 +64,7 @@ ScriptUserPresetHandler::ScriptUserPresetHandler(ProcessorWithScriptingContent* 
 	getMainController()->getUserPresetHandler().addListener(this);
 
 	ADD_API_METHOD_1(isOldVersion);
+    ADD_API_METHOD_0(isInternalPresetLoad);
 	ADD_API_METHOD_1(setPostCallback);
 	ADD_API_METHOD_1(setPreCallback);
 	ADD_API_METHOD_2(setEnableUserPresetPreprocessing);
@@ -114,6 +116,13 @@ void ScriptUserPresetHandler::setEnableUserPresetPreprocessing(bool processBefor
 {
 	enablePreprocessing = processBeforeLoading;
 	unpackComplexData = shouldUnpackComplexData;
+}
+
+bool ScriptUserPresetHandler::isInternalPresetLoad() const
+{
+    auto& uph = getScriptProcessor()->getMainController_()->getUserPresetHandler();
+    
+    return uph.isInternalPresetLoad();
 }
 
 bool ScriptUserPresetHandler::isOldVersion(const String& version)
@@ -365,11 +374,6 @@ void ScriptUserPresetHandler::updateAutomationValues(var data, bool sendMessage,
 
 			data.getArray()->sort(sorter);
 
-			// We need to be careful to not call parameters in the meta parameter if they are
-			// part of the 
-			Array<Identifier> calledIds;
-			calledIds.ensureStorageAllocated(data.size());
-
 			for (auto& v : *data.getArray())
 			{
 				Identifier id(v["id"].toString());
@@ -379,24 +383,7 @@ void ScriptUserPresetHandler::updateAutomationValues(var data, bool sendMessage,
 				{
 					float fv = (float)value;
 					FloatSanitizers::sanitizeFloatNumber(fv);
-
-					// Do not call meta parameters here
-					auto metaFilter = [&calledIds](MainController::UserPresetHandler::CustomAutomationData::ConnectionBase* b)
-					{
-						if (auto metaConnection = dynamic_cast<MainController::UserPresetHandler::CustomAutomationData::MetaConnection*>(b))
-						{
-							auto alreadyCalled = !calledIds.contains(metaConnection->target->id);
-
-							if (alreadyCalled)
-								return false;
-						}
-
-						return true;
-					};
-
-					cData->call(fv, sendMessage, metaFilter);
-
-					calledIds.add(id);
+					cData->call(fv, sendMessage);
 				}
 			}
 		}
@@ -729,6 +716,8 @@ juce::ValueTree ScriptUserPresetHandler::prePresetLoad(const ValueTree& dataToLo
 
 		if (enablePreprocessing)
 			args = convertToJson(dataToLoad);
+		else
+			args = var(new ScriptingObjects::ScriptFile(getScriptProcessor(), fileToLoad));
 
 		auto r = preCallback.callSync(&args, 1, nullptr);
 
@@ -1834,16 +1823,26 @@ void ScriptEncryptedExpansion::encodePoolAndUserPresets(ValueTree &hxiData, bool
 
 		BACKEND_ONLY(ExpansionHandler::ScopedProjectExporter sps(getMainController(), true));
 
-		for (int i = 0; i < nip.getNumLoadedFiles(); i++)
+		auto embedImageFiles = GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::Project::EmbedImageFiles);
+		
+		if (embedImageFiles)
 		{
-			PoolReference ref(getMainController(), nip.getReference(i).getFile().getFullPathName(), FileHandlerBase::Images);
-			pool->getImagePool().loadFromReference(ref, PoolHelpers::LoadAndCacheStrong);
+			for (int i = 0; i < nip.getNumLoadedFiles(); i++)
+			{
+				PoolReference ref(getMainController(), nip.getReference(i).getFile().getFullPathName(), FileHandlerBase::Images);
+				pool->getImagePool().loadFromReference(ref, PoolHelpers::LoadAndCacheStrong);
+			}	
 		}
 
-		for (int i = 0; i < nap.getNumLoadedFiles(); i++)
+		auto embedAudioFiles = GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::Project::EmbedAudioFiles);
+		
+		if (embedAudioFiles)
 		{
-			PoolReference ref(getMainController(), nap.getReference(i).getFile().getFullPathName(), FileHandlerBase::AudioFiles);
-			pool->getAudioSampleBufferPool().loadFromReference(ref, PoolHelpers::LoadAndCacheStrong);
+			for (int i = 0; i < nap.getNumLoadedFiles(); i++)
+			{
+				PoolReference ref(getMainController(), nap.getReference(i).getFile().getFullPathName(), FileHandlerBase::AudioFiles);
+				pool->getAudioSampleBufferPool().loadFromReference(ref, PoolHelpers::LoadAndCacheStrong);
+			}	
 		}
 	}
 
@@ -1857,9 +1856,13 @@ void ScriptEncryptedExpansion::encodePoolAndUserPresets(ValueTree &hxiData, bool
 			addDataType(poolData, fileType);
 	}
 
-	h.setErrorMessage("Embedding user presets", false);
+	auto embedUserPresets = GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::Project::EmbedUserPresets);
 
-	addUserPresets(hxiData);
+  if (embedUserPresets)
+	{
+		h.setErrorMessage("Embedding user presets", false);
+		addUserPresets(hxiData);
+	}
 
 	hxiData.addChild(poolData, -1, nullptr);
 }
@@ -2653,12 +2656,15 @@ juce::File ScriptUnlocker::getLicenseKeyFile()
 struct ScriptUnlocker::RefObject::Wrapper
 {
 	API_METHOD_WRAPPER_0(RefObject, isUnlocked);
+	API_METHOD_WRAPPER_0(RefObject, canExpire);
+	API_METHOD_WRAPPER_1(RefObject, checkExpirationData);
 	API_METHOD_WRAPPER_0(RefObject, loadKeyFile);
 	API_VOID_METHOD_WRAPPER_1(RefObject, setProductCheckFunction);
 	API_METHOD_WRAPPER_1(RefObject, writeKeyFile);
 	API_METHOD_WRAPPER_0(RefObject, getUserEmail);
 	API_METHOD_WRAPPER_0(RefObject, getRegisteredMachineId);
 	API_METHOD_WRAPPER_1(RefObject, isValidKeyFile);
+    API_METHOD_WRAPPER_0(RefObject, keyFileExists);
 };
 
 ScriptUnlocker::RefObject::RefObject(ProcessorWithScriptingContent* p) :
@@ -2682,6 +2688,9 @@ ScriptUnlocker::RefObject::RefObject(ProcessorWithScriptingContent* p) :
 	ADD_API_METHOD_0(getUserEmail);
 	ADD_API_METHOD_0(getRegisteredMachineId);
 	ADD_API_METHOD_1(isValidKeyFile);
+	ADD_API_METHOD_0(canExpire);
+	ADD_API_METHOD_1(checkExpirationData);
+    ADD_API_METHOD_0(keyFileExists);
 }
 
 ScriptUnlocker::RefObject::~RefObject()
@@ -2695,6 +2704,43 @@ juce::var ScriptUnlocker::RefObject::isUnlocked() const
 	return unlocker != nullptr ? unlocker->isUnlocked() : var(0);
 }
 
+juce::var ScriptUnlocker::RefObject::canExpire() const
+{
+	return unlocker != nullptr ? var(unlocker->getExpiryTime() != juce::Time(0)) : var(false);
+}
+
+juce::var ScriptUnlocker::RefObject::checkExpirationData(const String& encodedTimeString)
+{
+	if (unlocker != nullptr)
+	{
+		if (encodedTimeString.startsWith("0x"))
+		{
+			BigInteger bi;
+
+			bi.parseString(encodedTimeString.substring(2), 16);
+			unlocker->getPublicKey().applyToValue(bi);
+
+			auto timeString = bi.toMemoryBlock().toString();
+
+			auto time = Time::fromISO8601(timeString);
+
+			auto ok = unlocker->unlockWithTime(time);
+
+			if (ok)
+				return var("");
+			else
+				return var("Activation failed");
+
+		}
+
+        return var("encodedTimeString data is corrupt");
+	}
+	else
+	{
+		return var("No unlocker");
+	}
+}
+
 void ScriptUnlocker::RefObject::setProductCheckFunction(var f)
 {
 	pcheck = WeakCallbackHolder(getScriptProcessor(), this, f, 1);
@@ -2705,6 +2751,11 @@ void ScriptUnlocker::RefObject::setProductCheckFunction(var f)
 juce::var ScriptUnlocker::RefObject::loadKeyFile()
 {
 	return unlocker->loadKeyFile();
+}
+
+bool ScriptUnlocker::RefObject::keyFileExists() const
+{
+    return unlocker->getLicenseKeyFile().existsAsFile();
 }
 
 juce::var ScriptUnlocker::RefObject::writeKeyFile(const String& keyData)

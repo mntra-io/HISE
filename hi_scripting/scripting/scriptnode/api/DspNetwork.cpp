@@ -269,7 +269,7 @@ void DspNetwork::createAllNodesOnce()
 		if (isProjectFactory)
 			continue;
 
-		getScriptProcessor()->getMainController_()->setAllowFlakyThreading(true);
+		MainController::ScopedBadBabysitter sb(getScriptProcessor()->getMainController_());
 
 		for (auto id : f->getModuleList())
 		{
@@ -282,8 +282,6 @@ void DspNetwork::createAllNodesOnce()
 
 			s = nullptr;
 		}
-
-		getScriptProcessor()->getMainController_()->setAllowFlakyThreading(false);
 	}
 
 #if USE_BACKEND
@@ -1915,8 +1913,12 @@ void DspNetwork::FaustManager::removeFaustListener(FaustListener* l)
 	listeners.removeAllInstancesOf(l);
 }
 
-void DspNetwork::FaustManager::setSelectedFaustFile(const File& f, NotificationType n)
+void DspNetwork::FaustManager::setSelectedFaustFile(Component* c, const File& f, NotificationType n)
 {
+#if USE_BACKEND
+	GET_BACKEND_ROOT_WINDOW(c)->addEditorTabsOfType<FaustEditorPanel>();
+#endif
+
 	currentFile = f;
 
 	if (n != dontSendNotification)

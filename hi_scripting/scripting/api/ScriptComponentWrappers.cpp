@@ -42,13 +42,14 @@ namespace hise { using namespace juce;
 
 #define GET_OBJECT_COLOUR(id) (ScriptingApi::Content::Helpers::getCleanedObjectColour(GET_SCRIPT_PROPERTY(id)))
 
+
+
 struct ScriptCreatedComponentWrapper::AdditionalMouseCallback: public MouseListener
 {
 	AdditionalMouseCallback(ScriptComponent* sc, Component* c, const ScriptComponent::MouseListenerData& cd) :
 		scriptComponent(sc),
 		component(c),
-		callbackLevel(cd.mouseCallbackLevel),
-		broadcaster(cd.listener)
+		data(cd)
 	{
 		component->addMouseListener(this, true);
 	};
@@ -61,64 +62,123 @@ struct ScriptCreatedComponentWrapper::AdditionalMouseCallback: public MouseListe
 
 	void mouseDown(const MouseEvent& event)
 	{
-		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksOnly) return;
+		if (event.mods.isRightButtonDown() && data.mouseCallbackLevel == MouseCallbackComponent::CallbackLevel::PopupMenuOnly)
+		{
+			if (data.listener == nullptr)
+				return;
+
+			StringArray thisArray;
+			Array<int> indexes;
+
+			int index = 0;
+
+			for (auto& s : data.popupMenuItems)
+			{
+				if (s.startsWith("**") || s.startsWith("__"))
+				{
+					thisArray.add(s);
+					continue;
+				}
+
+				String copy(s);
+
+				static const String dynamicWildcard("{DYNAMIC}");
+
+				if (copy.contains(dynamicWildcard))
+				{
+					auto textValue = data.textFunction(index).toString();
+					copy = copy.replace(dynamicWildcard, textValue);
+				}
+
+				if (!copy.startsWith("~~") && data.enabledFunction && !data.enabledFunction(index))
+					thisArray.add("~~" + copy + "~~");
+				else
+					thisArray.add(copy);
+
+				if (data.tickedFunction && data.tickedFunction(index))
+					indexes.add(index);
+
+				index++;
+			}
+
+			auto m = MouseCallbackComponent::parseFromStringArray(thisArray, indexes, &component->getLookAndFeel());
+
+			if (auto r = m.show())
+			{
+				sendMessage(event, MouseCallbackComponent::Action::Clicked, MouseCallbackComponent::EnterState::Nothing, r-1);
+			}
+
+			return;
+		}
+
+		if (data.mouseCallbackLevel < MouseCallbackComponent::CallbackLevel::ClicksOnly) return;
 		sendMessage(event, MouseCallbackComponent::Action::Clicked, MouseCallbackComponent::EnterState::Nothing);
 	}
 
 	void mouseDoubleClick(const MouseEvent& event)
 	{
-		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksOnly) return;
+		if (data.mouseCallbackLevel < MouseCallbackComponent::CallbackLevel::ClicksOnly) return;
 		sendMessage(event, MouseCallbackComponent::Action::DoubleClicked, MouseCallbackComponent::EnterState::Nothing);
 	}
 
 	void mouseMove(const MouseEvent& event)
 	{
-		if (callbackLevel < MouseCallbackComponent::CallbackLevel::AllCallbacks) return;
+		if (data.mouseCallbackLevel < MouseCallbackComponent::CallbackLevel::AllCallbacks) return;
 		sendMessage(event, MouseCallbackComponent::Action::Moved, MouseCallbackComponent::EnterState::Nothing);
 	}
 
 	void mouseDrag(const MouseEvent& event)
 	{
-		if (callbackLevel < MouseCallbackComponent::CallbackLevel::Drag) return;
+		if (data.mouseCallbackLevel < MouseCallbackComponent::CallbackLevel::Drag) return;
+        
+        // do not forward mouse drags within a 4px threshold
+        if(event.getDistanceFromDragStart() < 4) return;
+        
 		sendMessage(event, MouseCallbackComponent::Action::Dragged, MouseCallbackComponent::EnterState::Nothing);
 	}
 
 	void mouseEnter(const MouseEvent &event)
 	{
-		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksAndEnter) return;
+		if (data.mouseCallbackLevel < MouseCallbackComponent::CallbackLevel::ClicksAndEnter) return;
 		sendMessage(event, MouseCallbackComponent::Action::Moved, MouseCallbackComponent::Entered);
 	}
 
 	void mouseExit(const MouseEvent &event)
 	{
-		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksAndEnter) return;
+		if (data.mouseCallbackLevel < MouseCallbackComponent::CallbackLevel::ClicksAndEnter) return;
 		sendMessage(event, MouseCallbackComponent::Action::Moved, MouseCallbackComponent::Exited);
 	}
 
 	void mouseUp(const MouseEvent &event)
 	{
-		if (callbackLevel < MouseCallbackComponent::CallbackLevel::ClicksOnly) return;
+		if (data.mouseCallbackLevel < MouseCallbackComponent::CallbackLevel::ClicksOnly) return;
 		sendMessage(event, MouseCallbackComponent::Action::MouseUp, MouseCallbackComponent::EnterState::Nothing);
 	}
 
-	void sendMessage(const MouseEvent& event, MouseCallbackComponent::Action action, MouseCallbackComponent::EnterState state)
+	void sendMessage(const MouseEvent& event, MouseCallbackComponent::Action action, MouseCallbackComponent::EnterState state, int popupMenuIndex = -1)
 	{
-		if (broadcaster != nullptr)
+		if (data.listener != nullptr)
 		{
 			var arguments[2];
 
 			arguments[0] = var(scriptComponent.get());
-			arguments[1] = MouseCallbackComponent::getMouseCallbackObject(component.getComponent(), event, callbackLevel, action, state);
+
+			if (data.mouseCallbackLevel != MouseCallbackComponent::CallbackLevel::PopupMenuOnly)
+            {
+				arguments[1] = MouseCallbackComponent::getMouseCallbackObject(component.getComponent(), event, data.mouseCallbackLevel, action, state);
+                ComponentWithAdditionalMouseProperties::attachMousePropertyFromParent(event, arguments[1]);
+            }
+			else
+				arguments[1] = var(popupMenuIndex);
 
 			var::NativeFunctionArgs args({}, arguments, 2);
-			auto ok = broadcaster->call(nullptr, args, nullptr);
+			auto ok = data.listener->call(nullptr, args, nullptr);
 		}
 	}
 
 	Component::SafePointer<Component> component;
 	WeakReference<ScriptComponent> scriptComponent;
-	WeakReference<WeakCallbackHolder::CallableObject> broadcaster;
-	MouseCallbackComponent::CallbackLevel callbackLevel;
+	ScriptComponent::MouseListenerData data;
 };
 
 ScriptCreatedComponentWrapper::~ScriptCreatedComponentWrapper()
@@ -735,6 +795,13 @@ void ScriptCreatedComponentWrapper::wantsToLoseFocus()
 	}
 }
 
+void ScriptCreatedComponentWrapper::wantsToGrabFocus()
+{
+    if (auto c = getComponent())
+        c->grabKeyboardFocusAsync();
+}
+
+
 bool ScriptCreatedComponentWrapper::keyPressed(const KeyPress& key, Component* originatingComponent)
 {
 	return getScriptComponent()->handleKeyPress(key);
@@ -1110,6 +1177,7 @@ void ScriptCreatedComponentWrappers::ButtonWrapper::updateComponent(int property
 		PROPERTY_CASE::ScriptButton::scaleFactor :		updateFilmstrip(b, sc); break;
 		PROPERTY_CASE::ScriptButton::radioGroup:		b->setRadioGroupId(getScriptComponent()->getScriptObjectProperty(ScriptingApi::Content::ScriptButton::radioGroup)); break;
 		PROPERTY_CASE::ScriptButton::isMomentary :		b->setIsMomentary(getScriptComponent()->getScriptObjectProperty(ScriptingApi::Content::ScriptButton::isMomentary)); break;
+            PROPERTY_CASE::ScriptButton::setValueOnClick: b->setTriggeredOnMouseDown(getScriptComponent()->getScriptObjectProperty(ScriptingApi::Content::ScriptButton::setValueOnClick)); break;
 			PROPERTY_CASE::ScriptSlider::numProperties :
 	default:
 		break;
@@ -1205,6 +1273,23 @@ void ScriptCreatedComponentWrappers::LabelWrapper::updateEditability(ScriptingAp
 	l->setInterceptsMouseClicks(editable, editable);
 	l->setEditable(editable);
 	l->setMultiline(multiline);
+}
+
+void ScriptCreatedComponentWrappers::LabelWrapper::wantsToGrabFocus()
+{
+    bool editable = getScriptComponent()->getScriptObjectProperty(ScriptingApi::Content::ScriptLabel::Editable);
+    
+    if(!editable)
+        return;
+    
+    if(auto l = dynamic_cast<MultilineLabel*>(component.get()))
+    {
+        SafeAsyncCall::call<MultilineLabel>(*l, [](MultilineLabel& lb)
+        {
+            lb.showEditor();
+            lb.grabKeyboardFocusAsync();
+        });
+    }
 }
 
 void ScriptCreatedComponentWrappers::LabelWrapper::updateFont(ScriptingApi::Content::ScriptLabel * sl, MultilineLabel * l)
@@ -2099,12 +2184,24 @@ void ScriptCreatedComponentWrappers::PanelWrapper::animationChanged()
 #endif
 }
 
+void ScriptCreatedComponentWrappers::PanelWrapper::paintRoutineChanged()
+{
+    auto panel = dynamic_cast<ScriptingApi::Content::ScriptPanel*>(getScriptComponent());
+    
+    if(auto bp = dynamic_cast<BorderPanel*>(getComponent()))
+    {
+        bp->isUsingCustomImage = panel->isUsingCustomPaintRoutine() || panel->isUsingClippedFixedImage();
+        
+        SafeAsyncCall::repaint(bp);
+    }
+}
+
 void ScriptCreatedComponentWrappers::PanelWrapper::initPanel(ScriptingApi::Content::ScriptPanel* panel)
 {
 	BorderPanel *bp = new BorderPanel(panel->getDrawActionHandler());
 
 	panel->addSubComponentListener(this);
-	panel->addAnimationListener(this);
+	
 
 	bp->setName(panel->name.toString());
 
@@ -2126,6 +2223,7 @@ void ScriptCreatedComponentWrappers::PanelWrapper::initPanel(ScriptingApi::Conte
 
 	component = bp;
 
+    panel->addAnimationListener(this);
 
 #if HISE_INCLUDE_RLOTTIE
 	animationChanged();

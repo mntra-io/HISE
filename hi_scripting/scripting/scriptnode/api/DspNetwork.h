@@ -188,6 +188,7 @@ public:
 		case Error::SampleRateMismatch: s << "Samplerate mismatch"; break;
 		case Error::InitialisationError: return "Initialisation error";
 		case Error::TooManyChildNodes: s << "Number of child nodes (" << e.actual << ") exceed channels (" << e.expected << ")."; return s;
+        case Error::TooManyParameters: s << "Number of modulation sources (" << e.actual << ") exceed limit (" << e.expected << ")."; return s;
 		case Error::NoMatchingParent:	 return "Can't find suitable parent node";
 		case Error::RingBufferMultipleWriters: return "Buffer used multiple times";
 		case Error::NodeDebuggerEnabled: return "Node is being debugged";
@@ -460,7 +461,7 @@ public:
             There is only a single edited file per faust_manager instance and the listeners
             will receive a message that the edited file changed.
         */
-        void setSelectedFaustFile(const File& f, NotificationType n);
+        void setSelectedFaustFile(Component* c, const File& f, NotificationType n);
         
         /** Send a message that this file is about to be compiled.
             The listeners will be called with `compileFaustCode()` which can be override
@@ -519,6 +520,11 @@ public:
 
 			SnexSourceCompileHandler(snex::ui::WorkbenchData* d, ProcessorWithScriptingContent* sp_);;
 
+            ~SnexSourceCompileHandler()
+            {
+                stopThread(1000);
+            }
+            
 			void processTestParameterEvent(int parameterIndex, double value) final override {};
             Result prepareTest(PrepareSpecs ps, const Array<snex::ui::WorkbenchData::TestData::ParameterEvent>& initialParameters) final override { return Result::ok(); };
 			void processTest(ProcessDataDyn& data) final override {};

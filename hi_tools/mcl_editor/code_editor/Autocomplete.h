@@ -53,12 +53,10 @@ public:
 		{
             auto inputLength = input.length();
             
-			if (inputLength == 1)
+			if (inputLength <= 2)
 				return code.toLowerCase().startsWith(input.toLowerCase());
-			else if (inputLength <= 3)
+			else
                 return code.toLowerCase().contains(input.toLowerCase());
-            else
-				return FuzzySearcher::fitsSearch(input.toLowerCase(), code.toLowerCase(), JUCE_LIVE_CONSTANT_OFF(0.85));
 		}
 
 		virtual bool equals(const Token* other) const
@@ -557,7 +555,7 @@ public:
 		void componentMovedOrResized(Component& component, bool , bool )
 		{
 			setTopLeftPosition(component.getBounds().getBottomLeft());
-			setSize(jmax(300, component.getWidth()), jmin<int>((int)display.totalHeight + 20, 200));
+			setSize(jmax(300, component.getWidth()), jmin<int>((int)display.totalHeight + 20, 250));
 		}
 
 		void refreshText()

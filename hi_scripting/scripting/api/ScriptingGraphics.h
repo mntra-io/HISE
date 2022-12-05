@@ -261,6 +261,38 @@ namespace ScriptingObjects
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptShader);
 	};
 
+    class SVGObject: public ConstScriptingObject
+    {
+    public:
+        
+        SVGObject(ProcessorWithScriptingContent* p, const String& base64);
+    
+        Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("SVG"); }
+        
+        String getDebugName() const override { return "SVG"; };
+        
+        Component* createPopupComponent(const MouseEvent& e, Component* c) override { return nullptr; }
+        
+        bool isValid() const { return svg != nullptr; }
+        
+        void draw(Graphics& g, Rectangle<float> r, float opacity=1.0f)
+        {
+            if(isValid() && currentBounds != r)
+            {
+                svg->setTransformToFit(r, RectanglePlacement::centred);
+                currentBounds = r;
+            }
+            
+            if(isValid())
+                svg->draw(g, opacity);
+        }
+        
+    private:
+        
+        Rectangle<float> currentBounds;
+        std::unique_ptr<Drawable> svg;
+    };
+
 	class PathObject : public ConstScriptingObject
 	{
 	public:
@@ -472,6 +504,9 @@ namespace ScriptingObjects
 		/** Draws a ellipse in the given area. */
 		void drawEllipse(var area, float lineThickness);
 
+        /** Draws a SVG object within the given bounds and opacity. */
+        void drawSVG(var svgObject, var bounds, float opacity);
+        
 		/** Applies a HSL grading on the current layer. */
 		void applyHSL(float hue, float saturation, float lightness);
 
@@ -714,6 +749,7 @@ namespace ScriptingObjects
 			static void setColourOrBlack(DynamicObject* obj, const Identifier& id, Component& c, int colourId);
 
 			JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Laf);
+			JUCE_DECLARE_WEAK_REFERENCEABLE(Laf);
 		};
 
 		struct LocalLaf : public Laf
@@ -742,6 +778,12 @@ namespace ScriptingObjects
 
 		/** Loads an image that can be used by the look and feel functions. */
 		void loadImage(String imageFile, String prettyName);
+
+		/** Unload all images from the panel. */
+		void unloadAllImages();
+
+		/** Checks if the image has been loaded into the panel */
+		bool isImageLoaded(String prettyName);
 
 		// ========================================================================================
 

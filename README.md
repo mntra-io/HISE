@@ -2,6 +2,9 @@
 
 ![](http://hise.audio/images/github.png)
 
+**Build Status macOS / Windows (`develop` branch)**  
+
+[![CI build macOS](https://github.com/christophhart/HISE/actions/workflows/ci_mac.yml/badge.svg?branch=develop)](https://github.com/christophhart/HISE/actions/workflows/ci_mac.yml)
 
 **The open source framework for sample based instruments.**
 

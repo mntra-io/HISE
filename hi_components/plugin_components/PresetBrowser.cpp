@@ -530,7 +530,7 @@ expHandler(mc->getExpansionHandler())
 
 	addAndMakeVisible(tagList = new TagList(mc, this));
 
-	addAndMakeVisible(favoriteButton = new ShapeButton("Show Favorites", Colours::white, Colours::white, Colours::white));
+	addAndMakeVisible(favoriteButton = new TextButton("Show Favorites"));
 	favoriteButton->addListener(this);
 
 	addAndMakeVisible(modalInputWindow = new ModalWindow(this));
@@ -646,8 +646,6 @@ Point<int> PresetBrowser::getMouseHoverInformation() const
 
 	auto mp = getMouseXYRelative();
 
-
-
 	auto setIfHover = [&](PresetBrowserColumn* c)
 	{
 		if (c == nullptr)
@@ -659,6 +657,10 @@ Point<int> PresetBrowser::getMouseHoverInformation() const
 		if(c->getBoundsInParent().contains(mp))
 		{
 			auto lp = c->getLocalPoint(this, mp);
+			auto offset = c->getListAreaOffset();
+
+			lp.setY(lp.getY() -(int)offset[1]);
+
 			p = { c->getColumnIndex(), c->getIndexForPosition(lp) };
 			return true;
 		};
@@ -932,6 +934,43 @@ void PresetBrowser::tagSelectionChanged(const StringArray& newSelection)
 	resized();
 }
 
+void PresetBrowser::attachAdditionalMouseProperties(const MouseEvent& e, var& obj)
+{
+    auto dyn = obj.getDynamicObject();
+    
+    jassert(dyn != nullptr);
+    
+    // feel free to add more stuff here...
+    
+    if(auto lb = e.eventComponent->findParentComponentOfClass<ListBox>())
+    {
+        int rowNumber = lb->getRowNumberOfComponent(e.eventComponent);
+        auto column = e.eventComponent->findParentComponentOfClass<PresetBrowserColumn>();
+        int columnIndex = column->getColumnIndex();
+				String file = column->getFileForIndex(rowNumber).getFullPathName();
+				
+        dyn->setProperty("target", "listItem");
+        dyn->setProperty("rowIndex", rowNumber);
+        dyn->setProperty("columnIndex", columnIndex);
+				dyn->setProperty("file", file);			
+        
+        return;
+    }
+    
+    if(e.eventComponent == favoriteButton)
+    {
+        dyn->setProperty("target", "favoriteButton");
+        dyn->setProperty("buttonState", favoriteButton->getToggleState());
+        return;
+    }
+		
+		if(e.eventComponent == saveButton)
+		{
+				dyn->setProperty("target", "saveButton");
+				return;
+		}
+}
+
 void PresetBrowser::labelTextChanged(Label* l)
 {
 	if (l == noteLabel)
@@ -961,9 +1000,6 @@ void PresetBrowser::updateFavoriteButton()
 	showOnlyPresets = currentWildcard != "*" || on;
 
 	auto path = getPresetBrowserLookAndFeel().createPresetBrowserIcons(on ? "favorite_on" : "favorite_off");
-
-
-	favoriteButton->setShape(path, false, true, true);
 
 	if (presetColumn == nullptr)
 		return;
@@ -1011,8 +1047,6 @@ void PresetBrowser::setHighlightColourAndFont(Colour c, Colour bgColour, Font f)
 	lf.backgroundColour = bgColour;
 	lf.font = f;
 	lf.highlightColour = c;
-
-	favoriteButton->setColours(c.withAlpha(0.7f), c.withAlpha(0.5f), c.withAlpha(0.6f));
 
 	setOpaque(bgColour.isOpaque());
 }
@@ -1099,6 +1133,11 @@ void PresetBrowser::setListAreaOffset(Array<var> offset)
 	bankColumn->setListAreaOffset(offset);
 	categoryColumn->setListAreaOffset(offset);
 	presetColumn->setListAreaOffset(offset);
+}
+
+Array<var> PresetBrowser::getListAreaOffset()
+{	
+	return presetColumn->getListAreaOffset();
 }
 
 void PresetBrowser::setColumnRowPadding(Array<var> padding)
@@ -1279,7 +1318,9 @@ void PresetBrowser::selectionChanged(int columnIndex, int /*rowIndex*/, const Fi
 		auto pc = new PresetBrowserColumn::ColumnListModel(this, 2, this);
 		pc->setDisplayDirectories(false);
 		presetColumn->setModel(pc, rootFile);
-
+		
+		loadPresetDatabase(file.getChildFile("UserPresets"));
+		presetColumn->setDatabase(getDataBase());
 		rebuildAllPresets();
 	}
 
