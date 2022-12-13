@@ -61,6 +61,18 @@
                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
                        stripLocalSymbols="1" defines="HISE_CI=1&#10;HI_RUN_UNIT_TESTS=1"
                        macOSDeploymentTarget="10.9"/>
+         <CONFIGURATION name="Debug with Faust" osxCompatibility="10.9 SDK" osxArchitecture="64BitIntel"
+                        isDebug="1" optimisation="1" targetName="HISE Debug" linkTimeOptimisation="0"
+                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
+                        macOSDeploymentTarget="10.9" headerPath="../../../../tools/faust/include"
+                        libraryPath="../../../../tools/faust/lib" defines="HISE_INCLUDE_FAUST=1&#10;HISE_FAUST_USE_LLVM_JIT=1&#10;HISE_INCLUDE_FAUST_JIT=1"
+                        binaryPath="Builds/MacOSX/build/Debug"/>
+         <CONFIGURATION name="Release with Faust" osxCompatibility="10.9 SDK" osxArchitecture="64BitIntel"
+                        isDebug="0" optimisation="3" targetName="HISE" linkTimeOptimisation="1"
+                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
+                        macOSDeploymentTarget="10.9" libraryPath="../../../../tools/faust/lib"
+                        binaryPath="Builds/MacOSX/build/Release" headerPath="../../../../tools/faust/include"
+                        defines="HISE_INCLUDE_FAUST=1&#10;HISE_FAUST_USE_LLVM_JIT=1&#10;HISE_INCLUDE_FAUST_JIT=1"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_gui_extra" path="../../JUCE/modules"/>
