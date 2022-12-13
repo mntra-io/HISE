@@ -6966,6 +6966,7 @@ void ScriptingApi::TransportHandler::Callback::callSync()
 
 struct ScriptingApi::TransportHandler::Wrapper
 {
+    API_VOID_METHOD_WRAPPER_1(TransportHandler, stopInternalClockOnExternalStop);
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setOnTempoChange);
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setOnBeatChange);
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setOnGridChange);
@@ -7001,6 +7002,7 @@ ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* 
 	ADD_API_METHOD_1(stopInternalClock);
 	ADD_API_METHOD_2(setEnableGrid);
 	ADD_API_METHOD_0(sendGridSyncOnNextCallback);
+    ADD_API_METHOD_1(stopInternalClockOnExternalStop);
 }
 
 ScriptingApi::TransportHandler::~TransportHandler()
@@ -7048,6 +7050,11 @@ void ScriptingApi::TransportHandler::setOnTransportChange(var sync, var f)
 		transportChangeCallbackAsync->call(play, {}, {}, true);
 	}
 	
+}
+
+void ScriptingApi::TransportHandler::stopInternalClockOnExternalStop(bool shouldStop)
+{
+    getMainController()->getMasterClock().setStopInternalClockOnExternalStop(shouldStop);
 }
 
 void ScriptingApi::TransportHandler::setOnSignatureChange(var sync, var f)
