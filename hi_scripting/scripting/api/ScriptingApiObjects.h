@@ -1057,6 +1057,9 @@ namespace ScriptingObjects
 		/** Sets the ring buffer properties from an object (Use the JSON from the Edit Properties popup). */
 		void setRingBufferProperties(var propertyData);
 
+		/** Copies the read buffer into a preallocated target buffer. The target buffer must have the same size. */
+		void copyReadBuffer(var targetBuffer);
+
         /** Enables or disables the ring buffer. */
         void setActive(bool shouldBeActive);
         
