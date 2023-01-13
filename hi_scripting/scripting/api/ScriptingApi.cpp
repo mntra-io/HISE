@@ -4636,6 +4636,8 @@ struct ScriptingApi::Synth::Wrapper
 	API_VOID_METHOD_WRAPPER_1(Synth, noteOffByEventId);
 	API_VOID_METHOD_WRAPPER_2(Synth, noteOffDelayedByEventId);
 	API_METHOD_WRAPPER_2(Synth, playNote);
+    API_VOID_METHOD_WRAPPER_3(Synth, playNoteFromUI);
+    API_VOID_METHOD_WRAPPER_2(Synth, noteOffFromUI);
 	API_METHOD_WRAPPER_4(Synth, playNoteWithStartOffset);
 	API_VOID_METHOD_WRAPPER_2(Synth, setAttribute);
 	API_METHOD_WRAPPER_1(Synth, getAttribute);
@@ -4712,6 +4714,8 @@ ScriptingApi::Synth::Synth(ProcessorWithScriptingContent *p, Message* messageObj
 	ADD_API_METHOD_2(noteOffDelayedByEventId);
 	ADD_API_METHOD_2(playNote);
 	ADD_API_METHOD_4(playNoteWithStartOffset);
+    ADD_API_METHOD_3(playNoteFromUI);
+    ADD_API_METHOD_2(noteOffFromUI);
 	ADD_API_METHOD_2(setAttribute);
 	ADD_API_METHOD_1(getAttribute);
 	ADD_API_METHOD_4(addNoteOn);
@@ -4851,6 +4855,19 @@ void ScriptingApi::Synth::addToFront(bool addToFront)
 void ScriptingApi::Synth::deferCallbacks(bool deferCallbacks)
 {
 	dynamic_cast<JavascriptMidiProcessor*>(getScriptProcessor())->deferCallbacks(deferCallbacks);
+}
+
+void ScriptingApi::Synth::playNoteFromUI(int channel, int noteNumber, int velocity)
+{
+    CustomKeyboardState& state = getScriptProcessor()->getMainController_()->getKeyboardState();
+    
+    state.injectMessage(MidiMessage::noteOn(channel, noteNumber, (float)velocity * 127.0f));
+}
+
+void ScriptingApi::Synth::noteOffFromUI(int channel, int noteNumber)
+{
+    CustomKeyboardState& state = getScriptProcessor()->getMainController_()->getKeyboardState();
+    state.injectMessage(MidiMessage::noteOff(channel, noteNumber));
 }
 
 int ScriptingApi::Synth::playNote(int noteNumber, int velocity)
@@ -6794,6 +6811,7 @@ struct ScriptingApi::Server::Wrapper
 	API_VOID_METHOD_WRAPPER_1(Server, setNumAllowedDownloads);
 	API_VOID_METHOD_WRAPPER_0(Server, cleanFinishedDownloads);
 	API_VOID_METHOD_WRAPPER_1(Server, setServerCallback);
+    API_METHOD_WRAPPER_0(Server, resendLastCall);
 	API_METHOD_WRAPPER_1(Server, isEmailAddress);
 };
 
@@ -6820,6 +6838,7 @@ ScriptingApi::Server::Server(JavascriptProcessor* jp_):
 	ADD_API_METHOD_0(getPendingDownloads);
 	ADD_API_METHOD_0(getPendingCalls);
 	ADD_API_METHOD_0(isOnline);
+    ADD_API_METHOD_0(resendLastCall);
 	ADD_API_METHOD_1(setNumAllowedDownloads);
 	ADD_API_METHOD_1(setServerCallback);
 	ADD_API_METHOD_0(cleanFinishedDownloads);
@@ -6866,6 +6885,16 @@ void ScriptingApi::Server::callWithPOST(String subURL, var parameters, var callb
 void ScriptingApi::Server::setHttpHeader(String newHeader)
 {
 	globalServer.setHttpHeader(newHeader);
+}
+
+bool ScriptingApi::Server::resendLastCall()
+{
+    if(isOnline())
+    {
+        return globalServer.resendLastCallback();
+    }
+    
+    return false;
 }
 
 var ScriptingApi::Server::downloadFile(String subURL, var parameters, var targetFile, var callback)

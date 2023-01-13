@@ -969,6 +969,12 @@ public:
 		/** Sends a note off message for the supplied event ID with the given delay in samples. */
 		void noteOffDelayedByEventId(int eventId, int timestamp);
 
+        /** Injects a note on to the incoming MIDI buffer (just as if the virtual keyboard was pressed. */
+        void playNoteFromUI(int channel, int noteNumber, int velocity);
+        
+        /** Injects a note off to the incoming MIDI buffer (similar to playNoteFromUI). */
+        void noteOffFromUI(int channel, int noteNumber);
+        
 		/** Plays a note and returns the event id. Be careful or you get stuck notes! */
 		int playNote(int noteNumber, int velocity);
 
@@ -1450,6 +1456,9 @@ public:
 		/** Adds the given String to the HTTP POST header. */
 		void setHttpHeader(String additionalHeader);
 
+        /** Resends the last call to the Server (eg. in case that there was no internet connection). */
+        bool resendLastCall();
+        
 		/** Downloads a file to the given target and returns a Download object. */
 		var downloadFile(String subURL, var parameters, var targetFile, var callback);
 
