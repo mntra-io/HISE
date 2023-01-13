@@ -161,7 +161,7 @@ static const unsigned char projectStandaloneTemplate_jucer_lines[] =
 "        <MODULEPATH id=\"hi_snex\" path=\"%HISE_PATH%\"/>\r\n"
 "      </MODULEPATHS>\r\n"
 "    </XCODE_MAC>\r\n"
-"   <LINUX_MAKE targetFolder=\"Builds/LinuxMakefile\" linuxExtraPkgConfig=\"%LINUX_GUI_LIBS%\" extraLinkerFlags=\"-no-pie&#10;-fuse-ld=mold&#10;%IPP_COMPILER_FLAGS%\" extraCompilerFlags=\"-fpermissive\" extraDefs=\"%EXTRA_DEFINES_LINUX%\">\r\n"
+"   <LINUX_MAKE targetFolder=\"Builds/LinuxMakefile\" linuxExtraPkgConfig=\"%LINUX_GUI_LIBS%\" extraLinkerFlags=\"-no-pie&#10;-flto=auto%&#10;-fuse-ld=gold&#10;%IPP_COMPILER_FLAGS%\" extraCompilerFlags=\"-fpermissive\" extraDefs=\"%EXTRA_DEFINES_LINUX%\">\r\n"
 "      <CONFIGURATIONS>\r\n"
 "        <CONFIGURATION name=\"Debug\" isDebug=\"1\" optimisation=\"1\" targetName=\"%NAME%\" headerPath=\"%IPP_HEADER%%FAUST_HEADER_PATH%\" libraryPath=\"%IPP_LIBRARY%\" linkTimeOptimisation=\"%LINK_TIME_OPTIMISATION%\"/>\r\n"
 "        <CONFIGURATION name=\"Release\" isDebug=\"0\" optimisation=\"3\" targetName=\"%NAME%\" headerPath=\"%IPP_HEADER%%FAUST_HEADER_PATH%\" libraryPath=\"%IPP_LIBRARY%\" linkTimeOptimisation=\"%LINK_TIME_OPTIMISATION%\"/>\r\n"
