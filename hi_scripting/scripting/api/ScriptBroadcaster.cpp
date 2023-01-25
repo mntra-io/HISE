@@ -3304,7 +3304,7 @@ void ScriptBroadcaster::attachToModuleParameter(var moduleIds, var parameterIds,
 
 	if (defaultValues.size() != 3)
 	{
-		reportScriptError("If you want to attach a broadcaster to mouse events, it needs three parameters (processorId, parameterId, value)");
+		reportScriptError("If you want to attach a broadcaster to module events, it needs three parameters (processorId, parameterId, value)");
 	}
 
 	auto synthChain = getScriptProcessor()->getMainController_()->getMainSynthChain();
