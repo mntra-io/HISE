@@ -522,7 +522,10 @@ void SampleMap::addSampleFromValueTree(ValueTree childWhichHasBeenAdded)
 		sampler->addSound(newSound);
 	}
 
-	dynamic_cast<ModulatorSamplerSound*>(newSound)->initPreloadBuffer((int)sampler->getAttribute(ModulatorSampler::PreloadSize));
+	if (!sampler->shouldPlayFromPurge())
+		dynamic_cast<ModulatorSamplerSound*>(newSound)->initPreloadBuffer((int)sampler->getAttribute(ModulatorSampler::PreloadSize));
+	else
+		dynamic_cast<ModulatorSamplerSound*>(newSound)->checkFileReference();
 
 	const bool isReversed = sampler->getAttribute(ModulatorSampler::Reversed) > 0.5f;
 
@@ -1046,7 +1049,7 @@ MonolithExporter::MonolithExporter(SampleMap* sampleMap_) :
 	if (GET_HISE_SETTING(sampleMap->getSampler(), HiseSettings::Project::SupportFullDynamicsHLAC))
 		getComboBoxComponent("normalise")->setSelectedItemIndex(2, dontSendNotification);
 
-	addComboBox("splitsize", { "1500 MB", "1700 MB", "2000 MB" }, "Split size");
+	addComboBox("splitsize", { "200 MB", "500 MB", "1000 MB", "1500 MB", "1700 MB", "2000 MB" }, "Split size");
 
 	getComboBoxComponent("splitsize")->setSelectedItemIndex(1, dontSendNotification);
 

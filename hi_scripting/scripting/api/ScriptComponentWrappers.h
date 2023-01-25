@@ -330,6 +330,8 @@ public:
 			c->repaint();
 	}
 
+    Processor *getProcessor();
+    
 protected:
 
 	/** You need to do this tasks in your constructor:
@@ -342,7 +344,7 @@ protected:
 	/** Call this constructor for a content without data management. */
 	ScriptCreatedComponentWrapper(ScriptContentComponent* content, ScriptComponent* sc);
 
-	Processor *getProcessor();
+	
 
 	ScriptingApi::Content *getContent();
 
@@ -508,7 +510,8 @@ public:
 	};
 
 	class LabelWrapper : public ScriptCreatedComponentWrapper,
-						 public LabelListener
+						 public LabelListener,
+                         public TextEditor::Listener
 	{
 	public:
 
@@ -525,9 +528,34 @@ public:
         
 		void editorShown(Label*, TextEditor&) override;
 		void editorHidden(Label*, TextEditor&) override;
-
+        
 	private:
 
+        struct ValueChecker: public Timer
+        {
+            ValueChecker(LabelWrapper& parent_, TextEditor& te):
+              parent(parent_),
+              currentEditor(&te)
+            {
+                startTimer(300);
+                
+                lastValue = te.getText();
+            }
+            
+            void timerCallback() override;
+            
+        
+            LabelWrapper& parent;
+            String lastValue;
+            Component::SafePointer<TextEditor> currentEditor;
+        };
+        
+        ScopedPointer<ValueChecker> valueChecker;
+        
+        bool sendValueEachKey = false;
+        
+        
+        
 		void updateEditability(ScriptingApi::Content::ScriptLabel * sl, MultilineLabel * l);
 		void updateFont(ScriptingApi::Content::ScriptLabel * sl, MultilineLabel * l);
 		void updateColours(MultilineLabel * l);

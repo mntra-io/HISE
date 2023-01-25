@@ -3252,6 +3252,7 @@ struct ScriptingApi::Sampler::Wrapper
 	API_METHOD_WRAPPER_2(Sampler, getSoundProperty);
 	API_VOID_METHOD_WRAPPER_3(Sampler, setSoundProperty);
 	API_VOID_METHOD_WRAPPER_2(Sampler, purgeMicPosition);
+	API_VOID_METHOD_WRAPPER_1(Sampler, purgeSampleSelection);
 	API_METHOD_WRAPPER_0(Sampler, getNumMicPositions);
 	API_METHOD_WRAPPER_1(Sampler, isMicPositionPurged);
 	API_METHOD_WRAPPER_1(Sampler, getMicPositionName);
@@ -3305,6 +3306,7 @@ sampler(sampler_)
 	ADD_API_METHOD_2(getSoundProperty);
 	ADD_API_METHOD_3(setSoundProperty);
 	ADD_API_METHOD_2(purgeMicPosition);
+	ADD_API_METHOD_1(purgeSampleSelection);
 	ADD_API_METHOD_1(getMicPositionName);
 	ADD_API_METHOD_0(getNumMicPositions);
 	ADD_API_METHOD_1(isMicPositionPurged);
@@ -3919,6 +3921,66 @@ void ScriptingApi::Sampler::purgeMicPosition(String micName, bool shouldBePurged
 
 	reportScriptError("Channel not found. Use getMicPositionName()");
     RETURN_VOID_IF_NO_THROW()
+}
+
+void ScriptingApi::Sampler::purgeSampleSelection(var selection)
+{
+	ReferenceCountedArray<ModulatorSamplerSound> soundsToBePurged;
+	ReferenceCountedArray<ModulatorSamplerSound> allSounds;
+
+	ModulatorSampler *s = static_cast<ModulatorSampler*>(sampler.get());
+
+	soundsToBePurged.ensureStorageAllocated(s->getNumSounds());
+	allSounds.ensureStorageAllocated(s->getNumSounds());
+
+	if (s == nullptr)
+	{
+		reportScriptError("purgeMicPosition() only works with Samplers.");
+		RETURN_VOID_IF_NO_THROW()
+	}
+
+	ModulatorSampler::SoundIterator iter(s);
+
+	while (auto sound = iter.getNextSound())
+		allSounds.add(sound);
+
+	if (selection.isArray())
+	{
+		for(auto e: *selection.getArray())
+			if (auto sObj = dynamic_cast<ScriptingObjects::ScriptingSamplerSound*>(e.getObject()))
+			{
+				auto mPtr = sObj->getSoundPtr();
+
+				if (!allSounds.contains(mPtr.get()))
+					reportScriptError("the sound " + mPtr->getPropertyAsString(SampleIds::FileName) + " is not loaded into the Sampler");
+
+				if(soundsToBePurged.contains(mPtr.get()))
+					reportScriptError("the sound " + mPtr->getPropertyAsString(SampleIds::FileName) + " exists more than once in the selection");
+
+				soundsToBePurged.add(mPtr);
+			}
+			else
+			{
+				reportScriptError("the array must contain only Sound objects");
+			}
+	}
+
+	auto f = [allSounds, soundsToBePurged](Processor* p)
+	{
+		auto s = static_cast<ModulatorSampler*>(p);
+
+		for (auto sound : allSounds)
+		{
+			sound->setPurged(soundsToBePurged.contains(sound));
+		}
+
+		s->refreshPreloadSizes();
+		s->refreshMemoryUsage();
+
+		return SafeFunctionCall::OK;
+	};
+
+	s->killAllVoicesAndCall(f, true);
 }
 
 String ScriptingApi::Sampler::getMicPositionName(int channelIndex)
@@ -4574,6 +4636,8 @@ struct ScriptingApi::Synth::Wrapper
 	API_VOID_METHOD_WRAPPER_1(Synth, noteOffByEventId);
 	API_VOID_METHOD_WRAPPER_2(Synth, noteOffDelayedByEventId);
 	API_METHOD_WRAPPER_2(Synth, playNote);
+    API_VOID_METHOD_WRAPPER_3(Synth, playNoteFromUI);
+    API_VOID_METHOD_WRAPPER_2(Synth, noteOffFromUI);
 	API_METHOD_WRAPPER_4(Synth, playNoteWithStartOffset);
 	API_VOID_METHOD_WRAPPER_2(Synth, setAttribute);
 	API_METHOD_WRAPPER_1(Synth, getAttribute);
@@ -4650,6 +4714,8 @@ ScriptingApi::Synth::Synth(ProcessorWithScriptingContent *p, Message* messageObj
 	ADD_API_METHOD_2(noteOffDelayedByEventId);
 	ADD_API_METHOD_2(playNote);
 	ADD_API_METHOD_4(playNoteWithStartOffset);
+    ADD_API_METHOD_3(playNoteFromUI);
+    ADD_API_METHOD_2(noteOffFromUI);
 	ADD_API_METHOD_2(setAttribute);
 	ADD_API_METHOD_1(getAttribute);
 	ADD_API_METHOD_4(addNoteOn);
@@ -4789,6 +4855,19 @@ void ScriptingApi::Synth::addToFront(bool addToFront)
 void ScriptingApi::Synth::deferCallbacks(bool deferCallbacks)
 {
 	dynamic_cast<JavascriptMidiProcessor*>(getScriptProcessor())->deferCallbacks(deferCallbacks);
+}
+
+void ScriptingApi::Synth::playNoteFromUI(int channel, int noteNumber, int velocity)
+{
+    CustomKeyboardState& state = getScriptProcessor()->getMainController_()->getKeyboardState();
+    
+    state.injectMessage(MidiMessage::noteOn(channel, noteNumber, (float)velocity * 127.0f));
+}
+
+void ScriptingApi::Synth::noteOffFromUI(int channel, int noteNumber)
+{
+    CustomKeyboardState& state = getScriptProcessor()->getMainController_()->getKeyboardState();
+    state.injectMessage(MidiMessage::noteOff(channel, noteNumber));
 }
 
 int ScriptingApi::Synth::playNote(int noteNumber, int velocity)
@@ -6283,51 +6362,51 @@ ApiClass(139)
 	ADD_INLINEABLE_API_METHOD_1(fromVec4);
 }
 
-int ScriptingApi::Colours::withAlpha(int colour, float alpha)
+int ScriptingApi::Colours::withAlpha(var colour, float alpha)
 {
-	Colour c((uint32)colour);
+	auto c = Content::Helpers::getCleanedObjectColour(colour);
 	return (int)c.withAlpha(jlimit(0.0f, 1.0f, alpha)).getARGB();
 }
 
-int ScriptingApi::Colours::withHue(int colour, float hue)
+int ScriptingApi::Colours::withHue(var colour, float hue)
 {
-	Colour c((uint32)colour);
+	auto c = Content::Helpers::getCleanedObjectColour(colour);
 	return (int)c.withHue(jlimit(0.0f, 1.0f, hue)).getARGB();
 }
 
-int ScriptingApi::Colours::withSaturation(int colour, float saturation)
+int ScriptingApi::Colours::withSaturation(var colour, float saturation)
 {
-	Colour c((uint32)colour);
+	auto c = Content::Helpers::getCleanedObjectColour(colour);
 	return (int)c.withSaturation(jlimit(0.0f, 1.0f, saturation)).getARGB();
 }
 
-int ScriptingApi::Colours::withBrightness(int colour, float brightness)
+int ScriptingApi::Colours::withBrightness(var colour, float brightness)
 {
-	Colour c((uint32)colour);
+	auto c = Content::Helpers::getCleanedObjectColour(colour);
 	return (int)c.withBrightness(jlimit(0.0f, 1.0f, brightness)).getARGB();
 }
 
-int ScriptingApi::Colours::withMultipliedAlpha(int colour, float factor)
+int ScriptingApi::Colours::withMultipliedAlpha(var colour, float factor)
 {
-	Colour c((uint32)colour);
+	auto c = Content::Helpers::getCleanedObjectColour(colour);
 	return (int)c.withMultipliedAlpha(jmax(0.0f, factor)).getARGB();
 }
 
-int ScriptingApi::Colours::withMultipliedSaturation(int colour, float factor)
+int ScriptingApi::Colours::withMultipliedSaturation(var colour, float factor)
 {
-	Colour c((uint32)colour);
+	auto c = Content::Helpers::getCleanedObjectColour(colour);
 	return (int)c.withMultipliedSaturation(jmax(0.0f, factor)).getARGB();
 }
 
-int ScriptingApi::Colours::withMultipliedBrightness(int colour, float factor)
+int ScriptingApi::Colours::withMultipliedBrightness(var colour, float factor)
 {
-	Colour c((uint32)colour);
+	auto c = Content::Helpers::getCleanedObjectColour(colour);
 	return (int)c.withMultipliedBrightness(jmax(0.0f, factor)).getARGB();
 }
 
-var ScriptingApi::Colours::toVec4(int colour)
+var ScriptingApi::Colours::toVec4(var colour)
 {
-	Colour c((uint32)colour);
+	auto c = Content::Helpers::getCleanedObjectColour(colour);
 
 	Array<var> v4;
 	v4.add(c.getFloatRed());
@@ -6353,10 +6432,10 @@ int ScriptingApi::Colours::fromVec4(var vec4)
 	return 0;
 }
 
-int ScriptingApi::Colours::mix(int colour1, int colour2, float alpha)
+int ScriptingApi::Colours::mix(var colour1, var colour2, float alpha)
 {
-	Colour c1((uint32)colour1);
-	Colour c2((uint32)colour2);
+	auto c1 = Content::Helpers::getCleanedObjectColour(colour1);
+	auto c2 = Content::Helpers::getCleanedObjectColour(colour2);
 
 	return c1.interpolatedWith(c2, alpha).getARGB();
 }
@@ -6732,6 +6811,7 @@ struct ScriptingApi::Server::Wrapper
 	API_VOID_METHOD_WRAPPER_1(Server, setNumAllowedDownloads);
 	API_VOID_METHOD_WRAPPER_0(Server, cleanFinishedDownloads);
 	API_VOID_METHOD_WRAPPER_1(Server, setServerCallback);
+    API_METHOD_WRAPPER_0(Server, resendLastCall);
 	API_METHOD_WRAPPER_1(Server, isEmailAddress);
 };
 
@@ -6758,6 +6838,7 @@ ScriptingApi::Server::Server(JavascriptProcessor* jp_):
 	ADD_API_METHOD_0(getPendingDownloads);
 	ADD_API_METHOD_0(getPendingCalls);
 	ADD_API_METHOD_0(isOnline);
+    ADD_API_METHOD_0(resendLastCall);
 	ADD_API_METHOD_1(setNumAllowedDownloads);
 	ADD_API_METHOD_1(setServerCallback);
 	ADD_API_METHOD_0(cleanFinishedDownloads);
@@ -6804,6 +6885,16 @@ void ScriptingApi::Server::callWithPOST(String subURL, var parameters, var callb
 void ScriptingApi::Server::setHttpHeader(String newHeader)
 {
 	globalServer.setHttpHeader(newHeader);
+}
+
+bool ScriptingApi::Server::resendLastCall()
+{
+    if(isOnline())
+    {
+        return globalServer.resendLastCallback();
+    }
+    
+    return false;
 }
 
 var ScriptingApi::Server::downloadFile(String subURL, var parameters, var targetFile, var callback)

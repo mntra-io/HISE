@@ -174,7 +174,7 @@ struct ScriptBroadcaster :  public ConstScriptingObject,
 	void attachToComponentMouseEvents(var componentIds, var callbackLevel, var optionalMetadata);
 
 	/** Registers this broadcaster to be notified when a context menu item from the given components was selected. */
-	void attachToContextMenu(var componentIds, var stateFunction, var itemList, var optionalMetadata);
+	void attachToContextMenu(var componentIds, var stateFunction, var itemList, var optionalMetadata, var useLeftClick);
 
     /** Registers this broadcaster to be notified when a complex data object changes. */
     void attachToComplexData(String dataTypeAndEvent, var moduleIds, var dataIndexes, var optionalMetadata);
@@ -208,6 +208,9 @@ struct ScriptBroadcaster :  public ConstScriptingObject,
 
     /** Guarantees that the synchronous execution of the listener callbacks can be called from the audio thread. */
     void setRealtimeMode(bool enableRealTimeMode);
+
+	/** If this broadcaster is attached to a context menu, calling this method will update the states for the menu items. */
+	void refreshContextMenuState();
 
 	// ===============================================================================
 
@@ -695,23 +698,7 @@ private:
 		MouseCallbackComponent::CallbackLevel level;
 	};
 
-	struct ContextMenuListener : public ListenerBase
-	{
-		struct InternalMenuListener;
-
-		ContextMenuListener(ScriptBroadcaster* parent, var componentIds, var stateFunction, const StringArray& itemList, const var& metadata);
-
-		Identifier getItemId() const override { RETURN_STATIC_IDENTIFIER("ContextMenu"); }
-
-		int getNumInitialCalls() const override { return 0; }
-		Array<var> getInitialArgs(int callIndex) const override { return {}; }
-
-		Result callItem(TargetBase*) override { return Result::ok(); }
-
-		Array<var> createChildArray() const override { return {}; }
-
-		OwnedArray<InternalMenuListener> items;
-	};
+	struct ContextMenuListener;
 
 	struct ComponentValueListener : public ListenerBase
 	{
@@ -731,6 +718,8 @@ private:
 		Array<var> createChildArray() const override;
 
 		OwnedArray<InternalListener> items;
+
+		
 	};
 
 	struct RadioGroupListener : public ListenerBase

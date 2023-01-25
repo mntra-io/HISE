@@ -2202,7 +2202,8 @@ ScriptComponent(base, name)
 	ADD_SCRIPT_PROPERTY(i04, "alignment");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ChoiceSelector);
 	ADD_SCRIPT_PROPERTY(i05, "editable");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 	ADD_SCRIPT_PROPERTY(i06, "multiline");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
-
+    ADD_SCRIPT_PROPERTY(i07, "updateEachKey"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+    
 	setDefaultValue(ScriptComponent::Properties::x, x);
 	setDefaultValue(ScriptComponent::Properties::y, y);
 	setDefaultValue(ScriptComponent::Properties::width, 128);
@@ -2218,6 +2219,7 @@ ScriptComponent(base, name)
 	setDefaultValue(Alignment, "centred");
 	setDefaultValue(Editable, true);
 	setDefaultValue(Multiline, false);
+    setDefaultValue(SendValueEachKeyPress, false);
 
 	handleDefaultDeactivatedProperties();
 
@@ -2948,6 +2950,7 @@ struct ScriptingApi::Content::ScriptAudioWaveform::Wrapper
 	API_METHOD_WRAPPER_0(ScriptAudioWaveform, getRangeEnd);
 	API_METHOD_WRAPPER_1(ScriptAudioWaveform, registerAtParent);
 	API_VOID_METHOD_WRAPPER_1(ScriptAudioWaveform, setDefaultFolder);
+	API_VOID_METHOD_WRAPPER_1(ScriptAudioWaveform, setPlaybackPosition);
 };
 
 ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScriptingContent *base, Content* /*parentContent*/, Identifier waveformName, int x, int y, int, int) :
@@ -2974,7 +2977,7 @@ ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScr
 	setDefaultValue(Properties::opaque, true);
 	setDefaultValue(Properties::showLines, false);
 	setDefaultValue(Properties::showFileName, true);
-	setDefaultValue(Properties::sampleIndex, -1);
+	setDefaultValue(Properties::sampleIndex, 0);
 	setDefaultValue(Properties::enableRange, true);
 
 	handleDefaultDeactivatedProperties();
@@ -2986,6 +2989,7 @@ ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScr
 	ADD_API_METHOD_0(getRangeEnd);
 	ADD_API_METHOD_1(setDefaultFolder);
 	ADD_API_METHOD_1(registerAtParent);
+	ADD_API_METHOD_1(setPlaybackPosition);
 }
 
 ScriptCreatedComponentWrapper * ScriptingApi::Content::ScriptAudioWaveform::createComponentWrapper(ScriptContentComponent *content, int index)
@@ -3091,10 +3095,20 @@ void ScriptingApi::Content::ScriptAudioWaveform::setDefaultFolder(var newDefault
 	}
 }
 
+void ScriptingApi::Content::ScriptAudioWaveform::setPlaybackPosition(double normalisedPosition)
+{
+	if (auto af = getCachedAudioFile())
+	{
+		auto sampleIndex = roundToInt((double)af->getCurrentRange().getLength() * normalisedPosition);
+		af->getUpdater().sendDisplayChangeMessage(sampleIndex, sendNotificationAsync, true);
+	}
+}
+
 struct ScriptingApi::Content::ScriptImage::Wrapper
 {
 	API_VOID_METHOD_WRAPPER_2(ScriptImage, setImageFile);
 	API_VOID_METHOD_WRAPPER_1(ScriptImage, setAlpha);
+	
 };
 
 ScriptingApi::Content::ScriptImage::ScriptImage(ProcessorWithScriptingContent *base, Content* /*parentContent*/, Identifier imageName, int x, int y, int , int ) :
@@ -4342,7 +4356,9 @@ struct ScriptingApi::Content::ScriptedViewport::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptedViewport, setTableColumns);
 	API_VOID_METHOD_WRAPPER_1(ScriptedViewport, setTableRowData);
 	API_VOID_METHOD_WRAPPER_1(ScriptedViewport, setTableCallback);
+	API_METHOD_WRAPPER_1(ScriptedViewport, getOriginalRowIndex);
 	API_VOID_METHOD_WRAPPER_1(ScriptedViewport, setEventTypesForValueCallback);
+	API_VOID_METHOD_WRAPPER_1(ScriptedViewport, setTableSortFunction);
 };
 
 ScriptingApi::Content::ScriptedViewport::ScriptedViewport(ProcessorWithScriptingContent* base, Content* /*parentContent*/, Identifier viewportName, int x, int y, int , int ):
@@ -4385,6 +4401,8 @@ ScriptingApi::Content::ScriptedViewport::ScriptedViewport(ProcessorWithScripting
 	ADD_API_METHOD_1(setTableColumns);
 	ADD_API_METHOD_1(setTableRowData);
 	ADD_API_METHOD_1(setTableCallback);
+	ADD_API_METHOD_1(getOriginalRowIndex);
+	ADD_API_METHOD_1(setTableSortFunction);
 	ADD_API_METHOD_1(setEventTypesForValueCallback);
 }
 
@@ -4619,6 +4637,26 @@ void ScriptingApi::Content::ScriptedViewport::setEventTypesForValueCallback(var 
 
 		if (!r.wasOk())
 			reportScriptError(r.getErrorMessage());
+	}
+	else
+		reportScriptError("You need to call setTableMode first");
+}
+
+void ScriptingApi::Content::ScriptedViewport::setTableSortFunction(var sortFunction)
+{
+	if (tableModel != nullptr)
+	{
+		tableModel->setTableSortFunction(sortFunction);
+	}
+	else
+		reportScriptError("You need to call setTableMode first");
+}
+
+int ScriptingApi::Content::ScriptedViewport::getOriginalRowIndex(int rowIndex)
+{
+	if (tableModel != nullptr)
+	{
+		return tableModel->getOriginalRowIndex(rowIndex);
 	}
 	else
 		reportScriptError("You need to call setTableMode first");

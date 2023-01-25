@@ -306,8 +306,9 @@ public:
 			WeakReference<WeakCallbackHolder::CallableObject> listener;
 			MouseCallbackComponent::CallbackLevel mouseCallbackLevel = MouseCallbackComponent::CallbackLevel::NoCallbacks;
 			StateFunction tickedFunction, enabledFunction, textFunction;
-			StringArray popupMenuItems;
-
+			std::function<StringArray()> popupMenuItemFunction = {};
+			ModifierKeys popupModifier = ModifierKeys::rightButtonModifier;
+			int delayMilliseconds = 0;
 		};
 
 		// ============================================================================================================
@@ -643,7 +644,16 @@ public:
 			sendValueListenerMessage();
 		}
 
-		void attachMouseListener(WeakCallbackHolder::CallableObject* obj, MouseCallbackComponent::CallbackLevel cl, const MouseListenerData::StateFunction& sf = {}, const MouseListenerData::StateFunction& ef = {}, const MouseListenerData::StateFunction& tf = {}, const StringArray& popupItems = {})
+		void removeMouseListener(WeakCallbackHolder::CallableObject* obj)
+		{
+			for (int i = 0; i < mouseListeners.size(); i++)
+			{
+				if (mouseListeners[i].listener == obj)
+					mouseListeners.remove(i--);
+			}
+		}
+
+		void attachMouseListener(WeakCallbackHolder::CallableObject* obj, MouseCallbackComponent::CallbackLevel cl, const MouseListenerData::StateFunction& sf = {}, const MouseListenerData::StateFunction& ef = {}, const MouseListenerData::StateFunction& tf = {}, const std::function<StringArray()>& popupItemFunction = {}, ModifierKeys pm = ModifierKeys::rightButtonModifier, int delayMs=0)
 		{
 			for (int i = 0; i < mouseListeners.size(); i++)
 			{
@@ -651,10 +661,8 @@ public:
 					mouseListeners.remove(i--);
 			}
 
-			mouseListeners.add({ obj, cl, sf, ef, tf, popupItems });
+			mouseListeners.add({ obj, cl, sf, ef, tf, popupItemFunction, pm, delayMs });
 		}
-
-		
 
 		const Array<MouseListenerData>& getMouseListeners() const { return mouseListeners; }
 
@@ -1182,6 +1190,7 @@ public:
 			Alignment,
 			Editable,
 			Multiline,
+            SendValueEachKeyPress,
 			numProperties
 		};
 
@@ -1608,6 +1617,9 @@ public:
 
 		/** Set the folder to be used when opening the file browser. */
 		void setDefaultFolder(var newDefaultFolder);
+
+		/** Sets the playback position. */
+		void setPlaybackPosition(double normalisedPosition);
 
 		// ========================================================================================================
 
@@ -2159,6 +2171,12 @@ public:
 
 		/** Set a function that is notified for all user interaction with the table. */
 		void setTableCallback(var callbackFunction);
+
+		/** Returns the index of the original data passed into setTableRowData. */
+		int getOriginalRowIndex(int rowIndex);
+
+		/** Sets a custom function that can be used in order to sort the table if the user clicks on a column header. */
+		void setTableSortFunction(var sortFunction);
 
 		/** Specify the event types that should trigger a setValue() callback. */
 		void setEventTypesForValueCallback(var eventTypeList);
