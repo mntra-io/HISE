@@ -100,6 +100,127 @@ void MouseCallbackComponent::setPopupMenuItems(const StringArray &newItemList)
 	itemList.addArray(newItemList);
 }
 
+juce::PopupMenu MouseCallbackComponent::parseFromStringArray(const StringArray& itemList, Array<int> activeIndexes, LookAndFeel* laf)
+{
+	PopupMenu m;
+
+	
+	m.setLookAndFeel(laf);
+
+	std::vector<MouseCallbackComponent::SubMenuList> subMenus;
+
+	for (int i = 0; i < itemList.size(); i++)
+	{
+		if (itemList[i].contains("::"))
+		{
+			String subMenuName = itemList[i].upToFirstOccurrenceOf("::", false, false);
+			String subMenuItem = itemList[i].fromFirstOccurrenceOf("::", false, false);
+
+			if (subMenuName.isEmpty() || subMenuItem.isEmpty()) continue;
+
+			bool subMenuExists = false;
+
+			for (size_t j = 0; j < subMenus.size(); j++)
+			{
+				if (std::get<0>(subMenus[j]) == subMenuName)
+				{
+					std::get<1>(subMenus[j]).add(subMenuItem);
+					subMenuExists = true;
+					break;
+				}
+			}
+
+			if (!subMenuExists)
+			{
+				StringArray sa;
+				sa.add(subMenuItem);
+				MouseCallbackComponent::SubMenuList item(subMenuName, sa);
+				subMenus.push_back(item);
+			}
+		}
+	}
+	if (subMenus.size() != 0)
+	{
+		int menuIndex = 1;
+
+		for (size_t i = 0; i < subMenus.size(); i++)
+		{
+			PopupMenu sub;
+
+			StringArray sa = std::get<1>(subMenus[i]);
+
+			bool subIsTicked = false;
+
+			for (int j = 0; j < sa.size(); j++)
+			{
+				if (sa[j].startsWith("**") && sa[j].endsWith("**"))
+				{
+					sub.addSectionHeader(sa[j].replace("**", ""));
+					continue;
+				}
+
+				if (sa[j] == "___")
+				{
+					sub.addSeparator();
+					continue;
+				}
+
+				if (sa[j] == "%SKIP%")
+				{
+					menuIndex++;
+					continue;
+				}
+
+				const bool isDeactivated = sa[j].startsWith("~~") && sa[j].endsWith("~~");
+				const String itemText = isDeactivated ? sa[j].replace("~~", "") : sa[j];
+
+				const bool isTicked = activeIndexes.contains((menuIndex - 1));
+
+				if (isTicked) subIsTicked = true;
+
+				sub.addItem(menuIndex, itemText, !isDeactivated, isTicked);
+
+
+				menuIndex++;
+			}
+
+			m.addSubMenu(std::get<0>(subMenus[i]), sub, true, nullptr, subIsTicked);
+		}
+	}
+	else
+	{
+		int menuIndex = 0;
+
+		for (int i = 0; i < itemList.size(); i++)
+		{
+			if (itemList[i] == "%SKIP%")
+			{
+				menuIndex++;
+				continue;
+			}
+
+			if (itemList[i].startsWith("**") && itemList[i].endsWith("**"))
+			{
+				m.addSectionHeader(itemList[i].replace("**", ""));
+				continue;
+			}
+
+			if (itemList[i] == "___")
+			{
+				m.addSeparator();
+				continue;
+			}
+
+			const bool isDeactivated = itemList[i].startsWith("~~") && itemList[i].endsWith("~~");
+			const String itemText = isDeactivated ? itemList[i].replace("~~", "") : itemList[i];
+			m.addItem(menuIndex + 1, itemText, !isDeactivated, activeIndexes.contains(menuIndex));
+			menuIndex++;
+		}
+	}
+
+	return m;
+}
+
 void MouseCallbackComponent::setUseRightClickForPopup(bool shouldUseRightClickForPopup)
 {
 	useRightClickForPopup = shouldUseRightClickForPopup;
@@ -135,8 +256,6 @@ void MouseCallbackComponent::removeAllCallbackListeners()
 {
 	listenerList.clear();
 }
-
-
 
 void MouseCallbackComponent::mouseDoubleClick(const MouseEvent &event)
 {
@@ -275,126 +394,15 @@ void MouseCallbackComponent::touchAndHold(Point<int> downPosition)
 	}
 }
 
+
+
 void MouseCallbackComponent::fillPopupMenu(const MouseEvent &event)
 {
-	PopupMenu m;
-
 	auto& plaf = getProcessor()->getMainController()->getGlobalLookAndFeel();
-	m.setLookAndFeel(&plaf);
 
-	std::vector<SubMenuList> subMenus;
-
+	auto m = parseFromStringArray(itemList, { activePopupId }, &plaf);
+	
 	ScopedValueSetter<bool>(currentlyShowingPopup, true, false);
-
-	for (int i = 0; i < itemList.size(); i++)
-	{
-		if (itemList[i].contains("::"))
-		{
-			String subMenuName = itemList[i].upToFirstOccurrenceOf("::", false, false);
-			String subMenuItem = itemList[i].fromFirstOccurrenceOf("::", false, false);
-
-			if (subMenuName.isEmpty() || subMenuItem.isEmpty()) continue;
-
-			bool subMenuExists = false;
-
-			for (size_t j = 0; j < subMenus.size(); j++)
-			{
-				if (std::get<0>(subMenus[j]) == subMenuName)
-				{
-					std::get<1>(subMenus[j]).add(subMenuItem);
-					subMenuExists = true;
-					break;
-				}
-			}
-
-			if (!subMenuExists)
-			{
-				StringArray sa;
-				sa.add(subMenuItem);
-				SubMenuList item(subMenuName, sa);
-				subMenus.push_back(item);
-			}
-		}
-	}
-	if (subMenus.size() != 0)
-	{
-		int menuIndex = 1;
-
-		for (size_t i = 0; i < subMenus.size(); i++)
-		{
-			PopupMenu sub;
-
-			StringArray sa = std::get<1>(subMenus[i]);
-
-			bool subIsTicked = false;
-
-			for (int j = 0; j < sa.size(); j++)
-			{
-				if (sa[j].startsWith("**") && sa[j].endsWith("**"))
-				{
-					sub.addSectionHeader(sa[j].replace("**", ""));
-					continue;
-				}
-
-				if (sa[j] == "___")
-				{
-					sub.addSeparator();
-					continue;
-				}
-
-				if (sa[j] == "%SKIP%")
-				{
-					menuIndex++;
-					continue;
-				}
-
-				const bool isDeactivated = sa[j].startsWith("~~") && sa[j].endsWith("~~");
-				const String itemText = isDeactivated ? sa[j].replace("~~", "") : sa[j];
-
-				const bool isTicked = (menuIndex - 1) == activePopupId;
-
-				if (isTicked) subIsTicked = true;
-
-				sub.addItem(menuIndex, itemText, !isDeactivated, isTicked);
-
-
-				menuIndex++;
-			}
-
-			m.addSubMenu(std::get<0>(subMenus[i]), sub, true, nullptr, subIsTicked);
-		}
-	}
-	else
-	{
-		int menuIndex = 0;
-
-		for (int i = 0; i < itemList.size(); i++)
-		{
-			if (itemList[i] == "%SKIP%")
-			{
-				menuIndex++;
-				continue;
-			}
-
-			if (itemList[i].startsWith("**") && itemList[i].endsWith("**"))
-			{
-				m.addSectionHeader(itemList[i].replace("**", ""));
-				continue;
-			}
-
-			if (itemList[i] == "___")
-			{
-				m.addSeparator();
-				continue;
-			}
-
-			const bool isDeactivated = itemList[i].startsWith("~~") && itemList[i].endsWith("~~");
-			const String itemText = isDeactivated ? itemList[i].replace("~~", "") : itemList[i];
-			m.addItem(menuIndex + 1, itemText, !isDeactivated, (menuIndex) == activePopupId);
-			menuIndex++;
-		}
-	}
-
 
 	int result = 0;
 
@@ -619,7 +627,7 @@ juce::var MouseCallbackComponent::getMouseCallbackObject(Component* c, const Mou
 		const bool isIn = c->getLocalBounds().contains(event.position.toInt());
 
 		e->setProperty(insideDrag, isIn ? 1 : 0);
-		e->setProperty(drag, event.getDistanceFromDragStart() > 4);
+		e->setProperty(drag, action == Action::Dragged);
 		e->setProperty(dragX, event.getDistanceFromDragStartX());
 		e->setProperty(dragY, event.getDistanceFromDragStartY());
 	}
@@ -1060,7 +1068,7 @@ void DrawActions::BlendingLayer::perform(Graphics& g)
 
 	blendSource = Image(Image::ARGB, actionImage.getWidth(), actionImage.getHeight(), true);
 
-	for (auto a : actions)
+	for (auto a : internalActions)
 	{
 		if (a->wantsCachedImage())
 			a->setCachedImage(blendSource, actionImage);
@@ -1068,6 +1076,7 @@ void DrawActions::BlendingLayer::perform(Graphics& g)
 
 	setCachedImage(blendSource, actionImage);
 	Graphics g2(blendSource);
+    g2.addTransform(AffineTransform::scale(scaleFactor));
 
 	ActionLayer::perform(g2);
 	gin::applyBlend(imageToBlendOn, blendSource, blendMode, alpha);
@@ -1124,13 +1133,16 @@ void DrawActions::Handler::Iterator::render(Graphics& g, Component* c)
 				}
 
 				Graphics g3(actionImage);
-				g3.addTransform(st);
-				action->setScaleFactor(sf);
+                
+                action->setScaleFactor(sf);
 				action->setCachedImage(actionImage, cachedImg);
 				action->perform(g3);
 
 				if (!action->wantsToDrawOnParent())
-					GraphicHelpers::quickDraw(cachedImg, actionImage);
+                {
+                    g2.drawImageAt(actionImage, 0, 0);
+                }
+					//GraphicHelpers::quickDraw(cachedImg, actionImage);
 			}
 			else
 				action->perform(g2);

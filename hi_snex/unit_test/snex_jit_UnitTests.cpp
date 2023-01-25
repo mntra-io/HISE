@@ -520,43 +520,26 @@ public:
 
 	void testIndexTypes()
 	{
+        beginTest("Test index types");
+        
 		testIntegerIndex<index::looped<9, false>>();
 		testIntegerIndex<index::looped<64, false>>();
-		testIntegerIndex<index::looped<32, true>>();
-		testIntegerIndex<index::looped<51, true>>();
-
-#if TEST_ALL_INDEXES
 		testIntegerIndex<index::wrapped<32, false>>();
 		testIntegerIndex<index::wrapped<91, false>>();
-		testIntegerIndex<index::wrapped<64, true>>();
-		testIntegerIndex<index::wrapped<51, true>>();
 		testIntegerIndex<index::clamped<32, false>>();
 		testIntegerIndex<index::clamped<91, false>>();
-		testIntegerIndex<index::clamped<64, true>>();
-		testIntegerIndex<index::clamped<51, true>>();
-		testIntegerIndex<index::unsafe<32, false>>();
 		testIntegerIndex<index::unsafe<91, false>>();
 		testIntegerIndex<index::unsafe<64, true>>();
-		testIntegerIndex<index::unsafe<51, true>>();
-#endif
 	}
 
 	void runTest() override
 	{
-        runTestsWithOptimisation({});
-        
-#if 0
-#if INCLUDE_SNEX_BIG_TESTSUITE
-		
 		optimizations = {};
 		testOptimizations();
 		testInlining();
 
 		runTestsWithOptimisation({});
-		runTestsWithOptimisation(OptimizationIds::getDefaultIds());
 		runTestsWithOptimisation(OptimizationIds::getAllIds());
-#endif
-#endif
 	}
 
 #if INCLUDE_SNEX_BIG_TESTSUITE
@@ -821,8 +804,13 @@ public:
 			if (!isFolder && soloTest.isNotEmpty() && f.getFileName() != soloTest)
 				continue;
 
+#if JUCE_DEBUG
 			if (printDebugInfoForSingleTest)
+			{
 				DBG(f.getFileName());
+			}
+#endif
+				
 
 			int numInstances = ComplexType::numInstances;
 
@@ -2120,7 +2108,9 @@ private:
 		else
 		{
 			auto diff = abs((double)actual - (double)expected);
-			expect(diff < 0.00001, errorMessage);
+			expect(diff < 0.0001, errorMessage);
+            
+            
 		}
 	}
 

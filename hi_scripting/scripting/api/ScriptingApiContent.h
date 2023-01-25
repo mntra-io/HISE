@@ -301,8 +301,13 @@ public:
 
 		struct MouseListenerData
 		{
+			using StateFunction = std::function<var(int)>;
+
 			WeakReference<WeakCallbackHolder::CallableObject> listener;
 			MouseCallbackComponent::CallbackLevel mouseCallbackLevel = MouseCallbackComponent::CallbackLevel::NoCallbacks;
+			StateFunction tickedFunction, enabledFunction, textFunction;
+			StringArray popupMenuItems;
+
 		};
 
 		// ============================================================================================================
@@ -366,6 +371,8 @@ public:
 
 			virtual void wantsToLoseFocus() {}
 
+            virtual void wantsToGrabFocus() {};
+            
 			JUCE_DECLARE_WEAK_REFERENCEABLE(ZLevelListener);
 		};
 
@@ -473,7 +480,7 @@ public:
 
 		void updateContentPropertyInternal(const Identifier& propertyId, const var& newValue);
 
-        void updateValueFromProcessorConnection();
+        
         
 		virtual void cancelPendingFunctions() {};
 
@@ -607,17 +614,24 @@ public:
 		/** Call this method in order to give away the focus for this component. */
 		void loseFocus();
 
+        /** Call this method in order to grab the keyboard focus for this component. */
+        void grabFocus();
+        
 		/** Attaches the local look and feel to this component. */
 		void setLocalLookAndFeel(var lafObject);
 
 		/** Manually sends a repaint message for the component. */
-		void sendRepaintMessage();
+		virtual void sendRepaintMessage();
 
 		/** Returns the ID of the component. */
 		String getId() const;
 
 		/** Toggles the visibility and fades a component using the global animator. */
 		void fadeComponent(bool shouldBeVisible, int milliseconds);
+
+		/** Updates the value from the processor connection. Call this method whenever the module state has changed and you want
+			to refresh the knob value to show the current state. */
+		void updateValueFromProcessorConnection();
 
 		// End of API Methods ============================================================================================
 
@@ -629,10 +643,18 @@ public:
 			sendValueListenerMessage();
 		}
 
-		void attachMouseListener(WeakCallbackHolder::CallableObject* obj, MouseCallbackComponent::CallbackLevel cl)
+		void attachMouseListener(WeakCallbackHolder::CallableObject* obj, MouseCallbackComponent::CallbackLevel cl, const MouseListenerData::StateFunction& sf = {}, const MouseListenerData::StateFunction& ef = {}, const MouseListenerData::StateFunction& tf = {}, const StringArray& popupItems = {})
 		{
-			mouseListeners.add({ obj, cl });
+			for (int i = 0; i < mouseListeners.size(); i++)
+			{
+				if (mouseListeners[i].listener == nullptr)
+					mouseListeners.remove(i--);
+			}
+
+			mouseListeners.add({ obj, cl, sf, ef, tf, popupItems });
 		}
+
+		
 
 		const Array<MouseListenerData>& getMouseListeners() const { return mouseListeners; }
 
@@ -850,6 +872,8 @@ public:
             ProcessorWithScriptingContent* p;
         };
         
+        
+        
 		struct GlobalCableConnection;
 
 		AsyncControlCallbackSender controlSender;
@@ -860,6 +884,26 @@ public:
 
 		Array<Identifier> scriptChangedProperties;
 
+        struct SubComponentNotifier: public AsyncUpdater
+        {
+            SubComponentNotifier(ScriptComponent& p):
+              parent(p)
+            {};
+            
+            void handleAsyncUpdate() override;
+            
+            struct Item
+            {
+                WeakReference<ScriptComponent> sc;
+                bool wasAdded;
+            };
+            
+            hise::SimpleReadWriteLock lock;
+            Array<Item> pendingItems;
+            
+            ScriptComponent& parent;
+        } subComponentNotifier;
+        
 		Array<WeakReference<SubComponentListener>> subComponentListeners;
 		Array<WeakReference<ZLevelListener>> zLevelListeners;
 
@@ -1013,6 +1057,7 @@ public:
 			radioGroup,
 			isMomentary,
 			enableMidiLearn,
+            setValueOnClick,
 			numProperties
 		};
 
@@ -1495,6 +1540,9 @@ public:
 		/** Returns a Buffer object containing all slider values (as reference). */
 		var getDataAsBuffer();
 
+		/** Sets a preallocated length that will retain values when the slider pack is resized below that limit. */
+		void setUsePreallocatedLength(int numMaxSliders);
+
 		// ========================================================================================================
 
 		void changed() override;
@@ -1689,6 +1737,8 @@ public:
 
 			virtual void animationChanged() = 0;
 
+            virtual void paintRoutineChanged() = 0;
+            
 			JUCE_DECLARE_WEAK_REFERENCEABLE(AnimationListener);
 		};
 
@@ -1771,7 +1821,11 @@ public:
 
 		DebugInformationBase::Ptr createChildElement(DebugWatchIndex index) const;
 
-		
+		void sendRepaintMessage() override
+		{
+			ScriptComponent::sendRepaintMessage();
+			repaint();
+		}
 
 		// ======================================================================================================== API Methods
 
@@ -2316,6 +2370,9 @@ public:
 	/** Creates an OpenGL framgent shader. */
 	var createShader(const String& fileName);
 
+    /** Creates an SVG object from the converted Base64 String. */
+    var createSVG(const String& base64String);
+    
 	/** Creates a MarkdownRenderer. */
 	var createMarkdownRenderer();
 

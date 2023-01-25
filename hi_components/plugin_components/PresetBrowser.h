@@ -54,6 +54,7 @@ class PresetBrowser :			 public Component,
 								 public ControlledObject,
 							     public QuasiModalComponent,
 								 public Button::Listener,
+                                 public ComponentWithAdditionalMouseProperties,
 								 public PresetBrowserColumn::ColumnListModel::Listener,
 								 public Label::Listener,
 								 public MainController::UserPresetHandler::Listener,
@@ -174,6 +175,8 @@ public:
 	void paint(Graphics& g);
 	void resized();
 
+    void attachAdditionalMouseProperties(const MouseEvent& e, var& obj) override;
+    
 	void tagCacheNeedsRebuilding() override {};
 	void tagSelectionChanged(const StringArray& newSelection) override;
 	void labelTextChanged(Label* l) override;
@@ -244,6 +247,7 @@ private:
 	void setListAreaOffset(Array<var> offset);
 	void setColumnRowPadding(Array<var> offset);
 	void setShowCloseButton(bool shouldShowButton);
+	Array<var> getListAreaOffset();
 
 	// ============================================================================================
 
@@ -268,7 +272,7 @@ private:
 	ScopedPointer<BetterLabel> noteLabel;
 	ScopedPointer<TagList> tagList;
 	ScopedPointer<ShapeButton> closeButton;
-	ScopedPointer<ShapeButton> favoriteButton;
+	ScopedPointer<TextButton> favoriteButton;
 	ScopedPointer<ModalWindow> modalInputWindow;
 
 	ScopedPointer<TextButton> saveButton;

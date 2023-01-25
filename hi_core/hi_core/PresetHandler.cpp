@@ -58,7 +58,7 @@ void UserPresetHelpers::saveUserPreset(ModulatorSynthChain *chain, const String&
     
 #if CONFIRM_PRESET_OVERWRITE
 
-	if (presetFile.existsAsFile() && PresetHandler::showYesNoWindow("Confirm overwrite", "Do you want to overwrite the preset (Press cancel to create a new user preset?"))
+	if (presetFile.existsAsFile() && (!MessageManager::getInstance()->isThisTheMessageThread() || PresetHandler::showYesNoWindow("Confirm overwrite", "Do you want to overwrite the preset (Press cancel to create a new user preset?")))
 	{
         existingNote = PresetBrowser::DataBaseHelpers::getNoteFromXml(presetFile);
         existingTags = PresetBrowser::DataBaseHelpers::getTagsFromXml(presetFile);
@@ -966,7 +966,17 @@ void ProjectHandler::createRSAKey() const
 
 	const int seeds[] = { r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt() };
 
-	RSAKey::createKeyPair(publicKey, privateKey, 512, seeds, 6);
+	auto existingFile = getWorkDirectory().getChildFile("RSA.xml");
+
+	if (existingFile.existsAsFile())
+	{
+		publicKey = RSAKey(getPublicKeyFromFile(existingFile));
+		privateKey = RSAKey(getPrivateKeyFromFile(existingFile));
+	}
+	else
+		RSAKey::createKeyPair(publicKey, privateKey, 512, seeds, 6);
+
+	
 
 	AlertWindowLookAndFeel wlaf;
 
@@ -1004,10 +1014,26 @@ void ProjectHandler::createRSAKey() const
 		xml->getChildByName("PublicKey")->setAttribute("value", publicKey.toString());
 		xml->getChildByName("PrivateKey")->setAttribute("value", privateKey.toString());
 
+		auto key = privateKey.toString();
+		auto numbers = StringArray::fromTokens(key, ",", "");
+
+		BigInteger b1, b2;
+		b1.parseString(numbers[0], 16);
+		b2.parseString(numbers[1], 16);
+
+		auto n1 = b1.toString(10);
+		auto n2 = b2.toString(10);
+
+		xml->addChildElement(new XmlElement("ServerKey1"));
+		xml->addChildElement(new XmlElement("ServerKey2"));
+
+		xml->getChildByName("ServerKey1")->setAttribute("value", n1);
+		xml->getChildByName("ServerKey2")->setAttribute("value", n2);
+		
 		File rsaFile = getWorkDirectory().getChildFile("RSA.xml");
 
 		rsaFile.replaceWithText(xml->createDocument(""));
-
+		
 		PresetHandler::showMessageWindow("RSA keys exported to file", "The RSA Keys are written to the file " + rsaFile.getFullPathName(), PresetHandler::IconType::Info);
 	}
 }
@@ -1053,7 +1079,11 @@ void ProjectHandler::checkActiveProject()
 
 juce::File ProjectHandler::getAppDataRoot()
 {
+#if HISE_USE_SYSTEM_APP_DATA_FOLDER
+    const File::SpecialLocationType appDataDirectoryToUse = File::commonApplicationDataDirectory;
+#else
 	const File::SpecialLocationType appDataDirectoryToUse = File::userApplicationDataDirectory;
+#endif
     
 #if JUCE_IOS
 	return File::getSpecialLocation(appDataDirectoryToUse).getChildFile("Application Support/");
@@ -1077,7 +1107,7 @@ juce::File ProjectHandler::getAppDataRoot()
 juce::File ProjectHandler::getAppDataDirectory()
 {
 
-#if USE_COMMON_APP_DATA_FOLDER
+#if HISE_USE_SYSTEM_APP_DATA_FOLDER
 	const File::SpecialLocationType appDataDirectoryToUse = File::commonApplicationDataDirectory;
 #else
 	const File::SpecialLocationType appDataDirectoryToUse = File::userApplicationDataDirectory;
@@ -1416,13 +1446,7 @@ String FrontendHandler::getLicenseKeyExtension()
 {
 
 #if JUCE_WINDOWS
-
-#if JUCE_64BIT
 	return ".license_x64";
-#else
-	return ".license_x86";
-#endif
-
 #else
 	return ".license";
 #endif
@@ -2018,33 +2042,38 @@ void PresetHandler::buildProcessorDataBase(Processor *root)
 
 	ScopedPointer<FactoryType> t = new ModulatorSynthChainFactoryType(NUM_POLYPHONIC_VOICES, root);
 
-	root->getMainController()->setAllowFlakyThreading(true);
+	
 
-	xml->addChildElement(buildFactory(t, "ModulatorSynths"));
+	{
+		MainController::ScopedBadBabysitter sb(root->getMainController());
 
-	t = new MidiProcessorFactoryType(root);
-	xml->addChildElement(buildFactory(t, "MidiProcessors"));
+		xml->addChildElement(buildFactory(t, "ModulatorSynths"));
 
-
-	t = new VoiceStartModulatorFactoryType(NUM_POLYPHONIC_VOICES, Modulation::GainMode, root);
-	xml->addChildElement(buildFactory(t, "VoiceStartModulators"));
-
-	t = new TimeVariantModulatorFactoryType(Modulation::GainMode, root);
-
-	xml->addChildElement(buildFactory(t, "TimeVariantModulators"));
-
-	t = new EnvelopeModulatorFactoryType(NUM_POLYPHONIC_VOICES, Modulation::GainMode, root);
-
-	xml->addChildElement(buildFactory(t, "EnvelopeModulators"));
-
-	t = new EffectProcessorChainFactoryType(NUM_POLYPHONIC_VOICES, root);
-
-	xml->addChildElement(buildFactory(t, "Effects"));
+		t = new MidiProcessorFactoryType(root);
+		xml->addChildElement(buildFactory(t, "MidiProcessors"));
 
 
-	t = nullptr;
+		t = new VoiceStartModulatorFactoryType(NUM_POLYPHONIC_VOICES, Modulation::GainMode, root);
+		xml->addChildElement(buildFactory(t, "VoiceStartModulators"));
 
-	root->getMainController()->setAllowFlakyThreading(false);
+		t = new TimeVariantModulatorFactoryType(Modulation::GainMode, root);
+
+		xml->addChildElement(buildFactory(t, "TimeVariantModulators"));
+
+		t = new EnvelopeModulatorFactoryType(NUM_POLYPHONIC_VOICES, Modulation::GainMode, root);
+
+		xml->addChildElement(buildFactory(t, "EnvelopeModulators"));
+
+		t = new EffectProcessorChainFactoryType(NUM_POLYPHONIC_VOICES, root);
+
+		xml->addChildElement(buildFactory(t, "Effects"));
+
+		t = nullptr;
+	}
+
+	
+
+	
 
 	xml->writeToFile(f, "");
 #endif

@@ -147,6 +147,8 @@ public:
 
 	void setPopupMenuItems(const StringArray &newItemList);
 
+	static PopupMenu parseFromStringArray(const StringArray& itemList, Array<int> activeIndexes, LookAndFeel* laf);
+
 	void setActivePopupItem(int menuId)
 	{
 		activePopupId = menuId;
@@ -419,7 +421,7 @@ struct DrawActions
 		void perform(Graphics& g) override;
 
 		float alpha;
-		ReferenceCountedArray<ActionBase> actions;
+		
 		Image blendSource;
 		gin::BlendMode blendMode;
 	};
@@ -791,6 +793,7 @@ private:
 	bool multiline;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MultilineLabel);
+    JUCE_DECLARE_WEAK_REFERENCEABLE(MultilineLabel);
 
 	// ================================================================================================================
 };
