@@ -676,8 +676,8 @@ bool PresetHandler::showYesNoWindow(const String &title, const String &message, 
 	nameWindow->setLookAndFeel(laf);
 	nameWindow->addCustomComponent(comp);
 	
-	nameWindow->addButton("Yes", 1, KeyPress(KeyPress::returnKey));
-	nameWindow->addButton("No", 0, KeyPress(KeyPress::escapeKey));
+	nameWindow->addButton("OK", 1, KeyPress(KeyPress::returnKey));
+	nameWindow->addButton("Cancel", 0, KeyPress(KeyPress::escapeKey));
 
 	return (nameWindow->runModalLoop() == 1);
     
