@@ -914,6 +914,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_VOID_METHOD_WRAPPER_1(Engine, setDiskMode);
 	API_METHOD_WRAPPER_0(Engine, getVersion);
 	API_METHOD_WRAPPER_0(Engine, getName);
+	API_METHOD_WRAPPER_3(Engine, getComplexDataReference);
 	API_METHOD_WRAPPER_0(Engine, getFilterModeList);
 	API_METHOD_WRAPPER_2(Engine, sortWithFunction);
 	API_METHOD_WRAPPER_1(Engine, isControllerUsedByAutomation);
@@ -1012,6 +1013,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_2(showErrorMessage);
 	ADD_API_METHOD_1(showMessage);
 	ADD_API_METHOD_1(setLowestKeyToDisplay);
+	ADD_API_METHOD_3(getComplexDataReference);
   ADD_API_METHOD_1(openWebsite);
 	ADD_API_METHOD_0(createUserPresetHandler);
 	ADD_API_METHOD_0(createMidiAutomationHandler);
@@ -2245,6 +2247,55 @@ juce::var ScriptingApi::Engine::getGlobalRoutingManager()
 	return var(new ScriptingObjects::GlobalRoutingManagerReference(getScriptProcessor()));
 }
 
+juce::var ScriptingApi::Engine::getComplexDataReference(String dataType, String moduleId, int index)
+{
+	auto p = ProcessorHelpers::getFirstProcessorWithName(getScriptProcessor()->getMainController_()->getMainSynthChain(), moduleId);
+
+	if (auto typed = dynamic_cast<ExternalDataHolder*>(p))
+	{
+		StringArray dataTypes =
+		{
+		  "Table",
+		  "SliderPack",
+		  "AudioFile",
+		  "FilterCoefficients",
+		  "DisplayBuffer",
+		};
+
+		auto idx = dataTypes.indexOf(dataType);
+
+		if (idx == -1)
+			reportScriptError("Illegal data type. Must be Table, SliderPack, AudioFile or DisplayBuffer");
+
+		auto dt = (ExternalData::DataType)idx;
+
+		if (auto obj = typed->getComplexBaseType(dt, index))
+		{
+			auto sp = getScriptProcessor();
+
+			switch (dt)
+			{
+			case ExternalData::DataType::Table: return var(new ScriptingObjects::ScriptTableData(sp, index, typed));
+			case ExternalData::DataType::SliderPack: return var(new ScriptingObjects::ScriptSliderPackData(sp, index, typed));
+			case ExternalData::DataType::AudioFile: return var(new ScriptingObjects::ScriptAudioFile(sp, index, typed));
+			case ExternalData::DataType::DisplayBuffer: return var(new ScriptingObjects::ScriptRingBuffer(sp, index, typed));
+			default: jassertfalse;
+			}
+		}
+		else
+		{
+			// Don't complain, just return undefined...
+			return var();
+		}
+	}
+	else
+	{
+		reportScriptError("Can't find module with ID " + moduleId);
+	}
+
+	RETURN_IF_NO_THROW(var());
+}
+
 var ScriptingApi::Engine::createBackgroundTask(String name)
 {
 	return new ScriptingObjects::ScriptBackgroundTask(getScriptProcessor(), name);
@@ -3234,6 +3285,48 @@ void ScriptingApi::Engine::logSettingWarning(const String& methodName) const
 	s << "Engine." << methodName << "() is deprecated. Use Settings." << methodName << "() instead.";
 	debugToConsole(unconst, s);
 }
+
+
+// ====================================================================================================== Time functions
+
+struct ScriptingApi::Date::Wrapper
+{
+	API_METHOD_WRAPPER_1(Date, getSystemTimeISO8601);
+	API_METHOD_WRAPPER_0(Date, getSystemTimeMs);
+	API_METHOD_WRAPPER_2(Date, millisecondsToISO8601);
+	API_METHOD_WRAPPER_1(Date, ISO8601ToMilliseconds);
+};
+
+ScriptingApi::Date::Date(ProcessorWithScriptingContent* s) :
+	ScriptingObject(s),
+	ApiClass(0)
+{
+	ADD_API_METHOD_1(getSystemTimeISO8601);
+	ADD_API_METHOD_0(getSystemTimeMs);
+	ADD_API_METHOD_2(millisecondsToISO8601);
+	ADD_API_METHOD_1(ISO8601ToMilliseconds);
+}
+
+String ScriptingApi::Date::getSystemTimeISO8601(bool includeDividerCharacters)
+{
+	return Time::getCurrentTime().toISO8601(includeDividerCharacters);
+}
+
+int64 ScriptingApi::Date::getSystemTimeMs()
+{
+	return Time::getCurrentTime().toMilliseconds();
+}
+
+String ScriptingApi::Date::millisecondsToISO8601(int64 miliseconds, bool includeDividerCharacters)
+{
+	return Time(miliseconds).toISO8601(includeDividerCharacters);
+}
+
+int64 ScriptingApi::Date::ISO8601ToMilliseconds(String iso8601)
+{
+    return juce::Time::fromISO8601(iso8601).toMilliseconds();
+}
+
 
 // ====================================================================================================== Sampler functions
 
@@ -6811,6 +6904,7 @@ struct ScriptingApi::Server::Wrapper
 	API_VOID_METHOD_WRAPPER_1(Server, setNumAllowedDownloads);
 	API_VOID_METHOD_WRAPPER_0(Server, cleanFinishedDownloads);
 	API_VOID_METHOD_WRAPPER_1(Server, setServerCallback);
+    API_VOID_METHOD_WRAPPER_1(Server, setTimeoutMessageString);
     API_METHOD_WRAPPER_0(Server, resendLastCall);
 	API_METHOD_WRAPPER_1(Server, isEmailAddress);
 };
@@ -6843,11 +6937,17 @@ ScriptingApi::Server::Server(JavascriptProcessor* jp_):
 	ADD_API_METHOD_1(setServerCallback);
 	ADD_API_METHOD_0(cleanFinishedDownloads);
 	ADD_API_METHOD_1(isEmailAddress);
+    ADD_API_METHOD_1(setTimeoutMessageString);
 }
 
 void ScriptingApi::Server::setBaseURL(String url)
 {
 	globalServer.setBaseURL(url);
+}
+
+void ScriptingApi::Server::setTimeoutMessageString(String timeoutMessage)
+{
+    globalServer.setTimeoutMessageString(timeoutMessage);
 }
 
 void ScriptingApi::Server::callWithGET(String subURL, var parameters, var callback)
