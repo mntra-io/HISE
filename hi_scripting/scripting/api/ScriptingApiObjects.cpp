@@ -193,6 +193,7 @@ struct ScriptingObjects::ScriptFile::Wrapper
 	API_METHOD_WRAPPER_1(ScriptFile, startAsProcess);
 	API_METHOD_WRAPPER_0(ScriptFile, getHash);
 	API_METHOD_WRAPPER_1(ScriptFile, toString);
+	API_METHOD_WRAPPER_0(ScriptFile, loadMidiMetadata);
 	API_METHOD_WRAPPER_0(ScriptFile, isFile);
 	API_METHOD_WRAPPER_0(ScriptFile, isDirectory);
 	API_METHOD_WRAPPER_0(ScriptFile, hasWriteAccess);
@@ -268,6 +269,7 @@ ScriptingObjects::ScriptFile::ScriptFile(ProcessorWithScriptingContent* p, const
 	ADD_API_METHOD_0(loadAsObject);
 	ADD_API_METHOD_0(loadAsAudioFile);
 	ADD_API_METHOD_1(loadEncryptedObject);
+	ADD_API_METHOD_0(loadMidiMetadata);
 	ADD_API_METHOD_1(rename);
 	ADD_API_METHOD_1(move);
 	ADD_API_METHOD_1(copy);
@@ -674,7 +676,7 @@ juce::var ScriptingObjects::ScriptFile::loadAsMidiFile(int trackIndex)
 
 		auto list = newSequence->getEventList(44100.0, 120.0);
 
-		auto obj = ValueTreeConverters::convertValueTreeToDynamicObject(v);
+		auto obj = newSequence->getTimeSignature().getAsJSON();
 
 		Array<var> eventList;
 		eventList.ensureStorageAllocated(list.size());
@@ -820,6 +822,23 @@ juce::var ScriptingObjects::ScriptFile::loadAsAudioFile() const
 
 		return var(channels);
 	}
+}
+
+juce::var ScriptingObjects::ScriptFile::loadMidiMetadata() const
+{
+	FileInputStream fis(f);
+
+	MidiFile mf;
+
+	if (f.existsAsFile() && mf.readFrom(fis))
+	{
+		hise::HiseMidiSequence::Ptr p = new HiseMidiSequence();
+		p->loadFrom(mf);
+
+		return p->getTimeSignature().getAsJSON();
+	}
+
+	return var();
 }
 
 String ScriptingObjects::ScriptFile::getRelativePathFrom(var otherFile)
@@ -5450,16 +5469,7 @@ int ScriptingObjects::ScriptedMidiPlayer::getNumSequences()
 	return 0;
 }
 
-#define DECLARE_ID(x) static Identifier x(#x);
-namespace TimeSigIds
-{
-DECLARE_ID(Nominator);
-DECLARE_ID(Denominator);
-DECLARE_ID(NumBars);
-DECLARE_ID(LoopStart);
-DECLARE_ID(LoopEnd);
-}
-#undef DECLARE_ID
+
 
 var ScriptingObjects::ScriptedMidiPlayer::getTimeSignature()
 {
@@ -5467,14 +5477,7 @@ var ScriptingObjects::ScriptedMidiPlayer::getTimeSignature()
 	{
 		auto sig = getSequence()->getTimeSignature();
 
-		auto newObj = new DynamicObject();
-		newObj->setProperty(TimeSigIds::Nominator, sig.nominator);
-		newObj->setProperty(TimeSigIds::Denominator, sig.denominator);
-		newObj->setProperty(TimeSigIds::NumBars, sig.numBars);
-		newObj->setProperty(TimeSigIds::LoopStart, sig.normalisedLoopRange.getStart());
-		newObj->setProperty(TimeSigIds::LoopEnd, sig.normalisedLoopRange.getEnd());
-
-		return var(newObj);
+		return sig.getAsJSON();
 	}
 
 	return {};
