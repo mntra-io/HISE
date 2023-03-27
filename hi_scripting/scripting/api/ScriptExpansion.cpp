@@ -2556,7 +2556,7 @@ void ExpansionEncodingWindow::run()
 			b.addFile(hxiFile, 0);
 
 			String zipName;
-			zipName << mData[ExpansionIds::Name].toString();
+			zipName << mData[ExpansionIds::Name].toString().toLowerCase().replaceCharacter(' ', '_');
 			zipName << "_data";
 			zipName << "_" << mData[ExpansionIds::Version].toString().replaceCharacter('.', '_');
 
@@ -2618,7 +2618,8 @@ void ExpansionEncodingWindow::threadFinished()
 	{
 		if (projectExport && rhapsodyOutput.existsAsFile())
 		{
-			rhapsodyOutput.revealToUser();
+            if(!CompileExporter::isExportingFromCommandLine())
+                rhapsodyOutput.revealToUser();
 		}
 
 		if(!projectExport)
