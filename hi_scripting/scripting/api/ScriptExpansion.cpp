@@ -175,7 +175,7 @@ void ScriptUserPresetHandler::setCustomAutomation(var automationData)
 				auto nd = new CustomData(newList, getScriptProcessor()->getMainController_(), index++, ad);
 
 				if (!nd->r.wasOk())
-					reportScriptError(nd->id.toString() + " - " + nd->r.getErrorMessage());
+					reportScriptError(nd->id + " - " + nd->r.getErrorMessage());
 
 				newList.add(nd);
 			}
@@ -406,7 +406,7 @@ juce::var ScriptUserPresetHandler::createObjectForAutomationValues()
 		auto ad = uph.getCustomAutomationData(i);
 
 		DynamicObject* obj = new DynamicObject();
-		obj->setProperty("id", ad->id.toString());
+		obj->setProperty("id", ad->id);
 		obj->setProperty("value", ad->lastValue);
 		list.add(var(obj));
 	}
@@ -2754,7 +2754,7 @@ juce::File ScriptUnlocker::getLicenseKeyFile()
 	auto c = GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::User::Company).toString();
 	auto p = GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::Project::Name).toString();
 
-	return ProjectHandler::getAppDataRoot().getChildFile(c).getChildFile(p).getChildFile(p).withFileExtension(FrontendHandler::getLicenseKeyExtension());
+	return ProjectHandler::getAppDataRoot(getMainController()).getChildFile(c).getChildFile(p).getChildFile(p).withFileExtension(FrontendHandler::getLicenseKeyExtension());
 #else
 	return FrontendHandler::getLicenseKey();
 #endif

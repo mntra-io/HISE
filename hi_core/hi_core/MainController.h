@@ -639,7 +639,7 @@ public:
 			bool isConnectedToComponent() const;
 
 			const int index;
-			Identifier id;
+			String id;
 			float lastValue = 0.0f;
 			bool allowMidi = true;
 			bool allowHost = true;
@@ -2094,7 +2094,7 @@ private:
 
     std::atomic<float> usagePercent;
 
-	bool enablePluginParameterUpdate;
+	bool enablePluginParameterUpdate = true;
 
     double globalPitchFactor;
     
