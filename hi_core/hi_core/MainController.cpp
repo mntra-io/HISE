@@ -380,7 +380,12 @@ void MainController::loadPresetInternal(const ValueTree& v)
 			if(USE_BACKEND || FullInstrumentExpansion::isEnabled(this))
 				getLockFreeDispatcher().callOnMessageThreadAfterSuspension(synthChain, f);
 
+            if(!isInitialised())
+                getSampleManager().clearPreloadFlag();
+            
 			allNotesOff(true);
+            
+            
 		}
 		catch (String& errorMessage)
 		{
@@ -1305,6 +1310,9 @@ void MainController::storePlayheadIntoDynamicObject(AudioPlayHead::CurrentPositi
 
 void MainController::prepareToPlay(double sampleRate_, int samplesPerBlock)
 {
+    if(sampleRate_ <= 0.0 || samplesPerBlock <= 0)
+        return;
+    
 	auto oldSampleRate = processingSampleRate;
 	auto oldBlockSize = processingBufferSize.get();
 
