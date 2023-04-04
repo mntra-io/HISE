@@ -639,7 +639,7 @@ public:
 			bool isConnectedToComponent() const;
 
 			const int index;
-			Identifier id;
+			String id;
 			float lastValue = 0.0f;
 			bool allowMidi = true;
 			bool allowHost = true;
@@ -1538,6 +1538,8 @@ public:
 
 	ApplicationCommandManager *getCommandManager() { return mainCommandManager; };
 
+	LambdaBroadcaster<double, int>& getSpecBroadcaster() { return specBroadcaster; }
+
     const CriticalSection& getLock() const;
     
 	const CriticalSection& getLockNew() const { return processLock; };
@@ -1933,6 +1935,8 @@ private:
 	ScopedPointer<RLottieManager> rLottieManager;
 #endif
 
+	LambdaBroadcaster<double, int> specBroadcaster;
+
 	Array<WeakReference<ControlledObject>> registeredObjects;
 
 	int maxEventTimestamp = 0;
@@ -2090,7 +2094,7 @@ private:
 
     std::atomic<float> usagePercent;
 
-	bool enablePluginParameterUpdate;
+	bool enablePluginParameterUpdate = true;
 
     double globalPitchFactor;
     

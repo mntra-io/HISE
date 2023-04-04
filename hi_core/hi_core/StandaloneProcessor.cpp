@@ -87,6 +87,15 @@ void AudioProcessorDriver::resetToDefault()
 	}
 }
 
+String GlobalSettingManager::getHiseVersion()
+{
+#if USE_BACKEND
+	return ProjectInfo::versionString;
+#else
+	return FrontendHandler::getHiseVersion();
+#endif
+}
+
 void GlobalSettingManager::setDiskMode(int mode)
 {
 	diskMode = mode;
@@ -394,7 +403,7 @@ File GlobalSettingManager::getSettingDirectory()
 #if ENABLE_APPLE_SANDBOX
 	return NativeFileHandler::getAppDataDirectory().getChildFile("Resources/");
 #else
-	return NativeFileHandler::getAppDataDirectory();
+	return NativeFileHandler::getAppDataDirectory(nullptr);
 #endif
 
 }

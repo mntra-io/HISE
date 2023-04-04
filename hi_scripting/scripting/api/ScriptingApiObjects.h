@@ -400,6 +400,9 @@ namespace ScriptingObjects
 		/** Loads the given file as audio file. */
 		var loadAsAudioFile() const;
 
+        /** Tries to parse the metadata from the audio file (channel amount, length, samplerate, etc) and returns a JSON object if sucessful. */
+        var loadAudioMetadata() const;
+        
 		/** Tries to parse the metadata of the MIDI file and returns a JSON object if successful. */
 		var loadMidiMetadata() const;
 
@@ -748,6 +751,9 @@ namespace ScriptingObjects
 		/** Connects the script processor to an external script. */
 		bool connectToScript(int buildIndex, String relativePath);
 
+        /** Clears all child processors of the chain in the module with the given build index*/
+        int clearChildren(int buildIndex, int chainIndex);
+        
 		/** Returns a typed reference for the module with the given build index. */
 		var get(int buildIndex, String interfaceType);
 

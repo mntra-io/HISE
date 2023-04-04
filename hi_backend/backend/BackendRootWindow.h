@@ -74,7 +74,7 @@ public:
     
 	File getKeyPressSettingFile() const override
 	{
-		return ProjectHandler::getAppDataDirectory().getChildFile("KeyPressMapping.xml");
+		return ProjectHandler::getAppDataDirectory(nullptr).getChildFile("KeyPressMapping.xml");
 	}
 
 	void initialiseAllKeyPresses() override;
@@ -246,6 +246,8 @@ public:
 
 private:
 
+	friend class ProjectImporter;
+
 	FloatingTabComponent* getCodeTabs();
 
 	bool learnMode = false;
@@ -344,7 +346,11 @@ struct BackendPanelHelpers
 
 	static bool isMainWorkspaceActive(FloatingTile* root);
 
-	
+#if JUCE_LINUX
+    // This might keep the fonts alive and increase the text
+    // rendering performance...
+    hise::LinuxFontHandler::Instance fontHandler;
+#endif
 
 };
 

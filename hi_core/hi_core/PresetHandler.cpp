@@ -766,27 +766,17 @@ void ProjectHandler::createNewProject(File &workingDirectory, Component* )
             FileChooser fc("Create new project directory");
             
             if (fc.browseForDirectory())
-            {
                 workingDirectory = fc.getResult();
-            }
             else
-            {
                 return;
-            }
 		}
 	}
 
 	for (int i = 0; i < (int)SubDirectories::numSubDirectories; i++)
 	{
 		File subDirectory = workingDirectory.getChildFile(getIdentifier((SubDirectories)i));
-
 		subDirectory.createDirectory();
-
-		
-
 	}
-
-	setWorkingProject(workingDirectory);
 }
 
 juce::Result ProjectHandler::setWorkingProject(const File &workingDirectory, bool checkDirectories)
@@ -840,7 +830,7 @@ juce::Result ProjectHandler::setWorkingProject(const File &workingDirectory, boo
 		xml->addChildElement(child);
 	}
 
-	getAppDataDirectory().getChildFile("projects.xml").replaceWithText(xml->createDocument(""));
+	getAppDataDirectory(nullptr).getChildFile("projects.xml").replaceWithText(xml->createDocument(""));
 
 	ScopedLock sl(listeners.getLock());
 
@@ -857,7 +847,7 @@ juce::Result ProjectHandler::setWorkingProject(const File &workingDirectory, boo
 
 void ProjectHandler::restoreWorkingProjects()
 {
-	auto xml = XmlDocument::parse(getAppDataDirectory().getChildFile("projects.xml"));
+	auto xml = XmlDocument::parse(getAppDataDirectory(nullptr).getChildFile("projects.xml"));
 
 	if (xml != nullptr)
 	{
@@ -874,7 +864,7 @@ void ProjectHandler::restoreWorkingProjects()
 
 		setWorkingProject(current, false);
 
-		jassert(currentWorkDirectory.exists() && currentWorkDirectory.isDirectory());
+		
 	}
 }
 
@@ -959,82 +949,104 @@ struct FileModificationComparator
 
 void ProjectHandler::createRSAKey() const
 {
-	RSAKey publicKey;
-	RSAKey privateKey;
-
-	Random r;
-
-	const int seeds[] = { r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt() };
-
-	auto existingFile = getWorkDirectory().getChildFile("RSA.xml");
-
-	if (existingFile.existsAsFile())
-	{
-		publicKey = RSAKey(getPublicKeyFromFile(existingFile));
-		privateKey = RSAKey(getPrivateKeyFromFile(existingFile));
-	}
-	else
-		RSAKey::createKeyPair(publicKey, privateKey, 512, seeds, 6);
-
-	
-
 	AlertWindowLookAndFeel wlaf;
 
-	AlertWindow w("RSA Keys", "You can use this key pair for the copy protection", AlertWindow::InfoIcon);
+	AlertWindow aw("Create RSA Keys", "Generate an RSA key pair of the desired bit length\n(Higher bit length can take time)", AlertWindow::AlertIconType::NoIcon);
 
-	w.setLookAndFeel(&wlaf);
+	aw.setLookAndFeel(&wlaf);
+	
+	aw.addComboBox("keyLength", StringArray(), "Select bit length");
 
-	w.addTextEditor("publicKey", publicKey.toString(), "Public Key", false);
-	w.getTextEditor("publicKey")->setReadOnly(true);
+	ComboBox* b = aw.getComboBoxComponent("keyLength");
 
-	w.addTextEditor("privateKey", privateKey.toString(), "Private Key", false);
-	w.getTextEditor("privateKey")->setReadOnly(true);
+    StringArray bitLength = { "512", "1024", "2048" };
 
-	w.addButton("OK", 0, KeyPress(KeyPress::returnKey));
-	w.addButton("Copy to clipboard", 1);
-	w.addButton("Save to project folder", 2);
+	b->addItemList(bitLength, 1);
+	b->setSelectedItemIndex(0);
+	GlobalHiseLookAndFeel::setDefaultColours(*b);
 
-	const int result = w.runModalLoop();
+	aw.addButton("Create", 1, KeyPress(KeyPress::returnKey));
+	aw.addButton("Cancel", 0, KeyPress(KeyPress::escapeKey));
 
-	String text = "public: " + publicKey.toString() + "\n";
-	text << "private: " << privateKey.toString();
+	const int awResult = aw.runModalLoop();
 
-	if (result == 1)
+	if (awResult == 1)
 	{
-		SystemClipboard::copyTextToClipboard(text);
-		PresetHandler::showMessageWindow("RSA Keys copied to clipboard", "The RSA keys are copied to the clipboard.", PresetHandler::IconType::Info);
-	}
-	else if (result == 2)
-	{
-		ScopedPointer<XmlElement> xml = new XmlElement("KeyPair");
+        RSAKey publicKey;
+		RSAKey privateKey;
 
-		xml->addChildElement(new XmlElement("PublicKey"));
-		xml->addChildElement(new XmlElement("PrivateKey"));
+		Random r;
+        
+        const int l = bitLength[b->getSelectedItemIndex()].getIntValue();
+        
+		const int seeds[] = { r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt() };
 
-		xml->getChildByName("PublicKey")->setAttribute("value", publicKey.toString());
-		xml->getChildByName("PrivateKey")->setAttribute("value", privateKey.toString());
+		auto existingFile = getWorkDirectory().getChildFile("RSA.xml");
 
-		auto key = privateKey.toString();
-		auto numbers = StringArray::fromTokens(key, ",", "");
+		if (existingFile.existsAsFile())
+		{
+			publicKey = RSAKey(getPublicKeyFromFile(existingFile));
+			privateKey = RSAKey(getPrivateKeyFromFile(existingFile));
+		}
+		else
+			RSAKey::createKeyPair(publicKey, privateKey, l, seeds, 6);
 
-		BigInteger b1, b2;
-		b1.parseString(numbers[0], 16);
-		b2.parseString(numbers[1], 16);
+		AlertWindow w("RSA Keys", "You can use this key pair for the copy protection", AlertWindow::InfoIcon);
 
-		auto n1 = b1.toString(10);
-		auto n2 = b2.toString(10);
+		w.setLookAndFeel(&wlaf);
 
-		xml->addChildElement(new XmlElement("ServerKey1"));
-		xml->addChildElement(new XmlElement("ServerKey2"));
+        w.addTextEditor("publicKey", publicKey.toString(), "Public Key", false);
+		w.getTextEditor("publicKey")->setReadOnly(true);
 
-		xml->getChildByName("ServerKey1")->setAttribute("value", n1);
-		xml->getChildByName("ServerKey2")->setAttribute("value", n2);
-		
-		File rsaFile = getWorkDirectory().getChildFile("RSA.xml");
+		w.addTextEditor("privateKey", privateKey.toString(), "Private Key", false);
+		w.getTextEditor("privateKey")->setReadOnly(true);
 
-		rsaFile.replaceWithText(xml->createDocument(""));
-		
-		PresetHandler::showMessageWindow("RSA keys exported to file", "The RSA Keys are written to the file " + rsaFile.getFullPathName(), PresetHandler::IconType::Info);
+		w.addButton("OK", 0, KeyPress(KeyPress::returnKey));
+		w.addButton("Copy to clipboard", 1);
+		w.addButton("Save to project folder", 2);
+
+		const int result = w.runModalLoop();
+
+		String text = "public: " + publicKey.toString() + "\n";
+		text << "private: " << privateKey.toString();
+
+		if (result == 1)
+		{
+			SystemClipboard::copyTextToClipboard(text);
+			PresetHandler::showMessageWindow("RSA Keys copied to clipboard", "The RSA keys are copied to the clipboard.", PresetHandler::IconType::Info);
+		}
+		else if (result == 2)
+		{
+			ScopedPointer<XmlElement> xml = new XmlElement("KeyPair");
+
+			xml->addChildElement(new XmlElement("PublicKey"));
+			xml->addChildElement(new XmlElement("PrivateKey"));
+
+			xml->getChildByName("PublicKey")->setAttribute("value", publicKey.toString());
+			xml->getChildByName("PrivateKey")->setAttribute("value", privateKey.toString());
+
+			auto key = privateKey.toString();
+			auto numbers = StringArray::fromTokens(key, ",", "");
+
+			BigInteger b1, b2;
+			b1.parseString(numbers[0], 16);
+			b2.parseString(numbers[1], 16);
+
+			auto n1 = b1.toString(10);
+			auto n2 = b2.toString(10);
+
+			xml->addChildElement(new XmlElement("ServerKey1"));
+			xml->addChildElement(new XmlElement("ServerKey2"));
+
+			xml->getChildByName("ServerKey1")->setAttribute("value", n1);
+			xml->getChildByName("ServerKey2")->setAttribute("value", n2);
+			
+			File rsaFile = getWorkDirectory().getChildFile("RSA.xml");
+
+			rsaFile.replaceWithText(xml->createDocument(""));
+			
+			PresetHandler::showMessageWindow("RSA keys exported to file", "The RSA Keys are written to the file " + rsaFile.getFullPathName(), PresetHandler::IconType::Info);
+		}
 	}
 }
 
@@ -1077,20 +1089,52 @@ void ProjectHandler::checkActiveProject()
 	
 }
 
-juce::File ProjectHandler::getAppDataRoot()
+juce::File ProjectHandler::getAppDataRoot(MainController* mc)
 {
+#if USE_BACKEND
+    
+    // Check this property dynamically
+    File::SpecialLocationType appDataDirectoryToUse;
+    
+    if(mc == nullptr)
+    {
+        // if we pass in nullptr here, it's supposed to return the HISE app data folder
+        // which is always local
+        appDataDirectoryToUse = File::userApplicationDataDirectory;
+    }
+    else
+    {
+#if JUCE_WINDOWS
+        auto idToUse = HiseSettings::Project::UseGlobalAppDataFolderWindows;
+#else
+        auto idToUse = HiseSettings::Project::UseGlobalAppDataFolderMacOS;
+#endif
+        
+        if(GET_HISE_SETTING(mc->getMainSynthChain(), idToUse))
+            appDataDirectoryToUse = File::commonApplicationDataDirectory;
+        else
+            appDataDirectoryToUse = File::userApplicationDataDirectory;
+    }
+#else
+    
+    // discard the mc pointer, we'll use a static property
+    ignoreUnused(mc);
+    
+    // Use the preprocessor to figure it out in the compiled plugin
 #if HISE_USE_SYSTEM_APP_DATA_FOLDER
     const File::SpecialLocationType appDataDirectoryToUse = File::commonApplicationDataDirectory;
 #else
-	const File::SpecialLocationType appDataDirectoryToUse = File::userApplicationDataDirectory;
+    const File::SpecialLocationType appDataDirectoryToUse = File::userApplicationDataDirectory;
 #endif
+#endif
+    
     
 #if JUCE_IOS
 	return File::getSpecialLocation(appDataDirectoryToUse).getChildFile("Application Support/");
 #elif JUCE_MAC
 
 
-#if ENABLE_APPLE_SANDBOX
+#if !USE_BACKEND && ENABLE_APPLE_SANDBOX
     ignoreUnused(appDataDirectoryToUse);
 	return File::getSpecialLocation(File::userMusicDirectory);
 #else
@@ -1104,27 +1148,22 @@ juce::File ProjectHandler::getAppDataRoot()
 
 }
 
-juce::File ProjectHandler::getAppDataDirectory()
+juce::File ProjectHandler::getAppDataDirectory(MainController* mc)
 {
-
-#if HISE_USE_SYSTEM_APP_DATA_FOLDER
-	const File::SpecialLocationType appDataDirectoryToUse = File::commonApplicationDataDirectory;
-#else
-	const File::SpecialLocationType appDataDirectoryToUse = File::userApplicationDataDirectory;
-#endif
+    auto appDataRoot = getAppDataRoot(mc);
 
 
 #if JUCE_WINDOWS
 	// Windows
-	File f = File::getSpecialLocation(appDataDirectoryToUse).getChildFile("HISE");
+	File f = appDataRoot.getChildFile("HISE");
 #elif JUCE_MAC
 
 #if HISE_IOS
 	// iOS
-	File f = File::getSpecialLocation(appDataDirectoryToUse);
+	File f = appDataRoot
 #else
 	// OS X
-	File f = File::getSpecialLocation(appDataDirectoryToUse).getChildFile("Application Support/HISE");
+	File f = appDataRoot.getChildFile("HISE");
 #endif
 
 #else
@@ -1132,9 +1171,10 @@ juce::File ProjectHandler::getAppDataDirectory()
 	File f = File::getSpecialLocation(File::SpecialLocationType::userHomeDirectory).getChildFile(".hise/");
 #endif
 
-	if (!f.isDirectory()) f.createDirectory();
+	if (!f.isDirectory())
+        f.createDirectory();
 
-	return f.getFullPathName();
+    return f;
 }
 
 juce::String FrontendHandler::checkSampleReferences(MainController* mc, bool returnTrueIfOneSampleFound)
@@ -1294,7 +1334,7 @@ File FrontendHandler::getSampleLocationForCompiledPlugin()
     
     
     
-	File appDataDir = getAppDataDirectory();
+	File appDataDir = getAppDataDirectory(nullptr);
 
 	// The installer should take care of creating the app data directory...
 	jassert(appDataDir.isDirectory());
@@ -1350,9 +1390,10 @@ File FrontendHandler::getSampleLocationForCompiledPlugin()
 #endif
 }
 
-juce::File FrontendHandler::getAppDataDirectory()
+juce::File FrontendHandler::getAppDataDirectory(MainController* /*unused*/)
 {
-	auto root = ProjectHandler::getAppDataRoot();
+    auto root = ProjectHandler::getAppDataRoot(nullptr);
+    
 	auto f = root.getChildFile(getCompanyName() + "/" + getProjectName());
 
 	if (!f.isDirectory())
@@ -2037,7 +2078,7 @@ void PresetHandler::buildProcessorDataBase(Processor *root)
 	if (CompileExporter::isExportingFromCommandLine())
 		return;
 
-	auto f = NativeFileHandler::getAppDataDirectory().getChildFile("moduleEnums.xml");
+	auto f = NativeFileHandler::getAppDataDirectory(nullptr).getChildFile("moduleEnums.xml");
 
 	if (f.existsAsFile()) return;
 
@@ -2372,7 +2413,6 @@ void AboutPage::refreshText()
 
 	Font normal = GLOBAL_FONT().withHeight(15.0f);
 	Font bold = GLOBAL_BOLD_FONT().withHeight(15.0f);
-	
 
 #if USE_BACKEND
 
@@ -2401,7 +2441,7 @@ void AboutPage::refreshText()
 	infoData.append("\nVersion: ", bold, bright);
     infoData.append(String(JucePlugin_VersionString), normal, bright);
     infoData.append("\nHISE build version: ", bold, bright);
-    infoData.append(String(BUILD_SUB_VERSION), normal, bright);
+    infoData.append(GlobalSettingManager::getHiseVersion(), normal, bright);
 	infoData.append("\nBuild date: ", bold, bright);
 	infoData.append(Time::getCompilationDate().toString(true, false, false, true), normal, bright);
 	infoData.append("\nCreated by: ", bold, bright);

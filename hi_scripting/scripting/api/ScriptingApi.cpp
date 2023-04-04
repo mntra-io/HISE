@@ -145,6 +145,8 @@ Point<float> ApiHelpers::getPointFromVar(const var& data, Result* r /*= nullptr*
 
             Point<float> p(SANITIZED(d0), SANITIZED(d1));
 
+            if(r != nullptr) *r = Result::ok();
+            
 			return p;
 		}
 		else
@@ -220,6 +222,8 @@ Rectangle<int> ApiHelpers::getIntRectangleFromVar(const var &data, Result* r/*=n
 		{
 			Rectangle<int> rectangle((int)d->getUnchecked(0), (int)d->getUnchecked(1), (int)d->getUnchecked(2), (int)d->getUnchecked(3));
 
+            if(r != nullptr) *r = Result::ok();
+            
 			return rectangle;
 		}
 		else
@@ -962,7 +966,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_VOID_METHOD_WRAPPER_1(Engine, copyToClipboard);
 	API_METHOD_WRAPPER_1(Engine, decodeBase64ValueTree);
 	API_VOID_METHOD_WRAPPER_2(Engine, renderAudio);
-	API_VOID_METHOD_WRAPPER_2(Engine, playBuffer);
+	API_VOID_METHOD_WRAPPER_3(Engine, playBuffer);
 	
 	
 };
@@ -1105,7 +1109,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_0(reloadAllSamples);
 	ADD_API_METHOD_1(decodeBase64ValueTree);
 	ADD_API_METHOD_2(renderAudio);
-	ADD_API_METHOD_2(playBuffer);
+	ADD_API_METHOD_3(playBuffer);
 }
 
 
@@ -1132,6 +1136,7 @@ var ScriptingApi::Engine::getProjectInfo()
 		obj->setProperty("ProjectName", GET_HISE_SETTING(getProcessor()->getMainController()->getMainSynthChain(), HiseSettings::Project::Name).toString());
 		obj->setProperty("ProjectVersion", GET_HISE_SETTING(getProcessor()->getMainController()->getMainSynthChain(), HiseSettings::Project::Version).toString());
 		obj->setProperty("EncryptionKey", GET_HISE_SETTING(getProcessor()->getMainController()->getMainSynthChain(), HiseSettings::Project::EncryptionKey).toString());
+		
 	#else 
 		obj->setProperty("Company", hise::FrontendHandler::getCompanyName());
 		obj->setProperty("CompanyURL", hise::FrontendHandler::getCompanyWebsiteName());
@@ -1139,9 +1144,12 @@ var ScriptingApi::Engine::getProjectInfo()
 		obj->setProperty("ProjectName", hise::FrontendHandler::getProjectName());
 		obj->setProperty("ProjectVersion", hise::FrontendHandler::getVersionString());
 		obj->setProperty("EncryptionKey", hise::FrontendHandler::getExpansionKey());
+		
 	#endif
 
-	obj->setProperty("HISEBuild", String(HISE_VERSION));
+
+	obj->setProperty("HISEBuild", GlobalSettingManager::getHiseVersion());
+	
 	obj->setProperty("BuildDate", Time::getCompilationDate().toString(true, false, false, true));
 	obj->setProperty("LicensedEmail", licencee);
 			
@@ -2035,10 +2043,11 @@ struct ScriptingApi::Engine::PreviewHandler: public ControlledObject,
 	struct Job: public ControlledObject,
 				private PooledUIUpdater::SimpleTimer
 	{
-		Job(ProcessorWithScriptingContent* p, var buffer, var callbackFunction) :
+		Job(ProcessorWithScriptingContent* p, var buffer, var callbackFunction, double fileSampleRate_) :
 			ControlledObject(p->getMainController_()),
 			SimpleTimer(p->getMainController_()->getGlobalUIUpdater(), true),
 			bufferToPreview(buffer),
+            fileSampleRate(fileSampleRate_),
 			callback(p, nullptr, callbackFunction, 2)
 		{
 			callback.incRefCount();
@@ -2077,11 +2086,35 @@ struct ScriptingApi::Engine::PreviewHandler: public ControlledObject,
 		{
 			AudioSampleBuffer b(channels, numChannels, numSamples);
 
-			AudioSampleBuffer copy;
-			copy.makeCopyOf(b);
+            auto originalSampleRate = fileSampleRate;
+            auto currentSampleRate = getMainController()->getMainSynthChain()->getSampleRate();
 
-			getMainController()->setBufferToPlay(copy);
-			start();
+            if (originalSampleRate != currentSampleRate)
+            {
+                auto ratio = originalSampleRate / currentSampleRate;
+
+                int numResampled = (int)((double)numSamples / ratio) + 1;
+
+                AudioSampleBuffer r(b.getNumChannels(), numResampled);
+
+                LagrangeInterpolator p;
+
+                for (int i = 0; i < b.getNumChannels(); i++)
+                {
+                    p.reset();
+                    p.process(ratio, b.getReadPointer(i), r.getWritePointer(i), numResampled);
+                }
+
+                getMainController()->setBufferToPlay(r);
+            }
+            else
+            {
+                AudioSampleBuffer copy;
+                copy.makeCopyOf(b);
+                getMainController()->setBufferToPlay(copy);
+            }
+            
+            start();
 		}
 
 		void sendCallback(bool isPlaying, double position)
@@ -2107,18 +2140,20 @@ struct ScriptingApi::Engine::PreviewHandler: public ControlledObject,
 		int numChannels;
 		int numSamples = -1;
 
-
 		var args[2];
 		var bufferToPreview;
 		WeakCallbackHolder callback;
+        const double fileSampleRate;
 	};
 
-	void addJob(var buffer, var callback)
+	void addJob(var buffer, var callback, double fileSampleRate)
 	{
+        jassert(fileSampleRate >= 0.0);
+        
 		ScopedLock sl(jobLock);
 
 		getMainController()->stopBufferToPlay();
-		currentJobs.add(new Job(pwsc, buffer, callback));
+		currentJobs.add(new Job(pwsc, buffer, callback, fileSampleRate));
 
 		if (currentJobs.size() == 1)
 			startNextJob();
@@ -2155,12 +2190,15 @@ struct ScriptingApi::Engine::PreviewHandler: public ControlledObject,
 	ProcessorWithScriptingContent* pwsc;
 };
 
-void ScriptingApi::Engine::playBuffer(var bufferData, var callback)
+void ScriptingApi::Engine::playBuffer(var bufferData, var callback, double fileSampleRate)
 {
+    if(fileSampleRate <= 0.0)
+        fileSampleRate = getSampleRate();
+    
 	if (previewHandler == nullptr)
 		previewHandler = new PreviewHandler(getScriptProcessor());
 
-	previewHandler->addJob(bufferData, callback);
+	previewHandler->addJob(bufferData, callback, fileSampleRate);
 }
 
 var ScriptingApi::Engine::createFFT()
@@ -4591,7 +4629,7 @@ void ScriptingApi::Sampler::setAttribute(int index, var newValue)
         RETURN_VOID_IF_NO_THROW()
     }
 
-    s->setAttribute(index, newValue, sendNotification);
+    s->setAttribute(index, newValue, ProcessorHelpers::getAttributeNotificationType());
 }
 
 void ScriptingApi::Sampler::setUseStaticMatrix(bool shouldUseStaticMatrix)
@@ -6835,7 +6873,7 @@ juce::File ScriptingApi::FileSystem::getFile(SpecialLocations l)
 #if USE_BACKEND
 	case AppData:
 	{
-		f = ProjectHandler::getAppDataRoot();
+		f = ProjectHandler::getAppDataRoot(getMainController());
 
 		auto company = GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::User::Company);
 		auto project = GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::Project::Name);

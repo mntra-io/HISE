@@ -380,7 +380,12 @@ void MainController::loadPresetInternal(const ValueTree& v)
 			if(USE_BACKEND || FullInstrumentExpansion::isEnabled(this))
 				getLockFreeDispatcher().callOnMessageThreadAfterSuspension(synthChain, f);
 
+            if(!isInitialised())
+                getSampleManager().clearPreloadFlag();
+            
 			allNotesOff(true);
+            
+            
 		}
 		catch (String& errorMessage)
 		{
@@ -865,6 +870,11 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 
 	ModulatorSynthChain *synthChain = getMainSynthChain();
 
+
+#if ENABLE_CPU_MEASUREMENT
+	startCpuBenchmark(numSamplesThisBlock);
+#endif
+
 	jassert(getOriginalBufferSize() >= numSamplesThisBlock);
 
 #if !FRONTEND_IS_PLUGIN || HISE_ENABLE_MIDI_INPUT_FOR_FX
@@ -962,7 +972,6 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 		FX_ONLY(masterEventBuffer.addEvent(HiseEvent(hostIsPlaying ? HiseEvent::Type::NoteOn :
 															 HiseEvent::Type::NoteOff, 
 											 60, 127, 1));)
-
 	}
 
 	if (bpmFromHost == 0.0)
@@ -981,9 +990,6 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 
 	
 
-#if ENABLE_CPU_MEASUREMENT
-	startCpuBenchmark(numSamplesThisBlock);
-#endif
 
 #if !FRONTEND_IS_PLUGIN
 
@@ -1304,6 +1310,9 @@ void MainController::storePlayheadIntoDynamicObject(AudioPlayHead::CurrentPositi
 
 void MainController::prepareToPlay(double sampleRate_, int samplesPerBlock)
 {
+    if(sampleRate_ <= 0.0 || samplesPerBlock <= 0)
+        return;
+    
 	auto oldSampleRate = processingSampleRate;
 	auto oldBlockSize = processingBufferSize.get();
 
@@ -1353,6 +1362,8 @@ void MainController::prepareToPlay(double sampleRate_, int samplesPerBlock)
 #endif
     
 #endif
+
+	getSpecBroadcaster().sendMessage(sendNotificationAsync, processingSampleRate, processingBufferSize.get());
 
 	getMainSynthChain()->prepareToPlay(processingSampleRate, processingBufferSize.get());
 

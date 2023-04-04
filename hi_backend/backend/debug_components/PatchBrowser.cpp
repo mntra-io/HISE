@@ -1656,8 +1656,13 @@ PatchBrowser::MiniPeak::MiniPeak(Processor* p_) :
 			numChannels = rp->getMatrix().getNumSourceChannels();
 			rp->getMatrix().addChangeListener(this);
             
+			Array<int> channelIndexes;
+
+			for (int i = 0; i < numChannels; i++)
+				channelIndexes.add(i);
+
             if(numChannels != 2)
-                rp->getMatrix().setEditorShown(true);
+                rp->getMatrix().setEditorShown(channelIndexes, true);
 		}
 			
 		else
@@ -1675,8 +1680,14 @@ PatchBrowser::MiniPeak::~MiniPeak()
 	{
 		rp->getMatrix().removeChangeListener(this);
         
+
+		Array<int> channelIndexes;
+
+		for (int i = 0; i < numChannels; i++)
+			channelIndexes.add(i);
+
         if(numChannels != 2)
-            rp->getMatrix().setEditorShown(false);
+            rp->getMatrix().setEditorShown(channelIndexes, false);
 	}
 }
 
@@ -1718,6 +1729,16 @@ void PatchBrowser::MiniPeak::paint(Graphics& g)
 	{
 		area = area.reduced(0.0f, 3.0f);
 
+		float suspendAlpha = 0.0f;
+
+		if (auto mfx = dynamic_cast<EffectProcessor*>(p.get()))
+		{
+			if (mfx->isCurrentlySuspended())
+			{
+				suspendAlpha = -0.1f;
+			}
+		}
+
 		for (int i = 0; i < numChannels; i++)
 		{
 			auto a = area.removeFromLeft(3.0f);
@@ -1736,17 +1757,28 @@ void PatchBrowser::MiniPeak::paint(Graphics& g)
 					
 			}
 
+			alpha1 += suspendAlpha;
+
 			g.setColour(Colours::white.withAlpha(alpha1));
 			g.fillRect(a);
 
-			
-			
-			g.setColour(Colours::white.withAlpha(alpha2));
+			if (suspendAlpha == 0.0f)
+			{
+				g.setColour(Colours::white.withAlpha(alpha2));
 
-			auto skew = JUCE_LIVE_CONSTANT_OFF(0.4f);
-			auto v = std::pow(jlimit(0.0f, 1.0f, channelValues[i]), skew);
-			a = a.removeFromBottom(v * a.getHeight());
-			g.fillRect(a);
+				auto skew = JUCE_LIVE_CONSTANT_OFF(0.4f);
+				auto v = std::pow(jlimit(0.0f, 1.0f, channelValues[i]), skew);
+				a = a.removeFromBottom(v * a.getHeight());
+
+				g.fillRect(a);
+			}
+		}
+
+		if (suspendAlpha != 0.0f)
+		{
+			g.setColour(Colours::white.withAlpha(0.2f));
+			g.setFont(GLOBAL_BOLD_FONT());
+			g.drawText("S", getLocalBounds().toFloat(), Justification::centred);
 		}
 
 		break;
@@ -1859,14 +1891,23 @@ void PatchBrowser::MiniPeak::timerCallback()
 		float thisData[NUM_MAX_CHANNELS];
 		bool somethingChanged = false;
 
+		if (auto mfx = dynamic_cast<EffectProcessor*>(p.get()))
+		{
+			auto thisSuspended = mfx->isCurrentlySuspended();
+
+			auto change = thisSuspended != suspended;
+
+			somethingChanged |= change;
+
+			suspended = thisSuspended;
+		}
 		
 		if (auto rp = dynamic_cast<RoutableProcessor*>(p.get()))
 		{
 			auto& mat = rp->getMatrix();
 			thisNumChannels = mat.getNumSourceChannels();
 			
-
-			somethingChanged = numChannels != thisNumChannels;
+			somethingChanged |= numChannels != thisNumChannels;
 
 			if (thisNumChannels == 2)
 			{
@@ -1933,7 +1974,7 @@ juce::Path PatchBrowser::Factory::createPath(const String& url) const
 }
 
 AutomationDataBrowser::AutomationCollection::ConnectionItem::ConnectionItem(AutomationData::Ptr d_, AutomationData::ConnectionBase::Ptr c_) :
-	Item(d_->id.toString()),
+	Item(d_->id),
 	d(d_),
 	c(c_)
 {
@@ -1988,7 +2029,7 @@ void AutomationDataBrowser::AutomationCollection::paint(Graphics& g)
 
 	String s;
 
-	s << "#" << String(index) << " " << data->id.toString() << ": " << String(data->lastValue);
+	s << "#" << String(index) << " " << data->id << ": " << String(data->lastValue);
 
 	g.drawText(s, top.reduced(10.0f, 0.0f), Justification::left);
 

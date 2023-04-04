@@ -658,7 +658,7 @@ CompileExporter::ErrorCodes CompileExporter::exportInternal(TargetTypes type, Bu
 
 			auto pname = GET_SETTING(HiseSettings::Project::Name);
 			auto cname = GET_SETTING(HiseSettings::User::Company);
-			auto projectFolder = ProjectHandler::getAppDataDirectory().getParentDirectory().getChildFile(cname).getChildFile(pname);
+			auto projectFolder = ProjectHandler::getAppDataDirectory(chainToExport->getMainController()).getParentDirectory().getChildFile(cname).getChildFile(pname);
 
 			if (IS_SETTING_TRUE(HiseSettings::Project::EmbedAudioFiles))
 			{
@@ -1724,7 +1724,16 @@ void CompileExporter::ProjectTemplateHelpers::handleCompilerInfo(CompileExporter
 	REPLACE_WILDCARD_WITH_STRING("%EXTRA_DEFINES_OSX%", exporter->dataObject.getSetting(HiseSettings::Project::ExtraDefinitionsOSX).toString() + s);
 	REPLACE_WILDCARD_WITH_STRING("%EXTRA_DEFINES_IOS%", exporter->dataObject.getSetting(HiseSettings::Project::ExtraDefinitionsIOS).toString());
 
+#if JUCE_WINDOWS
+    const auto useGlobalAppFolder = (bool)exporter->dataObject.getSetting(HiseSettings::Project::UseGlobalAppDataFolderWindows);
+#elif JUCE_MAC
+    const auto useGlobalAppFolder = (bool)exporter->dataObject.getSetting(HiseSettings::Project::UseGlobalAppDataFolderMacOS);
+#else
+    // Dave let me know if you need this LOL...
+    const bool useGlobalAppFolder = false;
+#endif
     
+    REPLACE_WILDCARD_WITH_STRING("%USE_GLOBAL_APP_FOLDER%", useGlobalAppFolder ? "enabled" : "disabled");
     
 	auto allow32BitMacOS = exporter->dataObject.getSetting(HiseSettings::Compiler::Support32BitMacOS);
 
@@ -2631,17 +2640,21 @@ void CompileExporter::HeaderHelpers::addProjectInfoLines(CompileExporter* export
 	const String appGroupString = exporter->GET_SETTING(HiseSettings::Project::AppGroupID);
 	const String expType = exporter->GET_SETTING(HiseSettings::Project::ExpansionType);
 	const String expKey = exporter->GET_SETTING(HiseSettings::Project::EncryptionKey);
+	const String hiseVersion = ProjectInfo::versionString;
 
-	pluginDataHeaderFile << "String hise::FrontendHandler::getProjectName() { return \"" << projectName << "\"; };\n";
-	pluginDataHeaderFile << "String hise::FrontendHandler::getCompanyName() { return \"" << companyName << "\"; };\n";
-	pluginDataHeaderFile << "String hise::FrontendHandler::getCompanyWebsiteName() { return \"" << companyWebsiteName << "\"; };\n";
-	pluginDataHeaderFile << "String hise::FrontendHandler::getCompanyCopyright() { return \"" << companyCopyright << "\"; };\n";
-	pluginDataHeaderFile << "String hise::FrontendHandler::getVersionString() { return \"" << versionString << "\"; };\n";
+	String nl = "\n";
+	
+	pluginDataHeaderFile << "String hise::FrontendHandler::getProjectName() { return " << projectName.quoted() << "; };" << nl;
+	pluginDataHeaderFile << "String hise::FrontendHandler::getCompanyName() { return " << companyName.quoted() << "; };" << nl;
+	pluginDataHeaderFile << "String hise::FrontendHandler::getCompanyWebsiteName() { return " << companyWebsiteName.quoted() << "; };" << nl;
+	pluginDataHeaderFile << "String hise::FrontendHandler::getCompanyCopyright() { return " << companyCopyright.quoted() << "; };" << nl;
+	pluginDataHeaderFile << "String hise::FrontendHandler::getVersionString() { return " << versionString.quoted() << "; };" << nl;
     
-    pluginDataHeaderFile << "String hise::FrontendHandler::getAppGroupId() { return \"" << appGroupString << "\"; };\n";
+    pluginDataHeaderFile << "String hise::FrontendHandler::getAppGroupId() { return " << appGroupString.quoted() << "; };" << nl;
     
-	pluginDataHeaderFile << "String hise::FrontendHandler::getExpansionKey() { return \"" << expKey << "\"; };\n";
-	pluginDataHeaderFile << "String hise::FrontendHandler::getExpansionType() { return \"" << expType << "\"; };\n";
+	pluginDataHeaderFile << "String hise::FrontendHandler::getExpansionKey() { return " << expKey.quoted() << "; };" << nl;
+	pluginDataHeaderFile << "String hise::FrontendHandler::getExpansionType() { return " << expType.quoted() << "; };" << nl;
+	pluginDataHeaderFile << "String hise::FrontendHandler::getHiseVersion() { return " << hiseVersion.quoted() << "; };" << nl;
 }
 
 void CompileExporter::HeaderHelpers::writeHeaderFile(const String & solutionDirectory, const String& pluginDataHeaderFile)

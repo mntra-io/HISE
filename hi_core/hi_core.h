@@ -77,11 +77,6 @@ END_JUCE_MODULE_DECLARATION
 #include <complex>
 
 
-#ifndef HISE_VERSION
-#define HISE_VERSION "2.0.0"
-#endif
-
-
 //=============================================================================
 /** Config: USE_BACKEND
 
@@ -206,6 +201,15 @@ This can be used to simulate an audio effect routing setup (when the appropriate
 */
 #ifndef FORCE_INPUT_CHANNELS
 #define FORCE_INPUT_CHANNELS USE_BACKEND
+#endif
+
+/** Config: HI_DONT_SEND_ATTRIBUTE_UPDATES
+ 
+If enabled, this will skip the internal UI message update when calling setAttribute from a scripting callback. If you're calling
+ this method a lot, setting this to true might help with certain stability issues and UI message clogging.
+*/
+#ifndef HI_DONT_SEND_ATTRIBUTE_UPDATES
+#define HI_DONT_SEND_ATTRIBUTE_UPDATES 0
 #endif
 
 /** Config: HISE_DEACTIVATE_OVERLAY
@@ -383,6 +387,16 @@ OpenGL should be enabled by default or not.
 */
 #ifndef HISE_DEFAULT_OPENGL_VALUE
 #define HISE_DEFAULT_OPENGL_VALUE 1
+#endif
+
+/** Config: HISE_USE_SYSTEM_APP_DATA_FOLDER
+
+    If enabled, the compiled plugin will use the global app data folder instead of the local one.
+    This flag will be set automatically based on the project setting. In HISE this must not be changed
+    as the app data directory will be checked dynamically using this setting value.
+*/
+#ifndef HISE_USE_SYSTEM_APP_DATA_FOLDER
+#define HISE_USE_SYSTEM_APP_DATA_FOLDER 0
 #endif
 
 /** Config: ENABLE_STARTUP_LOGGER

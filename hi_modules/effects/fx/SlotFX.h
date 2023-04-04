@@ -81,6 +81,8 @@ public:
 
 	bool processHardcoded(AudioSampleBuffer& b, HiseEventBuffer* e, int startSample, int numSamples);
 
+	virtual void renderData(ProcessDataDyn& data);
+
 	bool hasHardcodedTail() const;
 
     var getParameterProperties() const override;
@@ -188,6 +190,8 @@ public:
 
 	bool hasTail() const override;
 
+	bool isSuspendedOnSilence() const override;
+
     bool isFadeOutPending() const noexcept override
     {
         if(numChannelsToRender == 2)
@@ -212,6 +216,8 @@ public:
 		MasterEffectProcessor::connectionChanged();
 		checkHardcodedChannelCount();
 	}
+
+	
 
 	void voicesKilled() override;
 	void setInternalAttribute(int index, float newValue) override;
@@ -260,6 +266,8 @@ public:
 
 	bool hasTail() const override;;
 
+	bool isSuspendedOnSilence() const final override;
+
 	Processor *getChildProcessor(int processorIndex) override { return nullptr; };
 	const Processor *getChildProcessor(int processorIndex) const override { return nullptr; };
 	int getNumChildProcessors() const override { return 0; };
@@ -273,6 +281,8 @@ public:
 
 	void applyEffect(int voiceIndex, AudioSampleBuffer &b, int startSample, int numSamples) final override;
 
+	void renderData(ProcessDataDyn& data) override;
+
 	void renderNextBlock(AudioSampleBuffer &/*buffer*/, int /*startSample*/, int /*numSamples*/) override
 	{
 		
@@ -280,6 +290,8 @@ public:
 
 	void reset(int voiceIndex) override 
 	{
+		VoiceEffectProcessor::reset(voiceIndex);
+
 		voiceStack.reset(voiceIndex);
 	}
 	

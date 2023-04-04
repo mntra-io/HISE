@@ -835,13 +835,21 @@ bool HardcodedSwappableEffect::processHardcoded(AudioSampleBuffer& b, HiseEventB
 		if (e != nullptr)
 			pd.setEventBuffer(*e);
 
-		opaqueNode->process(pd);
+		renderData(pd);
+
+		
 
 		return true;
 	}
 
 
 	return false;
+}
+
+void HardcodedSwappableEffect::renderData(ProcessDataDyn& data)
+{
+	jassert(opaqueNode != nullptr);
+	opaqueNode->process(data);
 }
 
 bool HardcodedSwappableEffect::hasHardcodedTail() const
@@ -865,9 +873,6 @@ void HardcodedSwappableEffect::prepareOpaqueNode(OpaqueNode* n)
 		ps.voiceIndex = &polyHandler;
 		n->prepare(ps);
 		n->reset();
-
-		
-			
 
 #if USE_BACKEND
 		auto e = factory->getError();
@@ -986,6 +991,14 @@ bool HardcodedMasterFX::hasTail() const
 	return hasHardcodedTail();
 }
 
+bool HardcodedMasterFX::isSuspendedOnSilence() const
+{
+	if (opaqueNode != nullptr)
+		return opaqueNode->isSuspendedOnSilence();
+
+	return true;
+}
+
 void HardcodedMasterFX::voicesKilled()
 {
 	SimpleReadWriteLock::ScopedReadLock sl(lock);
@@ -1088,7 +1101,40 @@ void HardcodedMasterFX::applyEffect(AudioSampleBuffer &b, int startSample, int n
 
 #endif
 
+	auto canBeSuspended = isSuspendedOnSilence();
+
+	if (canBeSuspended)
+	{
+		if (masterState.numSilentBuffers > numSilentCallbacksToWait && startSample == 0)
+		{
+			auto silent = ProcessDataDyn(b.getArrayOfWritePointers(), b.getNumSamples(), b.getNumChannels()).isSilent();
+			
+			if (silent)
+			{
+				getMatrix().handleDisplayValues(b, b, false);
+				masterState.currentlySuspended = true;
+				return;
+			}
+			else
+			{
+				masterState.numSilentBuffers = 0;
+				masterState.currentlySuspended = false;
+			}
+		}
+	}
+
+	masterState.currentlySuspended = false;
 	processHardcoded(b, eventBuffer, startSample, numSamples);
+
+	getMatrix().handleDisplayValues(b, b, false);
+
+	if (canBeSuspended)
+	{
+		if (ProcessDataDyn(b.getArrayOfWritePointers(), numSamples, b.getNumChannels()).isSilent())
+			masterState.numSilentBuffers++;
+		else
+			masterState.numSilentBuffers = 0;
+	}
 }
 
 void HardcodedMasterFX::renderWholeBuffer(AudioSampleBuffer &buffer)
@@ -1162,6 +1208,14 @@ bool HardcodedPolyphonicFX::hasTail() const
 	return hasHardcodedTail();
 }
 
+bool HardcodedPolyphonicFX::isSuspendedOnSilence() const
+{
+	if (opaqueNode != nullptr)
+		return opaqueNode->isSuspendedOnSilence();
+
+	return true;
+}
+
 hise::ProcessorEditorBody * HardcodedPolyphonicFX::createEditor(ProcessorEditor *parentEditor)
 {
 	return createHardcodedEditor(parentEditor);
@@ -1178,6 +1232,8 @@ void HardcodedPolyphonicFX::startVoice(int voiceIndex, const HiseEvent& e)
 {
 	SimpleReadWriteLock::ScopedReadLock sl(lock);
 
+	VoiceEffectProcessor::startVoice(voiceIndex, e);
+
 	if (opaqueNode != nullptr)
 	{
 		voiceStack.startVoice(*opaqueNode, polyHandler, voiceIndex, e);
@@ -1192,9 +1248,25 @@ void HardcodedPolyphonicFX::applyEffect(int voiceIndex, AudioSampleBuffer &b, in
 
 	PolyHandler::ScopedVoiceSetter svs(polyHandler, voiceIndex);
 
+	
+
 	auto ok = processHardcoded(b, nullptr, startSample, numSamples);
 
+	getMatrix().handleDisplayValues(b, b, false);
+
 	isTailing = ok && voiceStack.containsVoiceIndex(voiceIndex);
+}
+
+void HardcodedPolyphonicFX::renderData(ProcessDataDyn& data)
+{
+	auto voiceIndex = polyHandler.getVoiceIndex();
+
+	if (checkPreSuspension(voiceIndex, data))
+		return;
+
+	HardcodedSwappableEffect::renderData(data);
+
+	checkPostSuspension(voiceIndex, data);
 }
 
 HardcodedSwappableEffect::DataWithListener::DataWithListener(HardcodedSwappableEffect& parent, ComplexDataUIBase* p, int index_, OpaqueNode* nodeToInitialise) :

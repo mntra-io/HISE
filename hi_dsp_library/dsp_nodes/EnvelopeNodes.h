@@ -1109,17 +1109,12 @@ template <int NV> struct silent_killer_impl: public voice_manager_base
 	{
 		auto& s = state.get();
 
-		if (active && s && activeEvents.isEmpty())
+		if (active && s && 
+			activeEvents.isEmpty() &&
+			d.isSilent())
 		{
-			auto bToLook = d[0];
-			auto max = FloatVectorOperations::findMaximum(bToLook.begin(), bToLook.size());
-			auto isEmpty = max < threshold;
-
-			if (isEmpty)
-			{
-				s = false;
-				p->sendVoiceResetMessage(false);
-			}
+			s = false;
+			p->sendVoiceResetMessage(false);
 		}
 	}
 

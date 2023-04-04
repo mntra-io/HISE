@@ -229,7 +229,7 @@ void MidiControllerAutomationHandler::AutomationData::restoreFromValueTree(const
 			{
 				if (auto ah = processor->getMainController()->getUserPresetHandler().getCustomAutomationData(j))
 				{
-					if (ah->id.toString() == attributeString)
+					if (ah->id == attributeString)
 					{
 						attribute = j;
 						break;
@@ -306,7 +306,7 @@ juce::ValueTree MidiControllerAutomationHandler::AutomationData::exportAsValueTr
 
 	if (auto ap = processor->getMainController()->getUserPresetHandler().getCustomAutomationData(attribute))
 	{
-		cc.setProperty("Attribute", ap->id.toString(), nullptr);
+		cc.setProperty("Attribute", ap->id, nullptr);
 	}
 	else
 	{
@@ -758,6 +758,9 @@ bool MidiControllerAutomationHandler::handleControllerMessage(const HiseEvent& e
 		{
 			jassert(a.processor.get() != nullptr);
 
+			// MIDI events should not be propagated as plugin parameter changes
+			ScopedValueSetter<bool> setter(a.processor->getMainController()->getPluginParameterUpdateState(), false);
+			
 			auto normalizedValue = (double)e.getControllerValue() / 127.0;
 
 			if (a.inverted) normalizedValue = 1.0 - normalizedValue;

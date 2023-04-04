@@ -47,6 +47,7 @@ DECLARE_ID(ProjectSettings);
 DECLARE_ID(UserSettings);
 DECLARE_ID(CompilerSettings);
 DECLARE_ID(GeneralSettings);
+DECLARE_ID(ExpansionSettings);
 DECLARE_ID(AudioSettings);
 DECLARE_ID(MidiSettings);
 DECLARE_ID(ScriptingSettings);
@@ -92,6 +93,8 @@ DECLARE_ID(ReadOnlyFactoryPresets);
 DECLARE_ID(ForceStereoOutput);
 DECLARE_ID(AdminPermissions);
 DECLARE_ID(EmbedUserPresets);
+DECLARE_ID(UseGlobalAppDataFolderWindows);
+DECLARE_ID(UseGlobalAppDataFolderMacOS);
 
 Array<Identifier> getAllIds();
 
@@ -112,6 +115,15 @@ DECLARE_ID(FaustExternalEditor);
 Array<Identifier> getAllIds();
 
 } // Compiler
+
+namespace ExpansionSettings
+{
+DECLARE_ID(UUID);
+DECLARE_ID(Tags);
+DECLARE_ID(Description);
+
+Array<Identifier> getAllIds();
+}
 
 namespace User
 {

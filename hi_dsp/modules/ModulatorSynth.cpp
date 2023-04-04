@@ -358,7 +358,7 @@ void ModulatorSynth::addProcessorsWhenEmpty()
 
 		ScopedPointer<SimpleEnvelope> newEnvelope = new SimpleEnvelope(getMainController(),
 			"DefaultEnvelope",
-			voices.size(),
+            getVoiceAmount(),
 			Modulation::GainMode);
 
 		gainChain->getHandler()->add(newEnvelope.release(), nullptr);
@@ -451,7 +451,7 @@ void ModulatorSynth::renderNextBlockWithModulators(AudioSampleBuffer& outputBuff
 		}
 	}
 
-	getMatrix().handleDisplayValues(thisInternalBuffer, outputBuffer);
+	getMatrix().handleDisplayValues(thisInternalBuffer, outputBuffer, true);
 
 	
 

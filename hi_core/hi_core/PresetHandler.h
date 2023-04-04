@@ -308,9 +308,20 @@ public:
 		listeners.removeAllInstancesOf(listenerToRemove);
 	}
 
-	static File getAppDataRoot();
-   
-	static File getAppDataDirectory();
+    /** This function will return the directory where the app data is stored.
+        It uses getAppDataRoot in order to figure out the folder from where it has to go.
+        If you pass in nullptr, it will always default to the local app data folder, otherwise
+        it might use the global app data folder as root (see getAppDataRoot()).
+     */
+	static File getAppDataDirectory(MainController* mc);
+    
+    /** This will return the app data folder to be used for HISE and all compiled plugins.
+     
+        In HISE it will use the platform-dependent setting property (UseGlobalAppDataFolderWindows / MacOS)
+        and in the compiled plugin it will use the preprocessor macro that has been set accordingly during
+        compilation.
+    */
+    static File getAppDataRoot(MainController* mc);
 	
 	void restoreWorkingProjects();
 
@@ -391,6 +402,7 @@ public:
 	static String getAppGroupId();
 	static String getExpansionKey();
 	static String getExpansionType();
+	static String getHiseVersion();
 
 	static String checkSampleReferences(MainController* mc, bool returnTrueIfOneSampleFound);
 
@@ -409,7 +421,7 @@ public:
 	*	- user presets (in the UserPresets subfolder)
 	*	- license key file
 	*/
-	static File getAppDataDirectory();
+	static File getAppDataDirectory(MainController* unused=nullptr);
 
 	void setValueTree(SubDirectories type, ValueTree tree)
 	{
