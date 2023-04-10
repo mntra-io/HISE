@@ -741,6 +741,7 @@ void ScriptUserPresetHandler::presetChanged(const File& newPreset)
 	}
 }
 
+
 struct ScriptExpansionHandler::Wrapper
 {
 	API_VOID_METHOD_WRAPPER_1(ScriptExpansionHandler, setErrorFunction);
