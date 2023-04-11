@@ -1843,12 +1843,16 @@ public:
 	RLottieManager::Ptr getRLottieManager();
 #endif
 
+#if USE_BACKEND || HISE_ENABLE_LORIS_ON_FRONTEND
+    LorisManager* getLorisManager() { return lorisManager.get(); }
+#endif
+    
 private: // Never call this directly, but wrap it through DelayedRenderer...
 
 	/** This is the main processing loop that is shared among all subclasses. */
 	void processBlockCommon(AudioSampleBuffer &b, MidiBuffer &mb);
 
-	
+    
 
 protected:
 
@@ -1881,6 +1885,10 @@ protected:
 		}
 	};
 
+#if USE_BACKEND || HISE_ENABLE_LORIS_ON_FRONTEND
+    LorisManager::Ptr lorisManager;
+#endif
+    
 	double uptime;
 
 	void setScrollY(int newY) {	scrollY = newY;	};

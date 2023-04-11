@@ -2398,6 +2398,12 @@ namespace ScriptingObjects
 		/** Connects the cable to a macro control. */
 		void connectToMacroControl(int macroIndex, bool macroIsTarget, bool filterRepetitions);
 
+        /** Connects the cable to a global LFO modulation output as source. */
+        void connectToGlobalModulator(const String& lfoId, bool addToMod);
+        
+        /** Connects the cable to a module parameter using a JSON object for defining the range. */
+        void connectToModuleParameter(const String& processorId, var parameterIndexOrId, var targetObject);
+        
 		// =============================================================================================
 
 	private:
