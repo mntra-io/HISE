@@ -66,14 +66,6 @@ namespace Operations
 		numIterationTypes
 	};
 
-    enum class ControlFlowInstruction
-    {
-        None,
-        Break,
-        Continue,
-        Return
-    };
-
 	using RegPtr = AssemblyRegister::Ptr;
 
 	static asmjit::Runtime* getRuntime(BaseCompiler* c);
@@ -167,45 +159,6 @@ namespace Operations
 
 		virtual Ptr clone(Location l) const = 0;
 
-        ControlFlowInstruction getInterpretedControlFlow() { return interpretedInstruction; }
-        
-        void setInterpretedControlFlow(ControlFlowInstruction nextControlFlowInstruction)
-        {
-            interpretedInstruction = nextControlFlowInstruction;
-        }
-        
-        VariableStorage interpretChildren()
-        {
-            for(auto s: *this)
-            {
-                auto v = s->interpret();
-                
-                auto flow = s->getInterpretedControlFlow();
-                
-                if(flow != ControlFlowInstruction::None)
-                {
-                    // propagate the instruction up the tree...
-                    setInterpretedControlFlow(flow);
-                    return v;
-                }
-            }
-            
-            return {};
-        }
-        
-        virtual VariableStorage interpret()
-        {
-            jassertfalse;
-            return {};
-        }
-        
-        
-        
-        virtual void assignInterpreted(const VariableStorage& newValue)
-        {
-            location.throwError("Can't assign to this expression");
-        }
-        
 		virtual Identifier getStatementId() const = 0;
 
 		virtual bool hasSideEffect() const 
@@ -401,8 +354,6 @@ namespace Operations
 		juce::String asmComment;
 
 		RegPtr reg;
-        
-        ControlFlowInstruction interpretedInstruction = ControlFlowInstruction::None;
 
 		void releaseRegister()
 		{
@@ -776,11 +727,6 @@ public:
 		return s;
 	}
 
-    VariableStorage interpret() override
-    {
-        return interpretChildren();
-    }
-    
 	juce::String toString(TextFormat t) const override
 	{
 		switch (t)
@@ -907,7 +853,16 @@ struct InitialiserList::ExpressionChild : public InitialiserList::ChildBase
 
 	juce::String toString() const override
 	{
-		return expression->toString(Operations::Statement::TextFormat::CppCode);
+		if(expressionIndex == -1)
+			return expression->toString(Operations::Statement::TextFormat::CppCode);
+		else
+		{
+			String s;
+			s << "$";
+			s << Types::Helpers::getTypeName(expression->getType())[0];
+			s << String(expressionIndex);
+			return s;
+		}
 	}
 
 	
@@ -943,6 +898,7 @@ struct InitialiserList::ExpressionChild : public InitialiserList::ChildBase
 
 	Operations::Expression::Ptr expression;
 	VariableStorage value;
+	int expressionIndex = -1;
 };
 
 juce::ReferenceCountedObject* InitialiserList::getExpression(int index)
