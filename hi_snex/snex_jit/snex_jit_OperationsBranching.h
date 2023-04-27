@@ -327,7 +327,13 @@ struct Operations::WhileLoop : public Statement,
 
 	ValueTree toValueTree() const override
 	{
-		return Statement::toValueTree();
+		auto v = Statement::toValueTree();
+
+		StringArray types = { "While", "For" };
+		
+		v.setProperty("LoopType", types[(int)loopType], nullptr);
+
+		return v;
 	}
 
 	Statement::Ptr clone(Location l) const override
@@ -415,7 +421,14 @@ struct Operations::Loop : public Expression,
 		t.setProperty("LoopType", loopTypes[loopTargetType], nullptr);
 		t.setProperty("LoadIterator", loadIterator, nullptr);
 		t.setProperty("Iterator", iterator.toString(), nullptr);
-
+        t.setProperty("ElementSize", (int)iterator.typeInfo.getRequiredByteSizeNonZero(), nullptr);
+        
+        if(loopTargetType == ArrayType::Span)
+        {
+            t.setProperty("NumElements", numElements, nullptr);
+            
+        }
+        
 		return t;
 	}
 
@@ -457,6 +470,8 @@ struct Operations::Loop : public Expression,
 
 	ScopedPointer<AsmCodeGenerator::LoopEmitterBase> loopEmitter;
 
+    int numElements = -1;
+    
 	JUCE_DECLARE_WEAK_REFERENCEABLE(Loop);
 };
 
@@ -470,16 +485,15 @@ struct Operations::ControlFlowStatement : public Expression,
 		isBreak(isBreak_)
 	{}
 
-	Identifier getStatementId() const override
+	SET_EXPRESSION_ID(ControlFlowStatement);
+
+	ValueTree toValueTree() const override
 	{
-		if (isBreak)
-		{
-			RETURN_STATIC_IDENTIFIER("break");
-		}
-		else
-		{
-			RETURN_STATIC_IDENTIFIER("continue");
-		}
+		auto t = Expression::toValueTree();
+
+		t.setProperty("command", isBreak ? "break" : "continue", nullptr);
+
+		return t;
 	}
 
 	Statement::Ptr clone(ParserHelpers::CodeLocation l) const override
