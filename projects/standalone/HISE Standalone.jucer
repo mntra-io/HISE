@@ -44,7 +44,7 @@
   <EXPORTFORMATS>
     <XCODE_MAC targetFolder="Builds/MacOSX" smallIcon="ho3qQy" bigIcon="ho3qQy"
                customPList="&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;&#10;&lt;!DOCTYPE plist PUBLIC &quot;-//Apple//DTD PLIST 1.0//EN&quot; &quot;http://www.apple.com/DTDs/PropertyList-1.0.dtd&quot;&gt;&#10;&lt;plist version=&quot;1.0&quot;&gt;&#10;&lt;dict&gt;&#10;&lt;key&gt;NSAppTransportSecurity&lt;/key&gt; &#10;&lt;dict&gt; &#10;&lt;key&gt;NSAllowsArbitraryLoads&lt;/key&gt;&lt;true/&gt;&#10;&lt;/dict&gt;&#10;&lt;/dict&gt;&#10;&lt;/plist&gt;"
-               extraDefs="USE_IPP=0&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=20000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1"
+               extraDefs="USE_IPP=0&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=20000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1"
                extraCompilerFlags="-Wno-reorder -Wno-inconsistent-missing-override -mpopcnt -faligned-allocation"
                xcodeValidArchs="x86_64">
       <CONFIGURATIONS>
@@ -61,18 +61,18 @@
                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
                        stripLocalSymbols="1" defines="HISE_CI=1&#10;HI_RUN_UNIT_TESTS=1"
                        macOSDeploymentTarget="10.9"/>
-         <CONFIGURATION name="Debug with Faust" osxCompatibility="10.9 SDK" osxArchitecture="64BitIntel"
-                        isDebug="1" optimisation="1" targetName="HISE Debug" linkTimeOptimisation="0"
-                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
-                        macOSDeploymentTarget="10.9" headerPath="../../../../tools/faust/include"
-                        libraryPath="../../../../tools/faust/lib" defines="HISE_INCLUDE_FAUST=1&#10;HISE_FAUST_USE_LLVM_JIT=1&#10;HISE_INCLUDE_FAUST_JIT=1"
-                        binaryPath="Builds/MacOSX/build/Debug"/>
-         <CONFIGURATION name="Release with Faust" osxCompatibility="10.9 SDK" osxArchitecture="64BitIntel"
-                        isDebug="0" optimisation="3" targetName="HISE" linkTimeOptimisation="1"
-                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
-                        macOSDeploymentTarget="10.9" libraryPath="../../../../tools/faust/lib"
-                        binaryPath="Builds/MacOSX/build/Release" headerPath="../../../../tools/faust/include"
-                        defines="HISE_INCLUDE_FAUST=1&#10;HISE_FAUST_USE_LLVM_JIT=1&#10;HISE_INCLUDE_FAUST_JIT=1"/>
+        <CONFIGURATION name="Debug with Faust" osxCompatibility="10.9 SDK" osxArchitecture="64BitIntel"
+                       isDebug="1" optimisation="1" targetName="HISE Debug" linkTimeOptimisation="0"
+                       cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
+                       macOSDeploymentTarget="10.9" headerPath="../../../../tools/faust/include"
+                       libraryPath="../../../../tools/faust/lib" defines="HISE_INCLUDE_FAUST=1&#10;HISE_FAUST_USE_LLVM_JIT=1&#10;HISE_INCLUDE_FAUST_JIT=1"
+                       binaryPath="Builds/MacOSX/build/Debug"/>
+        <CONFIGURATION name="Release with Faust" osxCompatibility="10.9 SDK" osxArchitecture="64BitIntel"
+                       isDebug="0" optimisation="3" targetName="HISE" linkTimeOptimisation="1"
+                       cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
+                       macOSDeploymentTarget="10.9" libraryPath="../../../../tools/faust/lib"
+                       binaryPath="Builds/MacOSX/build/Release" headerPath="../../../../tools/faust/include"
+                       defines="HISE_INCLUDE_FAUST=1&#10;HISE_FAUST_USE_LLVM_JIT=1&#10;HISE_INCLUDE_FAUST_JIT=1"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_gui_extra" path="../../JUCE/modules"/>
@@ -165,15 +165,16 @@
     </XCODE_IPHONE>
     <VS2017 targetFolder="Builds/VisualStudio2017" smallIcon="ho3qQy" bigIcon="ho3qQy"
             useIPP="Sequential" IPPLibrary="" windowsTargetPlatformVersion="10.0.16299.0"
-            extraDefs="USE_IPP=0&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_USE_VS2022=0&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=20000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1"
-            extraCompilerFlags="/bigobj /wd&quot;4100&quot; /wd&quot;4661&quot; /wd&quot;4456&quot; /wd&quot;4244&quot; /wd&quot;4457&quot; /wd&quot;4458&quot; /wd&quot;4127&quot;&#10;&#10; " IPP1ALibrary="">
+            extraDefs="USE_IPP=0&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_USE_VS2022=0&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=20000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1"
+            extraCompilerFlags="/bigobj /wd&quot;4100&quot; /wd&quot;4661&quot; /wd&quot;4456&quot; /wd&quot;4244&quot; /wd&quot;4457&quot; /wd&quot;4458&quot; /wd&quot;4127&quot;&#10;&#10; "
+            IPP1ALibrary="">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" generateManifest="1" winArchitecture="x64"
-                       isDebug="1" optimisation="1" targetName="HISE Debug" headerPath="../../../../tools/SDK/ASIOSDK2.3/common&#10;C:\Program Files\Common Files\fftw3"
+        <CONFIGURATION name="Debug" generateManifest="1" winArchitecture="x64" isDebug="1"
+                       optimisation="1" targetName="HISE Debug" headerPath="../../../../tools/SDK/ASIOSDK2.3/common&#10;C:\Program Files\Common Files\fftw3"
                        useRuntimeLibDLL="0" debugInformationFormat="ProgramDatabase"
                        enablePluginBinaryCopyStep="0" libraryPath="C:\Program Files\Common Files\fftw3"/>
-        <CONFIGURATION name="Release" generateManifest="1" winArchitecture="x64"
-                       isDebug="0" optimisation="3" targetName="HISE" headerPath="../../../../tools/SDK/ASIOSDK2.3/common&#10;C:\Program Files\Common Files\fftw3"
+        <CONFIGURATION name="Release" generateManifest="1" winArchitecture="x64" isDebug="0"
+                       optimisation="3" targetName="HISE" headerPath="../../../../tools/SDK/ASIOSDK2.3/common&#10;C:\Program Files\Common Files\fftw3"
                        useRuntimeLibDLL="0" enableIncrementalLinking="1" debugInformationFormat="ProgramDatabase"
                        enablePluginBinaryCopyStep="0" linkTimeOptimisation="1" libraryPath="C:\Program Files\Common Files\fftw3"/>
         <CONFIGURATION name="CI" winWarningLevel="4" generateManifest="1" winArchitecture="x64"
@@ -232,7 +233,7 @@
       </MODULEPATHS>
     </VS2017>
     <VS2022 targetFolder="Builds/VisualStudio2022" smallIcon="ho3qQy" bigIcon="ho3qQy"
-            useIPP="Sequential" IPPLibrary="" extraDefs="USE_IPP=0&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_USE_VS2022=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=20000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1"
+            useIPP="Sequential" IPPLibrary="" extraDefs="USE_IPP=0&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_USE_VS2022=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=20000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1"
             extraCompilerFlags="/bigobj /wd&quot;4100&quot; /wd&quot;4661&quot; /wd&quot;4456&quot; /wd&quot;4244&quot; /wd&quot;4457&quot; /wd&quot;4458&quot; /wd&quot;4127&quot;&#10;&#10; "
             IPP1ALibrary="">
       <CONFIGURATIONS>
@@ -300,7 +301,7 @@
         <MODULEPATH id="hi_faust_types" path="../../"/>
       </MODULEPATHS>
     </VS2022>
-    <LINUX_MAKE targetFolder="Builds/LinuxMakefileFaust" extraDefs="USE_IPP=0&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_USE_OPENGL_FOR_PLUGIN=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6"
+    <LINUX_MAKE targetFolder="Builds/LinuxMakefileFaust" extraDefs="USE_IPP=0&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_USE_OPENGL_FOR_PLUGIN=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6"
                 smallIcon="bfBEgJ" bigIcon="bfBEgJ" extraCompilerFlags="-Wno-reorder -Wno-inconsistent-missing-override&#10;-fpermissive"
                 linuxExtraPkgConfig="x11 xinerama xext" extraLinkerFlags="-no-pie&#10;-flto=auto&#10;-fuse-ld=gold"
                 externalLibraries="faust">
@@ -349,7 +350,7 @@
         <MODULEPATH id="hi_faust_types" path="../../"/>
       </MODULEPATHS>
     </LINUX_MAKE>
-    <LINUX_MAKE targetFolder="Builds/LinuxMakefile" extraDefs="USE_IPP=0&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_USE_OPENGL_FOR_PLUGIN=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6"
+    <LINUX_MAKE targetFolder="Builds/LinuxMakefile" extraDefs="USE_IPP=0&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_USE_OPENGL_FOR_PLUGIN=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6&#10;USE_LATO_AS_DEFAULT=0"
                 smallIcon="bfBEgJ" bigIcon="bfBEgJ" extraCompilerFlags="-Wno-reorder -Wno-inconsistent-missing-override&#10;-fpermissive"
                 linuxExtraPkgConfig="x11 xinerama xext" extraLinkerFlags="-no-pie&#10;-flto=auto&#10;-fuse-ld=gold"
                 externalLibraries="">
