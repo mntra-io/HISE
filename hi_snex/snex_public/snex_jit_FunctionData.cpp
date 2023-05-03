@@ -80,7 +80,7 @@ juce::String FunctionData::getSignature(const Array<Identifier>& parameterIds, b
 {
 	juce::String s;
 
-	s << returnType.toString() << " " << id.toString();
+	s << returnType.toString(false) << " " << id.toString();
 	
 	if (!templateParameters.isEmpty())
 	{
@@ -91,7 +91,7 @@ juce::String FunctionData::getSignature(const Array<Identifier>& parameterIds, b
 			auto t = templateParameters[i];
 
 			if (t.type.isValid())
-				s << t.type.toString();
+				s << t.type.toString(false);
 			else
 				s << juce::String(t.constant);
 
@@ -108,7 +108,7 @@ juce::String FunctionData::getSignature(const Array<Identifier>& parameterIds, b
 
 	for (auto arg : args)
 	{
-		s << arg.typeInfo.toString();
+		s << arg.typeInfo.toString(false);
 
 		auto pName = parameterIds[index].toString();
 
@@ -176,6 +176,8 @@ bool FunctionData::hasUnresolvedTemplateParameters() const
 
 	return false;
 }
+
+
 
 snex::jit::FunctionData FunctionData::withParent(const NamespacedIdentifier& newParent) const
 {
@@ -726,7 +728,7 @@ struct VariadicCallHelpers
 			return R();
 		}
 
-		template <typename R, typename T1> variadic_call R c3_ttv(const FunctionData& f, T1 a1, const VariableStorage& a2, const VariableStorage& a3)
+		template <typename R, typename T1, typename T2> variadic_call R c3_ttv(const FunctionData& f, T1 a1, T2 a2, const VariableStorage& a3)
 		{
 			using namespace Types;
 
@@ -872,3 +874,4 @@ ExternalTypeParser::ExternalTypeParser(String::CharPointerType location, String:
 
 } // end namespace jit
 } // end namespace snex
+

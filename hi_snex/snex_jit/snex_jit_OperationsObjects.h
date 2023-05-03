@@ -64,6 +64,22 @@ struct Operations::ClassStatement : public Statement,
 		auto t = Statement::toValueTree();
 		t.setProperty("Type", classType->toString(), nullptr);
 
+		if(auto st = dynamic_cast<StructType*>(classType.get()))
+		{
+			String memberInfo;
+
+			for (int i = 0; i < st->getNumMembers(); i++)
+			{
+				auto mId = st->getMemberName(i);
+				memberInfo << st->getMemberTypeInfo(mId).toStringWithoutAlias() << " " << mId << "(" << st->getMemberOffset(i) << ")";
+
+				if(i != st->getNumMembers()-1)
+					memberInfo << "$";
+			}
+
+			t.setProperty("MemberInfo", memberInfo, nullptr);
+		}
+
 		return t;
 	}
 
@@ -145,10 +161,13 @@ struct Operations::ComplexTypeDefinition : public Expression,
 	{
 		initValues = l;
 
-		initValues->forEach([this](InitialiserList::ChildBase* b)
+		int expressionIndex = 0;
+
+		initValues->forEach([this, &expressionIndex](InitialiserList::ChildBase* b)
 		{
 			if (auto ec = dynamic_cast<InitialiserList::ExpressionChild*>(b))
 			{
+				ec->expressionIndex = expressionIndex++;
 				this->addStatement(ec->expression);
 			}
 
@@ -184,12 +203,17 @@ struct Operations::ComplexTypeDefinition : public Expression,
 		for (auto id : ids)
 			names << id.toString() << ",";
 
-		t.setProperty("Type", type.toString(), nullptr);
+		t.setProperty("Type", type.toStringWithoutAlias(), nullptr);
 
 		t.setProperty("Ids", names, nullptr);
 
+		t.setProperty("NumBytes", (int)type.getRequiredByteSize(), nullptr);
+
 		if (initValues != nullptr)
+		{
 			t.setProperty("InitValues", initValues->toString(), nullptr);
+		}
+			
 
 		return t;
 	}

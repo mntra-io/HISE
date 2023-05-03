@@ -90,7 +90,12 @@ static constexpr bool isValidParameterType(const Arg1& a1, const Arg2& a2, const
 
 }
 
-
+struct StaticFunctionPointer
+{
+	String signature;
+	String label;
+	void* function;
+};
 
 
 /** A wrapper around a function. */
@@ -234,6 +239,60 @@ struct FunctionData
 
 	int getSpecialFunctionType() const;
 
+    template <typename T> bool setInterpretedArgs(int index, T value)
+    {
+        if(isPositiveAndBelow(index, args.size()))
+        {
+            if constexpr (std::is_same<T, VariableStorage>())
+            {
+                args.getReference(index).constExprValue = value;
+            }
+            else
+            {
+                auto expectedType = args[0].typeInfo.getType();
+                VariableStorage v(value);
+                
+                if(Types::Helpers::getTypeFromTypeId<T>() != expectedType)
+                    v.setWithType(expectedType, (double)value);
+                
+                args.getReference(index).constExprValue = v;
+            }
+            
+            return true;
+        }
+            
+        return false;
+    }
+    
+    ValueTree createDataLayout(bool addThisPointer) const
+    {
+        ValueTree c1("Method");
+        c1.setProperty("ID", id.getIdentifier().toString(), nullptr);
+        c1.setProperty("ReturnType", returnType.toString(false), nullptr);
+        
+        c1.setProperty("IsResolved", function != nullptr, nullptr);
+        
+        if(addThisPointer)
+        {
+            ValueTree t("Arg");
+            t.setProperty("ID", "_this_", nullptr);
+            t.setProperty("Type", "pointer", nullptr);
+            c1.addChild(t, -1, nullptr);
+        }
+        
+        
+        
+        for(const auto& a: args)
+        {
+            ValueTree a1("Arg");
+            a1.setProperty("ID", a.id.getIdentifier().toString(), nullptr);
+            a1.setProperty("Type", Types::Helpers::getCppTypeName(a.typeInfo.getType()), nullptr);
+            c1.addChild(a1, -1, nullptr);
+        }
+        
+        return c1;
+    }
+    
 	void setDescription(const juce::String& d, const StringArray& parameterNames = StringArray())
 	{
 		description = d;
@@ -311,6 +370,8 @@ struct FunctionData
 
 	VariableStorage callDynamic(VariableStorage* args, int numArgs) const;
 
+    VariableStorage callInterpreted(VariableStorage* args, int numArgs) const;
+    
 	template <typename... Parameters> void callVoid(Parameters... ps) const
 	{
 		if (function != nullptr)
@@ -322,7 +383,7 @@ struct FunctionData
 		}
 	}
 
-	template <typename... Parameters> forcedinline void callVoidUnchecked(Parameters... ps) const
+	template <typename... Parameters> void callVoidUnchecked(Parameters... ps) const
 	{
 		using signature = void(*)(Parameters...);
 
@@ -330,7 +391,7 @@ struct FunctionData
 		f_(ps...);
 	}
 
-	template <typename... Parameters> forcedinline void callVoidUncheckedWithObject(Parameters... ps) const
+	template <typename... Parameters> void callVoidUncheckedWithObject(Parameters... ps) const
 	{
 		jassert(object != nullptr);
 		jassert(function != nullptr);
@@ -340,7 +401,7 @@ struct FunctionData
 		f_(object, ps...);
 	}
 
-	template <typename ReturnType, typename... Parameters> forcedinline ReturnType callUncheckedWithObj5ect(Parameters... ps) const
+	template <typename ReturnType, typename... Parameters> ReturnType callUncheckedWithObj5ect(Parameters... ps) const
 	{
 		jassert(object != nullptr);
 		jassert(function != nullptr);
@@ -350,7 +411,7 @@ struct FunctionData
 		return static_cast<ReturnType>(f_(object, ps...));
 	}
 
-	template <typename ReturnType, typename... Parameters> forcedinline ReturnType callUnchecked(Parameters... ps) const
+	template <typename ReturnType, typename... Parameters> ReturnType callUnchecked(Parameters... ps) const
 	{
 		using signature = ReturnType(*)(Parameters...);
 		auto f_ = (signature)function;
@@ -373,7 +434,7 @@ struct FunctionData
 
 private:
 
-	template <typename ReturnType, typename... Parameters> forcedinline ReturnType callInternal(Parameters... ps) const
+	template <typename ReturnType, typename... Parameters> ReturnType callInternal(Parameters... ps) const
 	{
 		if (function != nullptr)
 			return callUnchecked<ReturnType, Parameters...>(ps...);
@@ -382,6 +443,33 @@ private:
 	}
 };
 
+
+struct FunctionCollectionBase : public ReferenceCountedObject
+{
+	using Ptr = ReferenceCountedObjectPtr<FunctionCollectionBase>;
+
+	virtual ~FunctionCollectionBase() {};
+
+	virtual FunctionData getFunction(const NamespacedIdentifier& functionId) = 0;
+
+	virtual VariableStorage getVariable(const Identifier& id) = 0;
+
+	void* getMainObjectPtr();
+
+	virtual void* getVariablePtr(const Identifier& id) = 0;
+
+	virtual juce::String dumpTable() = 0;
+
+	virtual Array<NamespacedIdentifier> getFunctionIds() const = 0;
+
+	virtual Array<Symbol> getAllVariables() const = 0;
+
+	virtual ValueTree getDataLayout(int dataIndex) const { return {}; }
+
+protected:
+
+	static NamespacedIdentifier getMainId();
+};
 
 
 struct TemplateObject
@@ -528,6 +616,12 @@ struct TemplatedComplexType : public ComplexType,
 
 	size_t getRequiredAlignment() const override { return 0; }
 
+    ValueTree createDataLayout() const override
+    {
+        jassertfalse;
+        return {};
+    }
+    
 	void dumpTable(juce::String&, int&, void*, void*) const override {}
 
 	Result initialise(InitData d) { return Result::ok(); };

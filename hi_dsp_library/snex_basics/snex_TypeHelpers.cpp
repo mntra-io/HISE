@@ -28,6 +28,9 @@ snex::Types::ID Types::Helpers::getTypeFromTypeName(const juce::String& cppTypeN
 	if (cppTypeName == "int") return Types::ID::Integer;
 	if (cppTypeName == "bool") return Types::ID::Integer;
 	if (cppTypeName == "block") return Types::ID::Block;
+	if (cppTypeName == "void") return Types::ID::Void;
+    if (cppTypeName == "void*") return Types::ID::Pointer;
+    if (cppTypeName == "pointer") return Types::ID::Pointer;
 	
 	jassertfalse;
 	return Types::ID::Void;

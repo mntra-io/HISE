@@ -204,8 +204,8 @@ public:
 	GlobalScope& memory;
 	Compiler c;
 	JitObject obj;
-
-	JitCompiledNode::Ptr nodeToTest;
+    
+    JitCompiledNode::Ptr nodeToTest;
 
 	double cpuUsage = 0.0;
 

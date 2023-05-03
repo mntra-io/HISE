@@ -33,7 +33,6 @@ using String = juce::String;
 
 
 
-
 #include "snex_core/snex_jit_ComplexTypeLibrary.h"
 #include "snex_library/snex_jit_ApiClasses.h"
 #include "snex_core/snex_jit_ClassScope.h"

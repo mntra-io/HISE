@@ -330,8 +330,8 @@ public:
 		Result compileResult;
 		String assembly;
 		JitObject obj;
-		ComplexType::Ptr mainClassPtr;
-
+        
+        ComplexType::Ptr mainClassPtr;
 
 		scriptnode::ParameterDataList parameters;
 		JitCompiledNode::Ptr lastNode;

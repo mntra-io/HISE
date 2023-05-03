@@ -95,22 +95,15 @@ JitCompiledNode::JitCompiledNode(Compiler& c, const String& code, const String& 
 	obj = c.compileJitObject(s);
 
 	r = c.getCompileResult();
-
+  
 	if (r.wasOk())
 	{
-		NamespacedIdentifier impl("impl");
+		assembly = c.getAssemblyCode();
 
-		
+		NamespacedIdentifier impl("impl");
 
 		if (instanceType = c.getComplexType(implId))
 		{
-			
-#if 0
-			if (auto libraryNode = dynamic_cast<SnexNodeBase*>(instanceType.get()))
-			{
-				parameterList = libraryNode->getParameterList();
-			}
-#endif
 			if (auto st = dynamic_cast<StructType*>(instanceType.get()))
 			{
 				WrapBuilder::InnerData inner(instanceType.get(), WrapBuilder::GetObj);

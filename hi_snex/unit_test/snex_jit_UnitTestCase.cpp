@@ -308,10 +308,10 @@ void JitFileTestCase::initCompiler()
 	c.reset();
 	c.setDebugHandler(debugHandler);
 
-	
-
 	if (!nodeId.isValid())
-		Types::SnexObjectDatabase::registerObjects(c, 2);
+    {
+        Types::SnexObjectDatabase::registerObjects(c, 2);
+    }
 }
 
 juce::Result JitFileTestCase::compileWithoutTesting(bool dumpBeforeTest /*= false*/)
@@ -338,7 +338,8 @@ juce::Result JitFileTestCase::compileWithoutTesting(bool dumpBeforeTest /*= fals
 			DBG(obj.dumpTable());
 		}
 
-		assembly = c.getAssemblyCode();//
+        assembly = nodeToTest->getAssembly();
+        
 		return nodeToTest->r;
 	}
 	else
@@ -346,6 +347,8 @@ juce::Result JitFileTestCase::compileWithoutTesting(bool dumpBeforeTest /*= fals
 		obj = c.compileJitObject(code);
 
 		r = c.getCompileResult();
+        
+		assembly = c.getAssemblyCode();
 
 		if (dumpBeforeTest)
 		{
@@ -355,12 +358,12 @@ juce::Result JitFileTestCase::compileWithoutTesting(bool dumpBeforeTest /*= fals
 			DBG("symbol tree");
 			DBG(c.dumpNamespaceTree());
 			DBG("assembly");
-			DBG(c.getAssemblyCode());
+			DBG(assembly);
 			DBG("data dump");
 			DBG(obj.dumpTable());
 		}
 
-		assembly = c.getAssemblyCode();
+    
 
 		if (r.failed())
 			return r;
@@ -475,13 +478,15 @@ juce::Result JitFileTestCase::testAfterCompilation(bool dumpBeforeTest /*= false
 
 			function = compiledF;
 
-			switch (function.returnType.getType())
-			{
-			case Types::ID::Integer: actualResult = call<int>(); break;
-			case Types::ID::Float:   actualResult = call<float>(); break;
-			case Types::ID::Double:  actualResult = call<double>(); break;
-			default: jassertfalse;
-			}
+            switch (function.returnType.getType())
+            {
+            case Types::ID::Integer: actualResult = call<int>(); break;
+            case Types::ID::Float:   actualResult = call<float>(); break;
+            case Types::ID::Double:  actualResult = call<double>(); break;
+            default: jassertfalse;
+            }
+
+			
 
 			expectedResult = VariableStorage(function.returnType.getType(), var(expectedResult.toDouble()));
 		}
