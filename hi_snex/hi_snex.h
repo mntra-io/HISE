@@ -92,6 +92,11 @@ Set to 0 to disable SNEX compilation (default on iOS).
 #endif
 #endif
 
+
+#ifndef SNEX_MIR_BACKEND
+#define SNEX_MIR_BACKEND 0
+#endif
+
 /** The SNEX compiler is only available on x64 builds so this preprocessor will allow compiling HISE on ARM withouth the JIT compiler. */
 #ifndef HISE_INCLUDE_SNEX_X64_CODEGEN
 #if JUCE_ARM
@@ -187,7 +192,11 @@ namespace snex
 #if HISE_INCLUDE_SNEX
             static StringArray getDefaultIds()
             {
+#if SNEX_MIR_BACKEND
+				return {  };
+#else
                 return { BinaryOpOptimisation, ConstantFolding, DeadCodeElimination, Inlining, LoopOptimisation, AsmOptimisation, NoSafeChecks };
+#endif
             }
 
             static StringArray getAllIds()
@@ -204,12 +213,13 @@ namespace snex
 #if HISE_INCLUDE_SNEX
 
 
-#ifndef SNEX_MIR_BACKEND
-#define SNEX_MIR_BACKEND 0
-#endif
+
 
 #define SNEX_ASMJIT_BACKEND !SNEX_MIR_BACKEND
 
+#ifndef SNEX_INCLUDE_NMD_ASSEMBLY
+#define SNEX_INCLUDE_NMD_ASSEMBLY 1
+#endif
 
 
 #define JIT_MEMBER_WRAPPER_0(R, C, N)					  static R N(void* o) { return static_cast<C*>(o)->N(); };

@@ -111,12 +111,14 @@ void LoopManager::emitInlinedReturn(State* s)
 	jmp.flush();
 }
 
-String TextLine::addAnonymousReg(MIR_type_t type, RegisterType rt)
+String TextLine::addAnonymousReg(MIR_type_t type, RegisterType rt, bool registerAsCurrentOp)
 {
 	auto& rm = state->registerManager;
 
 	auto id = rm.getAnonymousId(MIR_fp_type_p(type) && rt == RegisterType::Value);
-	rm.registerCurrentTextOperand(id, type, rt);
+
+	if(registerAsCurrentOp)
+		rm.registerCurrentTextOperand(id, type, rt);
 
 	auto t = TypeInfo(TypeConverters::MirType2TypeId(type), true);
 
@@ -129,10 +131,11 @@ String TextLine::addAnonymousReg(MIR_type_t type, RegisterType rt)
 	return id;
 }
 
-TextLine::TextLine(State* s_):
-	state(s_)
+TextLine::TextLine(State* s_, const String& instruction_):
+	state(s_),
+	instruction(instruction_)
 {
-
+	
 }
 
 TextLine::~TextLine()
@@ -142,7 +145,18 @@ TextLine::~TextLine()
 
 void TextLine::addImmOperand(const VariableStorage& value)
 {
-	operands.add(Types::Helpers::getCppValueString(value));
+	if (value.getType() == Types::ID::Pointer)
+	{
+		auto x = String(reinterpret_cast<int64>(value.getDataPointer()));
+
+		operands.add(x);
+	}
+	else
+	{
+		operands.add(Types::Helpers::getCppValueString(value));
+	}
+
+	
 }
 
 void TextLine::addSelfAsValueOperand()
@@ -231,24 +245,49 @@ String TextLine::toLine(int maxLabelLength) const
 	return s;
 }
 
-void TextLine::flush()
+String TextLine::flush()
 {
 	if (!flushed)
 	{
 		flushed = true;
 		state->lines.add(*this);
 	}
+
+	return operands[0];
 }
+
+FunctionManager::ComplexTypeOverload::ComplexTypeOverload(const String& fullSignature_) :
+	fullSignature(fullSignature_)
+{
+	auto f = TypeConverters::String2FunctionData(fullSignature);
+
+	auto hash = fullSignature.fromFirstOccurrenceOf("(", false, false).upToLastOccurrenceOf(")", false, false);
+	hash = hash.removeCharacters("<>&, ");
+
+	auto newid = f.id.id.toString() + "_" + hash;
+
+	f.id.id = Identifier(newid);
+
+	mangledId = TypeConverters::FunctionData2MirTextLabel(f);
+}
+
+
 
 void FunctionManager::addPrototype(State* state, const FunctionData& f, bool addObjectPointer)
 {
+	if (hasPrototype(f))
+	{
+		// must be caught with registerComplexTypeOverload
+		jassertfalse;
+	}
+
 	TextLine l(state);
 
 	l.label = "proto" + String(prototypes.size());
 	l.instruction = "proto";
 
 	if (f.returnType.isValid())
-		l.operands.add(TypeConverters::TypeInfo2MirTextType(f.returnType));
+		l.operands.add(TypeConverters::TypeInfo2MirTextType(f.returnType, true));
 
 	if (addObjectPointer)
 	{
@@ -278,8 +317,18 @@ bool FunctionManager::hasPrototype(const FunctionData& sig) const
 	return false;
 }
 
-String FunctionManager::getPrototype(const FunctionData& sig) const
+String FunctionManager::getPrototype(const String& fullSignature) const
 {
+	for (auto& f : specialOverloads)
+	{
+		if (f.fullSignature == fullSignature)
+		{
+			return f.prototype;
+		}
+	}
+
+	auto sig = TypeConverters::String2FunctionData(fullSignature);
+
 	auto thisLabel = TypeConverters::FunctionData2MirTextLabel(sig);
 
 	int l = 0;
@@ -299,9 +348,25 @@ String FunctionManager::getPrototype(const FunctionData& sig) const
 	throw String("prototype not found");
 }
 
-void DataManager::setDataLayout(const String& b64)
+String FunctionManager::registerComplexTypeOverload(State* state, const String& fullSignature, bool addObjectPtr)
 {
-	dataList = SyntaxTreeExtractor::getDataLayoutTrees(b64);
+	ComplexTypeOverload t(fullSignature);
+
+	t.prototype = "proto" + String(prototypes.size());
+
+	auto f = TypeConverters::String2FunctionData(fullSignature);
+
+	f.id = NamespacedIdentifier(t.mangledId);
+
+	addPrototype(state, f, addObjectPtr);
+
+	specialOverloads.add(t);
+	return t.mangledId;
+}
+
+void DataManager::setDataLayout(const Array<ValueTree>& dataList_)
+{
+	dataList = dataList_;
 
 	for (const auto& l : dataList)
 	{
@@ -552,14 +617,19 @@ void State::emitSingleInstruction(const String& instruction, const String& label
 	l.flush();
 }
 
-void State::emitLabel(const String& label)
+void State::emitLabel(const String& label, const String& optionalComment)
 {
 	TextLine noop(this);
 	noop.label = label;
 	noop.instruction = "bt";
 	noop.operands.add(label);
 	noop.addImmOperand(0);
-	noop.appendComment("noop");
+
+	if (optionalComment.isEmpty())
+		noop.appendComment("noop");
+	else
+		noop.appendComment(optionalComment);
+
 	noop.flush();
 }
 
@@ -643,7 +713,6 @@ snex::mir::TextOperand InlinerManager::emitInliner(const String& inlinerLabel, c
 
 	for (const auto& m : dTree)
 	{
-		DBG(m.createXml()->createDocument(""));
 		if (m.getType() == Identifier("Method") && m["ID"] == methodName)
 		{
 			fTree = m.createCopy();
@@ -657,7 +726,83 @@ snex::mir::TextOperand InlinerManager::emitInliner(const String& inlinerLabel, c
 	for(int i = 0; i < operands.size(); i++)
 		fTree.getChild(i).setProperty("Operand", operands[i], nullptr);
 
+	auto contains = inlinerFunctions.count(inlinerLabel) > 0;
+
+	if (!contains)
+	{
+		throw String("Can't find inliner with label " + inlinerLabel);
+	}
+
 	return inlinerFunctions[inlinerLabel](state, dTree, fTree);
+}
+
+String MirCodeGenerator::derefInternal(const String& pointerOperand, MIR_type_t type, int displacement /*= 0*/, const String& offset /*= {}*/, int elementSize /*= 0*/) const
+{
+	String s;
+
+	if (type == MIR_T_I64)
+		s << "i32:";
+	if (type == MIR_T_F)
+		s << "f:";
+	if (type == MIR_T_D)
+		s << "d:";
+	if (type == MIR_T_P)
+		s << "i64:";
+
+	if (displacement != 0)
+		s << String(displacement);
+
+	s << "(" << pointerOperand;
+
+	if (offset.isNotEmpty())
+		s << ", " << offset;
+
+	if (elementSize != 0)
+		s << ", " << elementSize;
+
+	s << ")";
+	return s;
+}
+
+String MirCodeGenerator::newLabel()
+{
+	return state.loopManager.makeLabel();
+}
+
+void MirCodeGenerator::jmp(const String& op)
+{
+	state.emitSingleInstruction("jmp " + op);
+}
+
+String MirCodeGenerator::alloca(size_t numBytes)
+{
+	auto blockReg = rm.getAnonymousId(false);
+	rm.allocateStack(blockReg, numBytes, false);
+	return blockReg;
+}
+
+void MirCodeGenerator::emit(const String& instruction, const StringArray& operands)
+{
+	TextLine tl(&state, instruction);
+	tl.operands = operands;
+
+	if (nextComment.isNotEmpty())
+	{
+		tl.appendComment(nextComment);
+		nextComment = {};
+	}
+
+	tl.flush();
+}
+
+void MirCodeGenerator::bind(const String& label, const String& comment /*= {}*/)
+{
+	state.emitLabel(label, comment);
+}
+
+void MirCodeGenerator::setInlineComment(const String& s)
+{
+	nextComment = s;
 }
 
 }
