@@ -203,21 +203,28 @@ class LinuxFontHandler
     };
 };
 
-#if USE_LATO_AS_DEFAULT
-		static Typeface::Ptr oxygenBoldTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::LatoBold_ttf, HiBinaryData::FrontendBinaryData::LatoBold_ttfSize);
-		static Typeface::Ptr oxygenTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::LatoRegular_ttf, HiBinaryData::FrontendBinaryData::LatoRegular_ttfSize);
+#if USE_LINUX_FONT_HANDLER
+  #define GLOBAL_FONT() (LinuxFontHandler::Instance().getGlobalFont())
+  #define GLOBAL_BOLD_FONT() (LinuxFontHandler::Instance().getGlobalBoldFont())
+  #define GLOBAL_MONOSPACE_FONT() (LinuxFontHandler::Instance().getGlobalMonospaceFont())
+  #define GLOBAL_BOLD_MONOSPACE_FONT() (LinuxFontHandler::Instance().getGlobalMonospaceBoldFont())
 #else
-		static Typeface::Ptr oxygenBoldTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::oxygen_bold_ttf, HiBinaryData::FrontendBinaryData::oxygen_bold_ttfSize);
-		static Typeface::Ptr oxygenTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::oxygen_regular_ttf, HiBinaryData::FrontendBinaryData::oxygen_regular_ttfSize);
+  #if USE_LATO_AS_DEFAULT
+  		static Typeface::Ptr oxygenBoldTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::LatoBold_ttf, HiBinaryData::FrontendBinaryData::LatoBold_ttfSize);
+  		static Typeface::Ptr oxygenTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::LatoRegular_ttf, HiBinaryData::FrontendBinaryData::LatoRegular_ttfSize);
+  #else
+  		static Typeface::Ptr oxygenBoldTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::oxygen_bold_ttf, HiBinaryData::FrontendBinaryData::oxygen_bold_ttfSize);
+  		static Typeface::Ptr oxygenTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::oxygen_regular_ttf, HiBinaryData::FrontendBinaryData::oxygen_regular_ttfSize);
+  #endif
+
+  static Typeface::Ptr sourceCodeProTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::SourceCodeProRegular_otf, HiBinaryData::FrontendBinaryData::SourceCodeProRegular_otfSize);
+  static Typeface::Ptr sourceCodeProBoldTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::SourceCodeProBold_otf, HiBinaryData::FrontendBinaryData::SourceCodeProBold_otfSize);
+
+  #define GLOBAL_FONT() (Font(oxygenTypeFace).withHeight(13.0f))
+  #define GLOBAL_BOLD_FONT() (Font(oxygenBoldTypeFace).withHeight(14.0f))
+  #define GLOBAL_MONOSPACE_FONT() (Font(sourceCodeProTypeFace).withHeight(14.0f))
+  #define GLOBAL_BOLD_MONOSPACE_FONT() (Font(sourceCodeProBoldTypeFace).withHeight(14.0f))
 #endif
-
-static Typeface::Ptr sourceCodeProTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::SourceCodeProRegular_otf, HiBinaryData::FrontendBinaryData::SourceCodeProRegular_otfSize);
-static Typeface::Ptr sourceCodeProBoldTypeFace = Typeface::createSystemTypefaceFor(HiBinaryData::FrontendBinaryData::SourceCodeProBold_otf, HiBinaryData::FrontendBinaryData::SourceCodeProBold_otfSize);
-
-#define GLOBAL_FONT() (Font(oxygenTypeFace).withHeight(13.0f))
-#define GLOBAL_BOLD_FONT() (Font(oxygenBoldTypeFace).withHeight(14.0f))
-#define GLOBAL_MONOSPACE_FONT() (Font(sourceCodeProTypeFace).withHeight(14.0f))
-#define GLOBAL_BOLD_MONOSPACE_FONT() (Font(sourceCodeProBoldTypeFace).withHeight(14.0f))
 
 #else
 
