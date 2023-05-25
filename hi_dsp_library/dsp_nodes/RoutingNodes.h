@@ -236,7 +236,7 @@ template <int C> struct block: public block_base<C>
 	void reset()
 	{
 		for (auto& d : this->channels)
-			hmath::vset(d, 0.0f);
+			hmath::vmovs(d, 0.0f);
 	}
 
 	void processFrame(FrameType& unused)
@@ -622,7 +622,7 @@ struct selector: public mothernode
     
     static void copy(block dst, const block& src)
     {
-        hmath::vcopy(dst, src);
+        hmath::vmov(dst, src);
     }
     
     static void copy(float& dst, const float& src)

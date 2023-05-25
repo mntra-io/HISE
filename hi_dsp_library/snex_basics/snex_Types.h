@@ -185,7 +185,7 @@ template <typename T> ID getTypeFromTypeId()
 		return ID::Integer;
 	if (std::is_same<T, void*>())
 		return ID::Pointer;
-
+	
 	return ID::Void;
 }
 

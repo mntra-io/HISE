@@ -92,6 +92,14 @@ Set to 0 to disable SNEX compilation (default on iOS).
 #endif
 #endif
 
+/** Config: SNEX_STANDALONE_PLAYGROUND
+ 
+ Enables the playground.
+*/
+#ifndef SNEX_STANDALONE_PLAYGROUND
+#define SNEX_STANDALONE_PLAYGROUND 0
+#endif
+
 
 #ifndef SNEX_MIR_BACKEND
 #define SNEX_MIR_BACKEND 0
@@ -193,7 +201,7 @@ namespace snex
             static StringArray getDefaultIds()
             {
 #if SNEX_MIR_BACKEND
-				return {  };
+                return { BinaryOpOptimisation, ConstantFolding, DeadCodeElimination };
 #else
                 return { BinaryOpOptimisation, ConstantFolding, DeadCodeElimination, Inlining, LoopOptimisation, AsmOptimisation, NoSafeChecks };
 #endif
