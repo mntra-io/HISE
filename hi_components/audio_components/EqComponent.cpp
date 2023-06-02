@@ -1048,11 +1048,17 @@ void FilterDragOverlay::FilterDragComponent::mouseWheelMove(const MouseEvent &e,
 	if (e.mods.isCtrlDown() || parent.isInFloatingTile)
 	{
 		double q = parent.eq->getFilterBand(index)->getQ();
-
-		if (d.deltaY > 0)
-			q = jmin<double>(8.0, q * 1.3);
-		else
-			q = jmax<double>(0.1, q / 1.3);
+        
+        double amp = d.deltaY * 4.0;
+        
+        if(parent.eq->getFilterBand(index)->getGain() > 1.0f)
+            amp *= -1.0;
+        
+        amp += 1.0;
+            
+        amp = jlimit(0.7, 1.3, amp);
+        
+        q = jlimit(0.1, 8.0, q * amp);
 
 		parent.setEqAttribute(CurveEq::BandParameter::Q, index, q);
 	}
