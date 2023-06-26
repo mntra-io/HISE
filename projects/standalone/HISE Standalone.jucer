@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="jUHBuI" name="HISE Standalone" projectType="guiapp" version="3.0.2"
               bundleIdentifier="com.hartinstruments.HISEStandalone" includeBinaryInAppConfig="1"
@@ -52,7 +52,7 @@
         <CONFIGURATION name="Debug" osxCompatibility="10.9 SDK" osxArchitecture="64BitIntel"
                        isDebug="1" optimisation="1" targetName="HISE Debug" linkTimeOptimisation="0"
                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
-                       macOSDeploymentTarget="10.14" libraryPath="/usr/local/lib&#10;../../../../tools/faust/fakelib"
+                       macOSDeploymentTarget="10.9" libraryPath="/usr/local/lib&#10;../../../../tools/faust/fakelib"
                        headerPath="/usr/local/include"/>
         <CONFIGURATION name="Release" osxCompatibility="10.9 SDK" osxArchitecture="64BitIntel"
                        isDebug="0" optimisation="3" targetName="HISE" linkTimeOptimisation="1"
@@ -448,8 +448,8 @@
                JUCE_USE_DIRECTWRITE="1" JUCE_JACK="0" HISE_ENABLE_EXPANSIONS="1"
                HISE_ENABLE_MIDI_INPUT_FOR_FX="1" JUCE_DSP_USE_SHARED_FFTW="0"
                JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_ENABLE_LIVE_CONSTANT_EDITOR="0"
-               JUCE_USE_ANDROID_OBOE="0" HISE_INCLUDE_RLOTTiE="1" FAUST_NO_WARNING_MESSAGES="0"
-               HISE_INCLUDE_SNEX="1"/>
+               JUCE_USE_ANDROID_OBOE="0" HISE_INCLUDE_RLOTTiE="1" FAUST_NO_WARNING_MESSAGES="1"
+               HISE_INCLUDE_SNEX="1" HISE_DEFAULT_OPENGL_VALUE="0"/>
   <LIVE_SETTINGS>
     <OSX/>
     <WINDOWS/>
