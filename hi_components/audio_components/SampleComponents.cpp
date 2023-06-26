@@ -261,7 +261,10 @@ void WaveformComponent::Broadcaster::connectWaveformUpdaterToComplexUI(ComplexDa
 			rb->setPropertyObject(new BroadcasterPropertyObject(this));
 	}
 	else
+	{
 		d->getUpdater().removeEventListener(&updater);
+	}
+		
 }
 
 void WaveformComponent::Broadcaster::updateData()
@@ -458,7 +461,7 @@ void SamplerSoundWaveform::timerCallback()
 
 	if (sampler->getLastStartedVoice() != nullptr || previewActive)
 	{
-		if (previewActive || dynamic_cast<ModulatorSamplerVoice*>(sampler->getLastStartedVoice())->getCurrentlyPlayingSamplerSound() == currentSound.get())
+		if (currentSound != nullptr && (previewActive || dynamic_cast<ModulatorSamplerVoice*>(sampler->getLastStartedVoice())->getCurrentlyPlayingSamplerSound() == currentSound.get()))
 		{
 			auto dv = sampler->getSamplerDisplayValues();
 			auto reversed = currentSound->getReferenceToSound(0)->isReversed();

@@ -37,7 +37,7 @@ struct MIR_module;
 struct MIR_func;
 
 namespace snex {
-namespace jit {
+namespace mir {
 using namespace juce;
 
 struct InstructionCollection;
@@ -55,6 +55,10 @@ struct MirBuilder
 
 	String getMirText() const;
 
+    void setDataLayout(const Array<ValueTree>& data);
+    
+    ValueTree getGlobalData();
+    
 private:
 
 	State* currentState = nullptr;

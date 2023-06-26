@@ -71,6 +71,7 @@ public:
 		Panel,
 		AudioWaveform,
 		SliderPack,
+		WebView,
 		FloatingTile,
 		duplicateComponent,
 		numComponentTypes
@@ -153,6 +154,16 @@ public:
 	void scriptComponentPropertyChanged(ScriptComponent* sc, Identifier idThatWasChanged, const var& newValue) override;
 
 	bool keyPressed(const KeyPress &key) override;
+
+	void setEnablePositioningWithMouse(bool shouldBeEnabled)
+	{
+		enableMouseDragging = shouldBeEnabled;
+	}
+
+	bool isMousePositioningEnabled() const
+	{
+		return enableMouseDragging;
+	}
 
 	struct LassoLaf: public LookAndFeel_V3
 	{
@@ -433,6 +444,9 @@ public:
 
 		void startDragging(Dragger* newCurrentDragger)
 		{
+			if (!parent.enableMouseDragging)
+				return;
+
 			currentDragger = newCurrentDragger;
 
 			otherDraggers.clear();
@@ -455,6 +469,9 @@ public:
 
 		void endDragging()
 		{
+			if (!parent.enableMouseDragging)
+				return;
+
 			if (currentDragger != nullptr)
 				currentDragger->removeComponentListener(this);
 
@@ -501,6 +518,8 @@ public:
 	SelectedItemSet<ScriptComponent*> lassoSet;
 
 	bool dragMode;
+
+	bool enableMouseDragging = true;
 
 	OwnedArray<Dragger> draggers;
 

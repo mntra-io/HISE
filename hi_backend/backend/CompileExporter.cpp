@@ -87,11 +87,24 @@ juce::ValueTree BaseExporter::exportEmbeddedFiles()
 	ValueTree markdownDocs = chainToExport->getMainController()->exportAllMarkdownDocsAsValueTree();
 	ValueTree networkFiles = BackendDllManager::exportAllNetworks(chainToExport->getMainController(), false);
 
+	ValueTree webViewResources = chainToExport->getMainController()->exportWebViewResources();
+
 	ValueTree externalFiles("ExternalFiles");
 	externalFiles.addChild(externalScriptFiles, -1, nullptr);
 	externalFiles.addChild(customFonts, -1, nullptr);
 	externalFiles.addChild(markdownDocs, -1, nullptr);
 	externalFiles.addChild(networkFiles, -1, nullptr);
+	externalFiles.addChild(webViewResources, -1, nullptr);
+
+	ValueTree defaultPreset("DefaultPreset");
+	ValueTree dc = chainToExport->getMainController()->getUserPresetHandler().defaultPresetManager->getDefaultPreset();
+
+	if (dc.isValid())
+	{
+		defaultPreset.addChild(dc.createCopy(), -1, nullptr);
+	}
+
+	externalFiles.addChild(defaultPreset, -1, nullptr);
 
 	return externalFiles;
 }
@@ -509,7 +522,9 @@ CompileExporter::ErrorCodes CompileExporter::exportInternal(TargetTypes type, Bu
 	if (!hisePath.isDirectory()) 
 		return ErrorCodes::HISEPathNotSpecified;
 
-	if (!checkSanity(option)) return ErrorCodes::SanityCheckFailed;
+	if (!checkSanity(type, option)) return ErrorCodes::SanityCheckFailed;
+
+	chainToExport->getMainController()->getUserPresetHandler().initDefaultPresetManager({});
 
 	ErrorCodes result = ErrorCodes::OK;
 
@@ -797,7 +812,7 @@ String checkSampleReferences(ModulatorSynthChain* chainToExport)
     return String();
 }
 
-bool CompileExporter::checkSanity(BuildOption option)
+bool CompileExporter::checkSanity(TargetTypes type, BuildOption option)
 {
 	// Check if a frontend script is in the main synth chain
 
@@ -923,9 +938,18 @@ bool CompileExporter::checkSanity(BuildOption option)
     }
 #endif
     
-	auto networks = ProcessorHelpers::getListOfAllProcessors<scriptnode::DspNetwork::Holder>(chainToExport);
+	for (auto fx : ProcessorHelpers::getListOfAllProcessors<HardcodedSwappableEffect>(chainToExport))
+	{
+		auto r = fx->sanityCheck();
 
-	for (auto n : networks)
+		if (!r.wasOk())
+		{
+			printErrorMessage("Hardcoded FX Sanity check failed", r.getErrorMessage());
+			return false;
+		}
+	}
+
+	for (auto n : ProcessorHelpers::getListOfAllProcessors<scriptnode::DspNetwork::Holder>(chainToExport))
 	{
 		if (auto network = n->getActiveOrDebuggedNetwork())
 		{
@@ -939,7 +963,7 @@ bool CompileExporter::checkSanity(BuildOption option)
 		}
 	}
 
-    if(!shouldBeSilent() && PresetHandler::showYesNoWindow("Check Sample references", "Do you want to validate all sample references"))
+    if((type != TargetTypes::EffectPlugin) && !shouldBeSilent() && PresetHandler::showYesNoWindow("Check Sample references", "Do you want to validate all sample references"))
     {
         const String faultySample = checkSampleReferences(chainToExport);
         
@@ -1842,7 +1866,7 @@ XmlElement* createXmlElementForFile(ModulatorSynthChain* chainToExport, String& 
 
 		for (auto c : children)
 		{
-			bool isCustomNodeIncludeFile = c.getFileName() == "includes.cpp" && c.getParentDirectory().getFileName() == "CustomNodes" ||
+			bool isCustomNodeIncludeFile = (c.getFileName() == "includes.cpp" && c.getParentDirectory().getFileName() == "CustomNodes") ||
                 c.getFileName() == "RNBO.cpp";
 
 			if (auto c_xml = createXmlElementForFile(chainToExport, templateProject, c, isCustomNodeIncludeFile))
@@ -2581,8 +2605,6 @@ void CompileExporter::HeaderHelpers::addAdditionalSourceCodeHeaderLines(CompileE
 
 void CompileExporter::HeaderHelpers::addStaticDspFactoryRegistration(String& pluginDataHeaderFile, CompileExporter* exporter)
 {
-	ModulatorSynthChain* chainToExport = exporter->chainToExport;
-
 	pluginDataHeaderFile << "REGISTER_STATIC_DSP_LIBRARIES()" << "\n";
 	pluginDataHeaderFile << "{" << "\n";
 	pluginDataHeaderFile << "\tREGISTER_STATIC_DSP_FACTORY(hise::HiseCoreDspFactory);" << "\n";
@@ -2640,6 +2662,7 @@ void CompileExporter::HeaderHelpers::addProjectInfoLines(CompileExporter* export
 	const String appGroupString = exporter->GET_SETTING(HiseSettings::Project::AppGroupID);
 	const String expType = exporter->GET_SETTING(HiseSettings::Project::ExpansionType);
 	const String expKey = exporter->GET_SETTING(HiseSettings::Project::EncryptionKey);
+	const String defaultPreset = exporter->GET_SETTING(HiseSettings::Project::DefaultUserPreset);
 	const String hiseVersion = ProjectInfo::versionString;
 
 	String nl = "\n";
@@ -2655,6 +2678,8 @@ void CompileExporter::HeaderHelpers::addProjectInfoLines(CompileExporter* export
 	pluginDataHeaderFile << "String hise::FrontendHandler::getExpansionKey() { return " << expKey.quoted() << "; };" << nl;
 	pluginDataHeaderFile << "String hise::FrontendHandler::getExpansionType() { return " << expType.quoted() << "; };" << nl;
 	pluginDataHeaderFile << "String hise::FrontendHandler::getHiseVersion() { return " << hiseVersion.quoted() << "; };" << nl;
+
+	pluginDataHeaderFile << "String hise::FrontendHandler::getDefaultUserPreset() const { return " << defaultPreset.quoted() << "; };" << nl;
 }
 
 void CompileExporter::HeaderHelpers::writeHeaderFile(const String & solutionDirectory, const String& pluginDataHeaderFile)

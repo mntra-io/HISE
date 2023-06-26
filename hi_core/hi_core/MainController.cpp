@@ -52,7 +52,6 @@ MainController::MainController() :
 	temp_usage(0.0f),
 	uptime(0.0),
 	bpm(120.0),
-	bpmFromHost(120.0),
 	hostIsPlaying(false),
 	console(nullptr),
 	voiceAmount(0),
@@ -236,6 +235,7 @@ void MainController::clearPreset()
         mc->getLocationUndoManager()->clearUndoHistory();
         mc->getMasterClock().reset();
         
+        mc->clearWebResources();
 		mc->setGlobalRoutingManager(nullptr);
 
 		BACKEND_ONLY(mc->getJavascriptThreadPool().getGlobalServer()->setInitialised());
@@ -385,7 +385,7 @@ void MainController::loadPresetInternal(const ValueTree& v)
             
 			allNotesOff(true);
             
-            
+			getUserPresetHandler().initDefaultPresetManager({});
 		}
 		catch (String& errorMessage)
 		{
@@ -439,6 +439,8 @@ void MainController::compileAllScripts()
 			sp->compileScript();
 		}
 	}
+
+	getUserPresetHandler().initDefaultPresetManager({});
 };
 
 void MainController::allNotesOff(bool resetSoftBypassState/*=false*/)
@@ -919,6 +921,8 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 	AudioPlayHead::CurrentPositionInfo newTime;
 	MasterClock::GridInfo gridInfo;
 
+	double hostBpm = -1.0;
+
 	bool useTime = false;
 
     auto insideInternalExport = getKillStateHandler().isCurrentlyExporting();
@@ -933,11 +937,11 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 		// so we use the time info from the internal clock...
 		if (!useTime)
 			newTime = getMasterClock().createInternalPlayHead();
+		else
+			hostBpm = newTime.bpm;
 
 	}
 
-	
-	
 	if (getMasterClock().shouldCreateInternalInfo(newTime) || insideInternalExport)
 	{
 		auto externalTime = newTime;
@@ -966,8 +970,6 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 
 	storePlayheadIntoDynamicObject(lastPosInfo);
 	
-	bpmFromHost = lastPosInfo.bpm;
-
 	if (hostIsPlaying != lastPosInfo.isPlaying)
 	{
 		hostIsPlaying = lastPosInfo.isPlaying;
@@ -977,17 +979,20 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 											 60, 127, 1));)
 	}
 
-	if (bpmFromHost == 0.0)
-		bpmFromHost = 120.0;
-
-	auto otherBpm = *hostBpmPointer;
-
-	if (otherBpm > 0)
-		setBpm((double)otherBpm);
-	else
+	
+	if (hostBpm == -1.0)
 	{
-		setBpm(bpmFromHost);
+		// We need to get the host bpm again...
+		if (auto ph = thisAsProcessor->getPlayHead())
+		{
+			AudioPlayHead::CurrentPositionInfo bpmInfo;
+			ph->getCurrentPosition(bpmInfo);
+
+			hostBpm = bpmInfo.bpm;
+		}
 	}
+
+	setBpm(getMasterClock().getBpmToUse(hostBpm, *internalBpmPointer));
 	
 #endif
 
@@ -1336,7 +1341,7 @@ void MainController::prepareToPlay(double sampleRate_, int samplesPerBlock)
 	processingBufferSize = jmin(maximumBlockSize, originalBufferSize) * currentOversampleFactor;
 	processingSampleRate = originalSampleRate * currentOversampleFactor;
  
-	hostBpmPointer = &dynamic_cast<GlobalSettingManager*>(this)->globalBPM;
+	internalBpmPointer = &dynamic_cast<GlobalSettingManager*>(this)->globalBPM;
 
 	// Prevent high buffer sizes from blowing up the 350MB limitation...
 	if (HiseDeviceSimulator::isAUv3())
@@ -1427,24 +1432,6 @@ void MainController::setBpm(double newTempo)
 		}
 	}
 };
-
-void MainController::setHostBpm(double newTempo)
-{
-	if (newTempo > 0.0)
-	{
-		auto nt = jlimit(32.0, 280.0, newTempo);
-
-		dynamic_cast<GlobalSettingManager*>(this)->globalBPM = nt;
-		
-		setBpm(newTempo);
-	}
-	else
-	{
-		dynamic_cast<GlobalSettingManager*>(this)->globalBPM = -1;
-		
-		setBpm(bpmFromHost);
-	}
-}
 
 bool MainController::isSyncedToHost() const
 {
@@ -1955,6 +1942,14 @@ hise::MainController::UserPresetHandler::CustomAutomationData::Ptr MainControlle
 	return nullptr;
 }
 
+void MainController::UserPresetHandler::initDefaultPresetManager(const ValueTree& defaultState)
+{
+	if (defaultPresetManager == nullptr)
+		defaultPresetManager = new DefaultPresetManager(*this);
+
+	defaultPresetManager->init(defaultState);
+}
+
 void removePropertyRecursive(NamedValueSet& removedProperties, String currentPath, ValueTree v, const Identifier& id)
 {
 	if (!currentPath.isEmpty())
@@ -2082,5 +2077,94 @@ void MainController::UserPresetHandler::StoredModuleData::restoreValueTree(Value
 }
 
 
+
+MainController::UserPresetHandler::DefaultPresetManager::DefaultPresetManager(UserPresetHandler& parent):
+	ControlledObject(parent.mc)
+{
+
+}
+
+void MainController::UserPresetHandler::DefaultPresetManager::init(const ValueTree& v)
+{
+	
+
+	auto mc = getMainController();
+	auto defaultValue = mc->getCurrentFileHandler().getDefaultUserPreset();
+
+	if (defaultValue.isEmpty())
+		return;
+
+	interfaceProcessor = JavascriptMidiProcessor::getFirstInterfaceScriptProcessor(getMainController());
+
+#if USE_BACKEND
+
+	auto userPresetRoot = mc->getCurrentFileHandler().getSubDirectory(FileHandlerBase::UserPresets);
+	auto f = userPresetRoot.getChildFile(defaultValue).withFileExtension(".preset");
+
+	if (f.existsAsFile())
+	{
+		// only set the default file if it's a child of the user preset directory
+		// (in order to allow a "hidden" default user preset)
+		if (f.isAChildOf(userPresetRoot)) 
+			defaultFile = f;
+
+		if (auto xml = XmlDocument::parse(f))
+			defaultPreset = ValueTree::fromXml(*xml);
+	}
+
+	
+#else
+	
+	if (v.isValid())
+		defaultPreset = v;
+
+#endif
+
+	resetToDefault();
+}
+
+void MainController::UserPresetHandler::DefaultPresetManager::resetToDefault()
+{
+	if (defaultPreset.isValid())
+	{
+		auto& up = getMainController()->getUserPresetHandler();
+		
+		if (defaultFile.existsAsFile())
+			up.setCurrentlyLoadedFile(defaultFile);
+		
+		MainController::ScopedBadBabysitter sbs(getMainController());
+
+		up.loadUserPreset(defaultPreset, false);
+	}
+		
+}
+
+juce::var MainController::UserPresetHandler::DefaultPresetManager::getDefaultValue(const String& componentId) const
+{
+	if (defaultPreset.isValid())
+	{
+		auto t = defaultPreset.getChild(0).getChildWithProperty("id", componentId);
+
+		if (t.isValid())
+			return t["value"];
+	}
+
+	return {};
+}
+
+juce::var MainController::UserPresetHandler::DefaultPresetManager::getDefaultValue(int componentIndex) const
+{
+	if (auto sp = dynamic_cast<ProcessorWithScriptingContent*>(interfaceProcessor.get()))
+	{
+		if (auto sc = sp->getScriptingContent()->getComponent(componentIndex))
+		{
+			return getDefaultValue(sc->getName().toString());
+		}
+
+		jassertfalse;
+	}
+
+	return {};
+}
 
 } // namespace hise

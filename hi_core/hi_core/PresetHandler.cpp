@@ -842,6 +842,8 @@ juce::Result ProjectHandler::setWorkingProject(const File &workingDirectory, boo
 			listeners.remove(i--);
 	}
 
+	getMainController()->setWebViewRoot(currentWorkDirectory);
+
 	return Result::ok();
 }
 
@@ -910,6 +912,11 @@ File ProjectHandler::getWorkDirectory() const
 	else return currentWorkDirectory;
 }
 
+
+String ProjectHandler::getDefaultUserPreset() const
+{
+	return GET_HISE_SETTING(getMainController()->getMainSynthChain(), HiseSettings::Project::DefaultUserPreset);
+}
 
 juce::ValueTree ProjectHandler::getEmbeddedNetwork(const String& id)
 {

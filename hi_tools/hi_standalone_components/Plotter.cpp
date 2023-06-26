@@ -120,12 +120,12 @@ void Plotter::paint (Graphics& g)
 
 	g.setFont(font);
 
-	g.drawText(topText, getLocalBounds(), Justification::topRight);
-	g.drawText(bottomText, getLocalBounds(), Justification::bottomRight);
+	//g.drawText(topText, getLocalBounds(), Justification::topRight);
+	//g.drawText(bottomText, getLocalBounds(), Justification::bottomRight);
 
 	if (currentMode != Plotter::GainMode)
 	{
-		g.drawHorizontalLine(getHeight() / 2, 0.0f, (float)getWidth());
+		//g.drawHorizontalLine(getHeight() / 2, 0.0f, (float)getWidth());
 	}
 
 	g.setGradientFill(ColourGradient(findColour(pathColour),

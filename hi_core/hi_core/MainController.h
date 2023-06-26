@@ -843,6 +843,30 @@ public:
 		void loadUserPreset(const ValueTree& v, bool useUndoManagerIfEnabled=true);
 		void loadUserPreset(const File& f);
 
+		
+
+		struct DefaultPresetManager: public ControlledObject
+		{
+			DefaultPresetManager(UserPresetHandler& parent);
+
+			void init(const ValueTree& v);
+
+			void resetToDefault();
+
+			var getDefaultValue(const String& componentId) const;
+			var getDefaultValue(int componentIndex) const;
+
+			ValueTree getDefaultPreset() { return defaultPreset; }
+
+		private:
+
+			File defaultFile;
+			WeakReference<Processor> interfaceProcessor;
+			ValueTree defaultPreset;
+		};
+
+
+
 		/** Returns the currently loaded file. Can be used to display the user preset name. */
 		File getCurrentlyLoadedFile() const;;
 
@@ -935,6 +959,21 @@ public:
 		FactoryPaths& getFactoryPaths() { return *factoryPaths; }
 #endif
 
+		void initDefaultPresetManager(const ValueTree& defaultState);
+
+		bool getDefaultValueFromPreset(int componentIndex, float& value)
+		{
+			if (defaultPresetManager->getDefaultPreset().isValid())
+			{
+				value = defaultPresetManager->getDefaultValue(componentIndex);
+				return true;
+			}
+
+			return false;
+		}
+
+		ScopedPointer<DefaultPresetManager> defaultPresetManager;
+
 		private:
 
 		SharedResourcePointer<TagDataBase> tagDataBase;
@@ -943,8 +982,6 @@ public:
 		void saveUserPresetInternal(const String& name=String());
 
 		Array<WeakReference<Listener>, CriticalSection> listeners;
-
-
 
 		File currentlyLoadedFile;
 		ValueTree pendingPreset;
@@ -1514,8 +1551,6 @@ public:
 		return bpm.load() > 0.0 ? bpm.load() : 120.0;
     };
 
-	void setHostBpm(double newTempo);
-
 	bool isSyncedToHost() const;
 
 	void handleTransportCallbacks(const AudioPlayHead::CurrentPositionInfo& newInfo, const MasterClock::GridInfo& gi);
@@ -2060,7 +2095,7 @@ private:
 	double globalPlaybackSpeed = 1.0;
 
 	double fallbackBpm = -1.0;
-	double* hostBpmPointer = &fallbackBpm;
+	double* internalBpmPointer = &fallbackBpm;
 
 	ScopedPointer<ApplicationCommandManager> mainCommandManager;
 
@@ -2107,7 +2142,6 @@ private:
     double globalPitchFactor;
     
     std::atomic<double> bpm;
-	std::atomic<double> bpmFromHost;
 
 	std::atomic<bool> hostIsPlaying;
 

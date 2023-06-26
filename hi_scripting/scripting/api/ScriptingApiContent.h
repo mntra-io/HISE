@@ -880,11 +880,22 @@ public:
             ProcessorWithScriptingContent* p;
         };
         
+		struct AsyncValueUpdater : public AsyncUpdater
+		{
+			AsyncValueUpdater(ScriptComponent& p) :
+				parent(p)
+			{};
+
+			void handleAsyncUpdate() override;
+
+			ScriptComponent& parent;
+		};
         
         
 		struct GlobalCableConnection;
 
 		AsyncControlCallbackSender controlSender;
+		AsyncValueUpdater asyncValueUpdater;
 
 		bool isPositionProperty(Identifier id) const;
 
@@ -2201,7 +2212,76 @@ public:
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptedViewport);
 	};
 
-	
+	struct ScriptWebView : public ScriptComponent
+	{
+		enum Properties
+		{
+			enableCache = ScriptComponent::numProperties,
+			enablePersistence
+		};
+
+		ScriptWebView(ProcessorWithScriptingContent* base, Content* parentContent, Identifier webViewName, int x, int y, int width, int height);
+
+		~ScriptWebView();
+
+		static Identifier getStaticObjectName() { RETURN_STATIC_IDENTIFIER("ScriptWebView"); }
+
+		virtual Identifier 	getObjectName() const override { return getStaticObjectName(); }
+		ScriptCreatedComponentWrapper *createComponentWrapper(ScriptContentComponent *content, int index) override;
+
+		void setScriptObjectPropertyWithChangeMessage(const Identifier &id, var newValue, NotificationType notifyEditor /* = sendNotification */) override;
+
+		void handleDefaultDeactivatedProperties() override;
+
+		hise::WebViewData::Ptr getData() const { return data; }
+
+		// ========================================================================================================= API Methods
+
+		/** Binds a HiseScript function to a Javascript callback id. */
+		void bindCallback(const String& callbackId, const var& functionToCall);
+
+		/** Calls the JS function (in the global scope) with the given arguments. */
+		void callFunction(const String& javascriptFunction, const var& args);
+
+		/** Evaluates the code in the web view. You need to pass in an unique identifier so that it will initialise new web views correctly. */
+		void evaluate(const String& identifier, const String& jsCode);
+
+        /** Sets the file to be displayed by the WebView. */
+        void setIndexFile(var indexFile);
+        
+		/** Resets the entire webview. */
+		void reset();
+
+		// =========================================================================================================
+
+	private:
+
+		struct HiseScriptCallback
+		{
+			HiseScriptCallback(ScriptWebView* wv, const String& callback, const var& function) :
+				f(wv->getScriptProcessor(), nullptr, function, 1),
+				callbackId(callback)
+			{
+				f.incRefCount();
+				f.setHighPriority();
+				f.setThisObject(wv);
+			};
+
+			var operator()(const var& args);
+
+			const String& callbackId;
+			WeakCallbackHolder f;
+		};
+
+		OwnedArray<HiseScriptCallback> callbacks;
+
+		struct Wrapper;
+
+		hise::WebViewData::Ptr data;
+
+		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptWebView);
+	};
+						
 
 	struct ScriptFloatingTile : public ScriptComponent,
 								public Dispatchable
@@ -2364,6 +2444,9 @@ public:
 
 	/** Adds a viewport. */
 	ScriptedViewport* addViewport(Identifier viewportName, int x, int y);
+
+	/** Adds a web view. */
+	ScriptWebView* addWebView(Identifier webviewName, int x, int y);
 
 	/** Adds a floating layout component. */
 	ScriptFloatingTile* addFloatingTile(Identifier floatingTileName, int x, int y);

@@ -432,6 +432,8 @@ public:
 	void addObjectDeleteListener(ObjectDeleteListener* l);
 	void removeObjectDeleteListener(ObjectDeleteListener* l);
 
+	Map getMap() override;
+
 	static GlobalScope* getFromChildScope(BaseScope* scope)
 	{
 		auto parent = scope->getParent();
@@ -590,6 +592,8 @@ public:
     bool isUsingInterpreter() const { return interpreterMode; }
     
 private:
+
+	Map currentMap;
 
     bool interpreterMode = false;
     bool debugMode = false;

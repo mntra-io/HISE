@@ -880,7 +880,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_VOID_METHOD_WRAPPER_1(Engine, loadPreviousUserPreset);
 	API_VOID_METHOD_WRAPPER_1(Engine, loadUserPreset);
 	API_VOID_METHOD_WRAPPER_1(Engine, setUserPresetTagList);
-	API_VOID_METHOD_WRAPPER_1(Engine, isUserPresetReadOnly);
+	API_METHOD_WRAPPER_1(Engine, isUserPresetReadOnly);
 	API_METHOD_WRAPPER_0(Engine, getUserPresetList);
 	API_METHOD_WRAPPER_0(Engine, getCurrentUserPresetName);
 	API_VOID_METHOD_WRAPPER_1(Engine, saveUserPreset);
@@ -1363,7 +1363,7 @@ double ScriptingApi::Engine::getHostBpm() const		 { return getProcessor()->getMa
 
 void ScriptingApi::Engine::setHostBpm(double newTempo)
 {
-	getProcessor()->getMainController()->setHostBpm(newTempo);
+	dynamic_cast<GlobalSettingManager*>(getProcessor()->getMainController())->globalBPM = newTempo;
 }
 
 double ScriptingApi::Engine::getMemoryUsage() const
@@ -2770,7 +2770,7 @@ void ScriptingApi::Settings::setVoiceMultiplier(int newVoiceAmount)
 
 void ScriptingApi::Settings::clearMidiLearn()
 {
-	mc->getMacroManager().getMidiControlAutomationHandler()->clear();
+	mc->getMacroManager().getMidiControlAutomationHandler()->clear(sendNotification);
 }
 
 var ScriptingApi::Settings::getMidiInputDevices()
@@ -2989,7 +2989,17 @@ var ScriptingApi::Engine::loadAudioFilesIntoPool()
 
 #endif
 
-	auto allList = getScriptProcessor()->getMainController_()->getSampleManager().getProjectHandler().pool->getAudioSampleBufferPool().getListOfAllReferences(true);
+    auto mc = getScriptProcessor()->getMainController_();
+     
+    auto poolToLoad = mc->getSampleManager().getProjectHandler().pool.get();
+    
+    if(FullInstrumentExpansion::isEnabled(mc))
+    {
+        if(auto e = mc->getExpansionHandler().getCurrentExpansion())
+            poolToLoad = e->pool;
+    }
+    
+	auto allList = poolToLoad->getAudioSampleBufferPool().getListOfAllReferences(true);
 
 	Array<var> ar;
 
@@ -6906,7 +6916,18 @@ juce::File ScriptingApi::FileSystem::getFile(SpecialLocations l)
 
 	switch (l)
 	{
-	case Samples:	f = getMainController()->getCurrentFileHandler().getSubDirectory(FileHandlerBase::Samples);
+	case Samples:
+	
+		if(FullInstrumentExpansion::isEnabled(getMainController()))
+		{
+		  if (auto e = getMainController()->getExpansionHandler().getCurrentExpansion())
+		    f = e->getSubDirectory(FileHandlerBase::Samples);
+		}
+		else 
+		{
+			f = getMainController()->getCurrentFileHandler().getSubDirectory(FileHandlerBase::Samples);	
+		}
+		
 		break;
 	case Expansions: return getMainController()->getExpansionHandler().getExpansionFolder();
 #if USE_BACKEND
@@ -7266,6 +7287,7 @@ struct ScriptingApi::TransportHandler::Wrapper
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, startInternalClock);
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, stopInternalClock);
 	API_VOID_METHOD_WRAPPER_0(TransportHandler, sendGridSyncOnNextCallback);
+	API_VOID_METHOD_WRAPPER_1(TransportHandler, setLinkBpmToSyncMode);
 };
 
 ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* sp) :
@@ -7292,6 +7314,7 @@ ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* 
 	ADD_API_METHOD_2(setEnableGrid);
 	ADD_API_METHOD_0(sendGridSyncOnNextCallback);
     ADD_API_METHOD_1(stopInternalClockOnExternalStop);
+	ADD_API_METHOD_1(setLinkBpmToSyncMode);
 }
 
 ScriptingApi::TransportHandler::~TransportHandler()
@@ -7504,6 +7527,11 @@ void ScriptingApi::TransportHandler::setSyncMode(int syncMode)
 void ScriptingApi::TransportHandler::sendGridSyncOnNextCallback()
 {
 	getMainController()->getMasterClock().setNextGridIsFirst();
+}
+
+void ScriptingApi::TransportHandler::setLinkBpmToSyncMode(bool shouldPrefer)
+{
+	getMainController()->getMasterClock().setLinkBpmToSyncMode(shouldPrefer);
 }
 
 } // namespace hise

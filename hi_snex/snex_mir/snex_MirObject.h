@@ -37,45 +37,55 @@
 struct MIR_context;
 struct MIR_module;
 
-#define CREATE_MIR_TEXT 1
-
 namespace snex {
-namespace jit {
+namespace mir {
 using namespace juce;
 
-using namespace juce;
+using jit::FunctionData;
+using jit::StaticFunctionPointer;
 
 
+struct MirFunctionCollection;
 
-struct MirObject
+struct MirCompiler
 {
-	MirObject();
+	MirCompiler(jit::GlobalScope& m);
 
-	Result compileMirCode(const String& code);
-	Result compileMirCode(const ValueTree& ast);
+	jit::FunctionCollectionBase* compileMirCode(const String& code);
+	jit::FunctionCollectionBase* compileMirCode(const ValueTree& ast);
 
-	FunctionData operator[](const String& functionName);
-
+    void setDataLayout(const Array<ValueTree>& dataTree);
+    
 	Result getLastError() const;;
 
-	~MirObject();
-
-	static void example();
+	~MirCompiler();
 
 	static void setLibraryFunctions(const Array<StaticFunctionPointer>& functionMap);
 
 	static void* resolve(const char* name);
 
 	static bool isExternalFunction(const String& sig);
+    
+    String getAssembly() const { return assembly; }
+    
+	jit::FunctionCollectionBase::Ptr currentFunctionClass;
 
-private:
+	private:
 
+	jit::GlobalScope& memory;
+
+	MirFunctionCollection* getFunctionClass();
+
+    Array<ValueTree> dataLayout;
+    String assembly;
+    
 	static Array<StaticFunctionPointer> currentFunctions;
+	static void* currentConsole;
 
 	Result r;
 
-	MIR_context* ctx;
-	Array<MIR_module*> modules;
+	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MirCompiler);
+	
 };
 
 }

@@ -192,6 +192,10 @@ will break compatibility with older projects / presets because the tempo indexes
 #define USE_LATO_AS_DEFAULT 1
 #endif
 
+#ifndef USE_LINUX_FONT_HANDLER
+#define USE_LINUX_FONT_HANDLER 1
+#endif
+
 #if !HISE_NO_GUI_TOOLS
 #include "hi_binary_data/hi_binary_data.h"
 #endif
@@ -252,6 +256,7 @@ will break compatibility with older projects / presets because the tempo indexes
 #include "hi_tools/JavascriptTokeniser.h"
 #include "hi_tools/JavascriptTokeniserFunctions.h"
 
+#include "hi_standalone_components/ChocWebView.h"
 #include "hi_standalone_components/CodeEditorApiBase.h"
 #include "hi_standalone_components/AdvancedCodeEditor.h"
 #include "hi_standalone_components/ScriptWatchTable.h"

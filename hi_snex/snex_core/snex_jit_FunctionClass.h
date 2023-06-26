@@ -113,6 +113,11 @@ public:
 	FunctionData getConstructor(InitialiserList::Ptr initList);
 	static bool isConstructor(const NamespacedIdentifier& id);
 
+	static bool isDestructor(const NamespacedIdentifier& id)
+	{
+		return id.getIdentifier().toString()[0] == '~';
+	}
+
 	FunctionData getSpecialFunction(SpecialSymbols s, TypeInfo returnType = {}, const TypeInfo::List& args = {}) const;
 	FunctionData getNonOverloadedFunctionRaw(NamespacedIdentifier id) const;
 	FunctionData getNonOverloadedFunction(NamespacedIdentifier id) const;
@@ -154,7 +159,7 @@ public:
 	Inliner::Ptr getInliner(const NamespacedIdentifier& id) const;
 	void addInliner(const Identifier& id, const Inliner::Func& func, Inliner::InlineType type=Inliner::Assembly);
 
-	Map getMap()
+	virtual Map getMap()
 	{
 		Map m;
 
@@ -166,14 +171,13 @@ public:
 			if (f->function != nullptr)
 			{
 				StaticFunctionPointer item;
-				item.signature = f->getSignature();
+				item.signature = f->getSignature({}, false);
 
-				auto l = f->id.toString().replace("::", "__");
+				auto l = f->id.toString().replace("::", "_");
 
 				l << "_";
 
-				if (f->returnType.isValid())
-					l << Types::Helpers::getCppTypeName(f->returnType.getType())[0];
+				l << Types::Helpers::getCppTypeName(f->returnType.getType())[0];
 
 				for (const auto& a : f->args)
 					l << Types::Helpers::getCppTypeName(a.typeInfo.getType())[0];

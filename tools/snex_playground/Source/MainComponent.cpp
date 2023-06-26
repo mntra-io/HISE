@@ -8,11 +8,16 @@
 
 #include "MainComponent.h"
 
+
+
+
+
 using namespace hise;
 using namespace scriptnode;
 using namespace snex::Types;
 using namespace snex::jit;
 using namespace snex;
+
 
 
 
@@ -41,76 +46,7 @@ MainComponent::MainComponent() :
 	bool useValueTrees = false;
 	
 	laf.setDefaultColours(funkSlider);
-
-#if 0
-	GlobalScope m;
-
-	//m.addOptimization(OptimizationIds::ConstantFolding);
-	//m.addOptimization(OptimizationIds::BinaryOpOptimisation);
-	//m.addOptimization(OptimizationIds::DeadCodeElimination);
-
-	Compiler c(m);
-
-	SnexObjectDatabase::registerObjects(c, 2);
-	
-	MirObject::setLibraryFunctions(c.getFunctionMap());
-
-
-	MirObject mobj;
-
-	
-	
-	String nl = "\n";
-	String ml;
-
-#if 0
-	ml << "namespace Math {" << nl;
-	ml << "int sign(int value) { return -1 + 2 * (value > 0); };" << nl;
-	ml << "int abs(int value) { return sign(value) * value; }; " << nl;
-	ml << "float sign(float value) { return -1.0f + 2.0f * (float)(value > 0.0f); };" << nl;
-	ml << "float abs(float value) { return sign(value) * value; };" << nl;
-	//ml << "const double PI = 3.14;" << nl; // enough..
-	ml << "};" << nl;
-#endif
-
-	
-
-
-	ml << "int test(HiseEvent& e) { return e.getNoteNumber(); };" << nl;
-
-	auto obj = c.compileJitObject(ml);
-
-	//auto obj = c.compileJitObject("struct X { int y = 90; span<int, 4> data = { 1, 2, 3, 4 }; double z = 20.0;  void change(double v) { z = 70.0 + v; } }; X obj;  double test(double input) { obj.change(input); return obj.z; };");
-
-	//auto obj = c.compileJitObject("int x = 12; int test(float input) { return x; }");
-	DBG(c.getCompileResult().getErrorMessage());
-
-	auto mirCode = c.getAST();
-
-	auto b64 = SyntaxTreeExtractor::getBase64SyntaxTree(mirCode);
-
-	DBG(mirCode.createXml()->createDocument(""));
-
-	DBG(c.getAssemblyCode());
-	auto ok = mobj.compileMirCode(b64);
-
-	DBG(ok.getErrorMessage());
-	
-	auto f = obj["test"];
-
-	HiseEvent ev(HiseEvent::Type::NoteOn, 64, 127, 1);
-
-	auto res1 = f.call<int>(&ev);
-
-	if (ok)
-	{
-		auto f = mobj["test"];
-
-		auto res2 = f.call<int>(&ev);
-		int ssdfsdf = 0;
-	}
-#endif
-
+    
 	if (useValueTrees)
 	{
 		data->getTestData().setUpdater(&updater);
@@ -137,7 +73,7 @@ MainComponent::MainComponent() :
 		auto compileThread = new snex::jit::TestCompileThread(data);
 		data->setCompileHandler(compileThread);
 
-		for (auto o : OptimizationIds::getAllIds())
+		for (auto o : OptimizationIds::getDefaultIds())
 			data->getGlobalScope().addOptimization(o);
 
 		playground = new snex::ui::SnexPlayground(data, true);
@@ -147,26 +83,102 @@ MainComponent::MainComponent() :
 		
 	}
 
-	context.attachTo(*this);
+    //context.attachTo(*playground);
+    
+    WebViewData::Ptr data = new WebViewData();
+
+
+
+	auto root = File::getSpecialLocation(File::userDesktopDirectory).getChildFile("webtest");
+
 	
-	addAndMakeVisible(playground);
+	auto cacheFile = root.getChildFile("cached.dat");
+
+	if (cacheFile.existsAsFile())
+	{
+		zstd::ZDefaultCompressor comp;
+		
+		ValueTree v;
+		comp.expand(cacheFile, v);
+		data->restoreFromValueTree(v);
+	}
+	else
+	{
+		data->setRootDirectory(root);
+		data->setEnableCache(true);
+	}
+		
+	data->setIndexFile("/index.html");
+
+    data->addCallback("getX", [](const var& v)
+    {
+        return JUCE_LIVE_CONSTANT(0.01);
+    });
+    
+    data->setErrorLogger([](const String& d)
+    {
+        DBG(d);
+    });
+    
+	
+
+	
+    addAndMakeVisible(webViewWrapper = new WebViewWrapper(data));
+    
+    addAndMakeVisible(playground);
+    
+    //playground->toFront(true);
+    //context.attachTo(*playground);
+    
+	addAndMakeVisible(funkSlider);
+	
+	funkSlider.onValueChange = [data, this]()
+	{
+		auto v = funkSlider.getValue();
+
+		data->call("something", v);
+	};
+
 
     setSize (1024, 768);
 }
 
 MainComponent::~MainComponent()
 {
+	auto wv = dynamic_cast<WebViewWrapper*>(webViewWrapper.get());
+
+	auto data2 = wv->getData();
+
+	auto v = data2->exportAsValueTree();
+
+	auto root = File::getSpecialLocation(File::userDesktopDirectory).getChildFile("webtest");
+	auto cacheFile = root.getChildFile("cached.dat");
+	cacheFile.deleteFile();
+
+	//FileOutputStream fos(cacheFile);
+	//v.writeToStream(fos);
+	
+	zstd::ZDefaultCompressor comp;
+
+	comp.compress(v, cacheFile);
+
+	//fos.flush();
+
+	webViewWrapper = nullptr;
+
 	data = nullptr;
 
-	context.detach();
+	//context.detach();
 
+	
+    
 
 }
 
 //==============================================================================
 void MainComponent::paint (Graphics& g)
 {
-	g.fillAll(Colour(0xFF333336));
+	//g.fillAll(Colour(0xFF333336));
 }
 
 void MainComponent::resized()
@@ -185,7 +197,12 @@ void MainComponent::resized()
 		
 		
 	}
-		
-
-	playground->setBounds(b);
+	
+	funkSlider.setBounds(b.removeFromBottom(100));
+    
+    webViewWrapper->setBounds(b);
+    playground->setBounds(b.removeFromBottom(200));
+    
+    
+	
 }

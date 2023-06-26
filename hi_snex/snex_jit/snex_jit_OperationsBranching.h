@@ -74,6 +74,10 @@ struct Operations::StatementBlock : public Expression,
 	{
 		auto v = Statement::toValueTree();
 		v.setProperty("ScopeId", getPath().toString(), nullptr);
+
+		if (isInlinedFunction)
+			v.setProperty("ReturnType", getTypeInfo().toStringWithoutAlias(), nullptr);
+
 		return v;
 	}
 
@@ -203,6 +207,10 @@ struct Operations::ReturnStatement : public Expression,
 	{
 		auto t = Expression::toValueTree();
 		t.setProperty("Type", getTypeInfo().toString(), nullptr);
+
+		if (getTypeInfo().isComplexType() && !getTypeInfo().isRef())
+			t.setProperty("ReturnBlockSize", getTypeInfo().getRequiredByteSizeNonZero(), nullptr);
+
 		return t;
 	}
 
@@ -417,17 +425,21 @@ struct Operations::Loop : public Expression,
 	{
 		auto t = Expression::toValueTree();
 
-		static const StringArray loopTypes = { "Undefined", "Span", "Block", "CustomObject" };
+		static const StringArray loopTypes = { "Undefined", "Span", "Dyn", "CustomObject" };
 		t.setProperty("LoopType", loopTypes[loopTargetType], nullptr);
 		t.setProperty("LoadIterator", loadIterator, nullptr);
 		t.setProperty("Iterator", iterator.toString(), nullptr);
+		t.setProperty("ElementType", iterator.typeInfo.toStringWithoutAlias(), nullptr);
         t.setProperty("ElementSize", (int)iterator.typeInfo.getRequiredByteSizeNonZero(), nullptr);
         
         if(loopTargetType == ArrayType::Span)
         {
             t.setProperty("NumElements", numElements, nullptr);
-            
         }
+		if (loopTargetType == ArrayStatementBase::CustomObject)
+		{
+			t.setProperty("ObjectType", getSubExpr(0)->getTypeInfo().toStringWithoutAlias(), nullptr);
+		}
         
 		return t;
 	}

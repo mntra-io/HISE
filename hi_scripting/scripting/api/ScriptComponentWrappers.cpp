@@ -589,10 +589,12 @@ void ScriptCreatedComponentWrappers::SliderWrapper::updateSliderStyle(ScriptingA
 		s->setTextBoxStyle(Slider::NoTextBox, false, 0, 0);
 	}
 
+    auto showTextBox = (bool)sc->getScriptObjectProperty(ScriptingApi::Content::ScriptSlider::showTextBox);
+    
+    s->enableShiftTextInput = showTextBox;
+    
 	if (sc->styleId == Slider::LinearBar || sc->styleId == Slider::LinearBarVertical)
 	{
-		auto showTextBox = (bool)sc->getScriptObjectProperty(ScriptingApi::Content::ScriptSlider::showTextBox);
-
 		if (!showTextBox)
 			s->setColour(Slider::textBoxOutlineColourId, Colours::transparentBlack);
 
@@ -615,7 +617,7 @@ void ScriptCreatedComponentWrappers::SliderWrapper::updateComponent()
 	s->setName(GET_SCRIPT_PROPERTY(text));
 	s->enableMacroControlledComponent(GET_SCRIPT_PROPERTY(enabled));
 
-	ScriptingApi::Content::ScriptSlider* sc = dynamic_cast<ScriptingApi::Content::ScriptSlider*>(getScriptComponent());
+    ScriptingApi::Content::ScriptSlider* sc = dynamic_cast<ScriptingApi::Content::ScriptSlider*>(getScriptComponent());
 
 	updateSensitivity(sc, s);
 
@@ -2726,6 +2728,31 @@ void ScriptCreatedComponentWrappers::AudioWaveformWrapper::updateColours(AudioDi
 	tn->repaint();
 }
 
+ScriptCreatedComponentWrappers::WebViewWrapper::WebViewWrapper(ScriptContentComponent *content, ScriptingApi::Content::ScriptWebView *webview, int index) :
+	ScriptCreatedComponentWrapper(content, webview)
+{
+	auto wc = new hise::WebViewWrapper(webview->getData());
+	dynamic_cast<GlobalSettingManager*>(getProcessor()->getMainController())->addScaleFactorListener(this);
+	component = wc;
+
+	if (vp = content->findParentComponentOfClass<ZoomableViewport>())
+		vp->addZoomListener(this);
+}
+
+ScriptCreatedComponentWrappers::WebViewWrapper::~WebViewWrapper()
+{
+	if(vp.getComponent() != nullptr)
+		vp->removeZoomListener(this);
+	
+
+	dynamic_cast<GlobalSettingManager*>(getProcessor()->getMainController())->removeScaleFactorListener(this);
+	component = nullptr;
+}
+
+void ScriptCreatedComponentWrappers::WebViewWrapper::scaleFactorChanged(float newScaleFactor)
+{
+	dynamic_cast<hise::WebViewWrapper*>(component.get())->refreshBounds(newScaleFactor);
+}
 
 ScriptCreatedComponentWrappers::FloatingTileWrapper::FloatingTileWrapper(ScriptContentComponent *content, ScriptingApi::Content::ScriptFloatingTile *floatingTile, int index):
 	ScriptCreatedComponentWrapper(content, index)
@@ -2953,6 +2980,14 @@ void ScriptedControlAudioParameter::setValue(float newValue)
 
 float ScriptedControlAudioParameter::getDefaultValue() const
 {
+	float value = 0.0f;
+
+	if (dynamic_cast<MainController*>(parentProcessor)->getUserPresetHandler().getDefaultValueFromPreset(this->componentIndex, value))
+	{
+		const float v = range.convertTo0to1(value);
+		return  jlimit<float>(0.0f, 1.0f, v);;
+	}
+
 	if (scriptProcessor.get() != nullptr && type == Type::Slider)
 	{
 		const float v = range.convertTo0to1(scriptProcessor->getDefaultValue(componentIndex));

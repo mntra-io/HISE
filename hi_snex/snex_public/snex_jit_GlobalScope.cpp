@@ -218,6 +218,19 @@ void GlobalScope::removeObjectDeleteListener(ObjectDeleteListener* l)
 	deleteListeners.removeAllInstancesOf(l);
 }
 
+snex::jit::FunctionClass::Map GlobalScope::getMap()
+{
+	if (currentMap.isEmpty())
+	{
+		currentMap = FunctionClass::getMap();
+
+		for (auto f : objectClassesWithJitCallableFunctions)
+			currentMap.addArray(f->getMap());
+	}
+
+	return currentMap;
+}
+
 void GlobalScope::sendBlinkMessage(int lineNumber)
 {
 	for (auto dh : debugHandlers)

@@ -31,6 +31,8 @@
 */
 
 
+#include "hi_tools/hi_standalone_components/CodeEditorApiBase.h"
+
 namespace snex {
 using namespace juce;
 
@@ -742,27 +744,104 @@ Result ui::WorkbenchData::TestData::processTestData(WorkbenchData::Ptr data)
 
 int ui::WorkbenchData::CompileResult::getNumDebugObjects() const
 {
+#if SNEX_MIR_BACKEND && SNEX_STANDALONE_PLAYGROUND
+	return obj.getNumVariables();
+#else
 	if (dataPtr == nullptr)
 		return 0;
 
-	int numObjects = 0;
-
 	if (auto st = dynamic_cast<StructType*>(mainClassPtr.get()))
 	{
-		String s;
-		int intent = 0;
-		st->dumpTable(s, intent, dataPtr, dataPtr);
-
-		DBG(s);
-
-		numObjects += st->getNumMembers();
+		return st->getNumMembers();
 	}
 
-	return numObjects;
+	return 0;
+#endif
+	
 }
+
+struct ValueTreeDebugInfo: public hise::DebugInformationBase
+{
+    ValueTreeDebugInfo(const ValueTree& v_):
+      v(v_)
+    {
+        
+    }
+    
+    int getNumChildElements() const override
+    {
+        return v.getNumChildren();
+    }
+    
+    virtual int getType() const
+    {
+        if (auto obj = getObject())
+            return obj->getTypeNumber();
+
+        return 0;
+    };
+
+    Ptr getChildElement(int index)
+    {
+        return new ValueTreeDebugInfo(v.getChild(index));
+    }
+
+    virtual String getTextForName() const
+    {
+        return v["ObjectId"].toString();
+    }
+
+    virtual String getCategory() const
+    {
+        return "";
+    }
+
+    virtual DebugableObjectBase::Location getLocation() const
+    {
+        return DebugableObjectBase::Location();
+    }
+
+    virtual String getTextForType() const { return "unknown"; }
+
+    virtual String getTextForDataType() const
+    {
+        return v["type"].toString();
+    }
+
+    virtual String getTextForValue() const
+    {
+        return v["Value"].toString();
+    }
+
+    virtual bool isWatchable() const
+    {
+        return true;
+    }
+
+    virtual bool isAutocompleteable() const
+    {
+        return false;
+    }
+
+    virtual String getCodeToInsert() const
+    {
+        return "";
+    };
+
+    virtual AttributedString getDescription() const
+    {
+        return AttributedString();
+    }
+    
+    ValueTree v;
+};
 
 hise::DebugInformationBase::Ptr ui::WorkbenchData::CompileResult::getDebugInformation(int index)
 {
+#if SNEX_MIR_BACKEND && SNEX_STANDALONE_PLAYGROUND
+	auto c = obj.getDataLayout(index); 
+    return new ValueTreeDebugInfo(c);
+#else
 	if (dataPtr == nullptr)
 		return nullptr;
 
@@ -777,6 +856,7 @@ hise::DebugInformationBase::Ptr ui::WorkbenchData::CompileResult::getDebugInform
 	}
 
 	return nullptr;
+#endif
 }
 
 int ui::WorkbenchData::CompileResult::DataEntry::getType() const

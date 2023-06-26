@@ -38,6 +38,9 @@ using namespace juce;
 
 
 
+
+
+
 /** A JIT compiler for a C language subset based on AsmJIT.
 
 	It is supposed to be used as "scripting" language for the inner loop of a DSP routine. It offers about 70% - 80% performance of
@@ -95,8 +98,6 @@ public:
 
 	using Ptr = ReferenceCountedObjectPtr<Compiler>;
 
-	
-
 	~Compiler();
 	Compiler(GlobalScope& memoryPool);
 
@@ -105,14 +106,6 @@ public:
 	JitObject compileJitObject(const juce::String& code);
 
 	NamespaceHandler& parseWithoutCompilation(const juce::String& code);
-
-	/** Compile a class that you want to use from C++. */
-	template <class T> T* compileJitClass(const juce::String& code, const String& classId)
-	{
-		auto obj = compileJitObject(code);
-		auto typePtr = getComplexType(NamespacedIdentifier::fromString(classId));
-		return new T(std::move(obj), typePtr);
-	};
 
 	Result getCompileResult();
 
@@ -149,10 +142,11 @@ public:
 
 	FunctionClass::Map getFunctionMap();
 
-
-
 private:
 
+	Result cr;
+
+	String assembly;
 	NamespaceHandler::Ptr handler;
 	juce::String lastCode;
 	juce::String preprocessedCode;
@@ -208,6 +202,10 @@ struct SyntaxTreeExtractor
 	/** Extracts the AST from the compiler and returns a compressed Base64 string. */
 	static String getBase64SyntaxTree(ValueTree v);
 
+    static String getBase64DataLayout(const Array<ValueTree>& dataLayouts);
+    
+    static Array<ValueTree> getDataLayoutTrees(const String& b64);
+    
 	static bool isBase64Tree(const String& code);
 
 private:

@@ -169,6 +169,7 @@ public:
 		MenuToolsCreateToolbarPropertyDefinition,
 		MenuToolsCreateExternalScriptFile,
 		MenuToolsConvertSVGToPathData,
+		MenuToolsRestoreToDefault,
 		MenuToolsValidateUserPresets,
 		MenuToolsExternalScriptFileOffset,
 		MenuToolsResolveMissingSamples = 0x60000,
@@ -181,6 +182,7 @@ public:
 		MenuToolsRedirectScriptFolder,
 		MenuToolsCreateUIDataFromDesktop,
 		MenuToolsCheckDeviceSanity,
+        MenuToolsCheckPluginParameterSanity,
 		MenuToolsForcePoolSearch,
 		MenuToolsConvertAllSamplesToMonolith,
 		MenuToolsConvertSampleMapToWavetableBanks,
@@ -387,7 +389,7 @@ public:
 		static void updateSampleMapIds(BackendRootWindow * bpe);
 		static void toggleCallStackEnabled(BackendRootWindow * bpe);
 		static void testPlugin(const String& pluginToLoad);
-
+        static void checkPluginParameterSanity(BackendRootWindow* bpe);
 		static void newFile(BackendRootWindow* bpe);
 
 		static void removeAllSampleMaps(BackendRootWindow * bpe);
@@ -408,6 +410,7 @@ public:
 		static void showNetworkDllInfo(BackendRootWindow * bpe);
 
 		static void createThirdPartyNode(BackendRootWindow* bpe);
+		static void restoreToDefault(BackendRootWindow * bpe);
 	};
 
 private:

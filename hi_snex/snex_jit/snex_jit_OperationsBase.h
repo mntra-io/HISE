@@ -857,11 +857,21 @@ struct InitialiserList::ExpressionChild : public InitialiserList::ChildBase
 			return expression->toString(Operations::Statement::TextFormat::CppCode);
 		else
 		{
-			String s;
-			s << "$";
-			s << Types::Helpers::getTypeName(expression->getType())[0];
-			s << String(expressionIndex);
-			return s;
+            if(expression->isConstExpr())
+            {
+                auto v = expression->getConstExprValue();
+                return Types::Helpers::getCppValueString(v);
+            }
+            else
+            {
+                String s;
+                s << "$";
+                s << Types::Helpers::getTypeName(expression->getType())[0];
+                s << String(expressionIndex);
+                return s;
+            }
+            
+			
 		}
 	}
 
@@ -884,21 +894,29 @@ struct InitialiserList::ExpressionChild : public InitialiserList::ChildBase
 			return true;
 		}
 
-		auto cExpression = Operations::evalConstExpr(expression);
-
-		if (cExpression->isConstExpr())
+		if (expression->currentScope != nullptr &&
+			expression->currentCompiler != nullptr &&
+			expression->currentScope->getParent() != nullptr)
 		{
-			v = cExpression->getConstExprValue();
-			return true;
+			auto cExpression = Operations::evalConstExpr(expression);
+
+			if (cExpression->isConstExpr())
+			{
+                expression = cExpression;
+                
+				v = cExpression->getConstExprValue();
+                return true;
+			}
 		}
+
 		
-		jassertfalse;
+		
 		return false;
 	}
 
-	Operations::Expression::Ptr expression;
-	VariableStorage value;
-	int expressionIndex = -1;
+	mutable Operations::Expression::Ptr expression;
+	mutable VariableStorage value;
+	mutable int expressionIndex = -1;
 };
 
 juce::ReferenceCountedObject* InitialiserList::getExpression(int index)

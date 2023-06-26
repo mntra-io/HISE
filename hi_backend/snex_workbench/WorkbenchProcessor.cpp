@@ -252,17 +252,6 @@ bool SnexWorkbenchEditor::perform(const InvocationInfo &info)
 
 		return true;
 	}
-	case ToolsSetBPM:
-	{
-		auto bpm = PresetHandler::getCustomName(String(getProcessor()->getBpm()), "Enter the BPM value");
-
-		auto nBpm = bpm.getDoubleValue();
-
-		if(nBpm != 0.0)
-			getProcessor()->setHostBpm(nBpm);
-
-		return true;
-	}
 	case ToolsClearDlls:
 	{
 		if (dllManager->projectDll != nullptr)
@@ -1385,6 +1374,10 @@ void DspNetworkCompileExporter::threadFinished()
 
 	if (ok == ErrorCodes::OK)
 	{
+		if (isUsingCIMode()) {
+			return;
+		}
+
 #if JUCE_DEBUG
 		writeDebugFileAndShowSolution();
 #endif

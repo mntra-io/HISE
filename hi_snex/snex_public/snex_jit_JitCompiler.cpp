@@ -59,10 +59,9 @@ int Compiler::compileCount = 0;
  {
 	 auto m = memory.getMap();
 
-	 auto im = getInbuiltFunctionClass()->getMap();
-
-	 m.addArray(im);
-
+	 if (auto ifc = getInbuiltFunctionClass())
+		 m.addArray(ifc->getMap());
+	 
 	 for (auto t : handler->getComplexTypeList())
 	 {
 		 FunctionClass::Ptr fc = t->getFunctionClass();
@@ -76,7 +75,8 @@ int Compiler::compileCount = 0;
 
 
 Compiler::Compiler(GlobalScope& memoryPool):
-	memory(memoryPool)
+	memory(memoryPool),
+	cr(Result::ok())
 {
 	reset();
 }
@@ -90,7 +90,7 @@ Compiler::~Compiler()
 
 juce::String Compiler::getAssemblyCode()
 {
-	return compiler->assembly;
+	return assembly;
 }
 
 
@@ -179,7 +179,7 @@ void Compiler::initInbuildFunctions()
 
 juce::Result Compiler::getCompileResult()
 {
-	return compiler->getLastResult();
+	return cr;
 }
 
 
@@ -204,7 +204,55 @@ JitObject Compiler::compileJitObject(const juce::String& code)
 		return {};
 	}
 	
-	return JitObject(compiler->compileAndGetScope(preprocessedCode));
+
+	
+
+	JitObject snexObject(compiler->compileAndGetScope(preprocessedCode));
+
+	cr = compiler->getLastResult();
+
+#if SNEX_MIR_BACKEND
+
+	if (cr.wasOk())
+	{
+		auto layout = compiler->namespaceHandler.createDataLayouts();
+		
+		mir::MirCompiler mc(memory);
+
+		mc.setDataLayout(layout);
+
+		JitObject mirObject(mc.compileMirCode(getAST()));
+
+		cr = mc.getLastError();
+
+#if SNEX_INCLUDE_NMD_ASSEMBLY
+
+		assembly = {};
+
+		for (const auto& fid : mirObject.getFunctionIds())
+		{
+			auto f = mirObject[fid.toString()];
+
+			assembly << "\t;" << f.getSignature({}, false) << "\n";
+
+			assembly << f.createAssembly() << "\n";
+		}
+#else
+		assembly = mc.getAssembly();
+#endif
+
+		return mirObject;
+	}
+	else
+	{
+		return {};
+	}
+
+	
+#else
+	assembly = compiler->assembly;
+	return snexObject;
+#endif
 }
 
 
@@ -566,20 +614,76 @@ void SyntaxTreeExtractor::removeLineInfo(ValueTree& v)
 	v.removeProperty("Line", nullptr);
 	v.removeProperty("FuncPointer", nullptr);
 
+#if 0
 	if (v.hasProperty("InitValues"))
 	{
 		InitValueParser p(v.getProperty("InitValues"));
 		auto x = p.getB64();
 		v.setProperty("InitValues", x, nullptr);
 	}
+#endif
 
 	for (auto c : v)
 		removeLineInfo(c);
 }
 
+String SyntaxTreeExtractor::getBase64DataLayout(const Array<ValueTree>& dataLayouts)
+{
+    MemoryOutputStream mos;
+    
+    for(const auto& x: dataLayouts)
+    {
+        zstd::ZDefaultCompressor comp;
+        
+        MemoryBlock mb;
+        comp.compress(x, mb);
+        
+        mos.writeInt(mb.getSize());
+        mos.write(mb.getData(), mb.getSize());
+    }
+    
+    mos.flush();
+    return "b64" + mos.getMemoryBlock().toBase64Encoding();
+}
+
+Array<juce::ValueTree> SyntaxTreeExtractor::getDataLayoutTrees(const juce::String &b64)
+{
+    Array<ValueTree> list;
+    
+    jassert(b64.startsWith("b64"));
+    
+    MemoryBlock mb;
+    mb.fromBase64Encoding(b64.substring(3));
+    MemoryInputStream mos(std::move(mb));
+    
+    while(!mos.isExhausted())
+    {
+        int numBytes = mos.readInt();
+        
+        MemoryBlock mb;
+        mb.ensureSize(numBytes);
+        mos.read(mb.getData(), numBytes);
+        
+        zstd::ZDefaultCompressor comp;
+        
+        ValueTree v;
+        comp.expand(mb, v);
+        
+        list.add(v);
+    }
+    
+    return list;
+}
+
+
 void InitValueParser::forEach(const std::function<void(uint32 offset, Types::ID type, const VariableStorage& value)>& f) const
 {
-	jassert(input.startsWith("b64"));
+	if (!input.startsWith("b64"))
+	{
+		InitValueParser p(getB64());
+		p.forEach(f);
+		return;
+	}
 
 	auto d = input.substring(3);
 
@@ -611,6 +715,14 @@ void InitValueParser::forEach(const std::function<void(uint32 offset, Types::ID 
 			f(offset, Types::ID::Double, VariableStorage(mos.readDouble()));
 
 			offset += sizeof(double);
+			break;
+		case 'p':
+
+			if (offset % sizeof(void*) != 0)
+				offset += sizeof(void*) - (offset % sizeof(void*));
+
+			f(offset, Types::ID::Pointer, VariableStorage(reinterpret_cast<void*>(mos.readInt64()), 8));
+			offset += sizeof(void*);
 			break;
 		case 'I':
 			f(offset, Types::ID::Integer, VariableStorage((void*)(uint64_t)mos.readInt()));
@@ -710,15 +822,20 @@ String InitValueParser::getB64() const
 		auto e = ptr;
 
 		while (e != end &&
-			(CharacterFunctions::isDigit(*e) ||
+			    (CharacterFunctions::isDigit(*e) ||
 				*e == '.' ||
-				*e == 'f'))
+				*e == 'f' ||
+                *e == 'x' ||
+			    *e == 'p'))
 		{
 			e++;
 		}
 
 		String value(b, e);
 
+        if(value.isEmpty())
+            break;
+        
 		if (isExpression)
 		{
 			mos.writeByte(CharacterFunctions::toUpperCase(expressionType));
@@ -742,6 +859,15 @@ String InitValueParser::getB64() const
 			{
 				mos.writeByte('d');
 				mos.writeDouble(value.getDoubleValue() * (!isMinus ? 1.0 : -1.0));
+			}
+			if (type == Types::ID::Pointer)
+			{
+				mos.writeByte('p');
+
+				auto v2 = value.substring(3);
+				auto hv = v2.getHexValue64();
+
+				mos.writeInt64(hv);
 			}
 		}
 

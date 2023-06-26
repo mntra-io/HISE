@@ -95,6 +95,7 @@ DECLARE_ID(AdminPermissions);
 DECLARE_ID(EmbedUserPresets);
 DECLARE_ID(UseGlobalAppDataFolderWindows);
 DECLARE_ID(UseGlobalAppDataFolderMacOS);
+DECLARE_ID(DefaultUserPreset);
 
 Array<Identifier> getAllIds();
 
@@ -147,6 +148,7 @@ DECLARE_ID(CodeFontSize);
 DECLARE_ID(EnableOptimizations);
 DECLARE_ID(EnableDebugMode);
 DECLARE_ID(SaveConnectedFilesOnCompile);
+DECLARE_ID(EnableMousePositioning);
 
 Array<Identifier> getAllIds();
 

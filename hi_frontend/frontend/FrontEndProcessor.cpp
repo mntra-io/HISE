@@ -253,7 +253,7 @@ updater(*this)
     HiseDeviceSimulator::init(wrapperType);
     
 	GlobalSettingManager::initData(this);
-
+	GlobalSettingManager::restoreGlobalSettings(this, false);
     
 #if HISE_ENABLE_LORIS_ON_FRONTEND
     auto f = FrontendHandler::getAppDataDirectory(this).getChildFile("loris_library");
@@ -337,6 +337,11 @@ updater(*this)
 		setExternalScriptData(externalFiles->getChildWithName("ExternalScripts"));
 		restoreCustomFontValueTree(externalFiles->getChildWithName("CustomFonts"));
 		restoreEmbeddedMarkdownDocs(externalFiles->getChildWithName("MarkdownDocs"));
+		restoreWebResources(externalFiles->getChildWithName("WebViewResources"));
+
+		auto defaultPreset = externalFiles->getChildWithName("DefaultPreset").getChild(0);
+
+		getUserPresetHandler().initDefaultPresetManager(defaultPreset);
 	}
     
 	numParameters = 0;
@@ -425,6 +430,8 @@ void FrontendProcessor::createPreset(const ValueTree& synthData)
 		getMacroManager().getMidiControlAutomationHandler()->restoreFromValueTree(autoData);
 
 	synthChain->loadMacrosFromValueTree(synthData);
+
+	getUserPresetHandler().initDefaultPresetManager({});
 
 	LOG_START("Adding plugin parameters");
 
