@@ -1736,7 +1736,7 @@ void CompileExporter::ProjectTemplateHelpers::handleCompilerInfo(CompileExporter
     
     REPLACE_WILDCARD_WITH_STRING("%USE_IPP%", exporter->useIpp ? "1" : "0");
 
-    REPLACE_WILDCARD_WITH_STRING("%IPP_1A%", exporter->useIpp ? "true" : String());
+    REPLACE_WILDCARD_WITH_STRING("%IPP_1A%", exporter->useIpp ? "Static_Library" : String());
 		REPLACE_WILDCARD_WITH_STRING("%UAC_LEVEL%", exporter->dataObject.getSetting(HiseSettings::Project::AdminPermissions) ? "/MANIFESTUAC:level='requireAdministrator'" : String());
     
     REPLACE_WILDCARD_WITH_STRING("%LEGACY_CPU_SUPPORT%", exporter->legacyCpuSupport ? "1" : "0");
