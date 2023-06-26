@@ -78,14 +78,14 @@ static const unsigned char projectTemplate_jucer_lines[] =
 "  </MAINGROUP>\r\n"
 "  <EXPORTFORMATS>\r\n"
 "    <%VS_VERSION% targetFolder=\"Builds/%TARGET_FOLDER%\" vstLegacyFolder=\"%VSTSDK_FOLDER%\" vst3Folder=\"%VSTSDK3_FOLDER%\" aaxFolder=\"%AAX_PATH%\" \r\n"
-"            IPP1ALibrary=\"%IPP_1A%\" extraDefs=\"%PLUGIN_CHANNEL_AMOUNT%&#10;%EXTRA_DEFINES_WIN%\" extraCompilerFlags=\"/bigobj %MSVC_WARNINGS%\" >\r\n"
+"            IPPLibrary=\"Sequential\" IPP1ALibrary=\"%IPP_1A%\" extraDefs=\"%PLUGIN_CHANNEL_AMOUNT%&#10;%EXTRA_DEFINES_WIN%\" extraCompilerFlags=\"/bigobj %MSVC_WARNINGS%\" >\r\n"
 "      <CONFIGURATIONS>\r\n"
 "        <CONFIGURATION name=\"Debug\" winWarningLevel=\"1\" generateManifest=\"1\" winArchitecture=\"x64\"\r\n"
 "                       isDebug=\"1\" optimisation=\"1\" targetName=\"%NAME% Debug\"\r\n"
-"                       headerPath=\"%FAUST_HEADER_PATH%;C:/Program Files/Common Files/fftw3\" libraryPath=\"%AAX_DEBUG_LIB%;%WIN_STATIC_LIB_FOLDER_D64% C:/Program Files/Common Files/fftw3\" binaryPath=\"Compiled/\" useRuntimeLibDLL=\"0\" prebuildCommand=\"%PREBUILD_COMMAND%\"/>\r\n"
+"                       headerPath=\"%FAUST_HEADER_PATH%\" libraryPath=\"%AAX_DEBUG_LIB%;%WIN_STATIC_LIB_FOLDER_D64%\" binaryPath=\"Compiled/\" useRuntimeLibDLL=\"0\" prebuildCommand=\"%PREBUILD_COMMAND%\"/>\r\n"
 "        <CONFIGURATION name=\"Release\" winWarningLevel=\"1\" generateManifest=\"1\"\r\n"
 "                       winArchitecture=\"x64\" isDebug=\"0\" optimisation=\"3\" targetName=\"%NAME%\"\r\n"
-"                       headerPath=\"%FAUST_HEADER_PATH%; C:/Program Files/Common Files/fftw3\" libraryPath=\"%AAX_RELEASE_LIB%;%WIN_STATIC_LIB_FOLDER_R64% C:/Program Files/Common Files/fftw3\" binaryPath=\"Compiled/\" linkTimeOptimisation=\"%LINK_TIME_OPTIMISATION%\" useRuntimeLibDLL=\"0\" prebuildCommand=\"%PREBUILD_COMMAND%\"/>\r\n"
+"                       headerPath=\"%FAUST_HEADER_PATH%\" libraryPath=\"%AAX_RELEASE_LIB%;%WIN_STATIC_LIB_FOLDER_R64%\" binaryPath=\"Compiled/\" linkTimeOptimisation=\"%LINK_TIME_OPTIMISATION%\" useRuntimeLibDLL=\"0\" prebuildCommand=\"%PREBUILD_COMMAND%\"/>\r\n"
 "      </CONFIGURATIONS>\r\n"
 "      <MODULEPATHS>\r\n"
 "        <MODULEPATH id=\"juce_core\" path=\"%JUCE_PATH%\"/>\r\n"
@@ -303,7 +303,7 @@ static const unsigned char projectTemplate_jucer_lines[] =
 "  <JUCEOPTIONS JUCE_QUICKTIME=\"disabled\" USE_BACKEND=\"disabled\" USE_FRONTEND=\"enabled\" USE_RAW_FRONTEND=\"%USE_RAW_FRONTEND%\" HI_EXPORT_DSP_LIBRARY=\"disabled\" HISE_ENABLE_MIDI_INPUT_FOR_FX=\"%ENABLE_MIDI_INPUT_FX%\" PROCESS_SOUND_GENERATORS_IN_FX_PLUGIN=\"%PROCESS_SOUND_GENERATORS_IN_FX_PLUGIN%\" HISE_MIDIFX_PLUGIN=\"%HISE_MIDIFX_PLUGIN%\" USE_COPY_PROTECTION = \"%USE_COPY_PROTECTION%\" IS_STANDALONE_APP=\"disabled\"\r\n"
 "               USE_IPP=\"%USE_IPP%\" FRONTEND_IS_PLUGIN=\"%FRONTEND_IS_PLUGIN%\" USE_CUSTOM_FRONTEND_TOOLBAR=\"%USE_CUSTOM_FRONTEND_TOOLBAR%\" IS_STANDALONE_FRONTEND=\"%IS_STANDALONE_FRONTEND%\"  USE_GLITCH_DETECTION = \"enabled\" ENABLE_PLOTTER=\"disabled\" ENABLE_SCRIPTING_SAFE_CHECKS=\"disabled\""
 "               ENABLE_ALL_PEAK_METERS=\"disabled\" USE_SPLASH_SCREEN=\"%USE_SPLASH_SCREEN%\" HI_SUPPORT_MONO_CHANNEL_LAYOUT=\"%SUPPORT_MONO%\" HI_SUPPORT_FULL_DYNAMICS_HLAC=\"%SUPPORT_FULL_DYNAMICS%\" ENABLE_CONSOLE_OUTPUT=\"disabled\" HI_ENABLE_LEGACY_CPU_SUPPORT=\"%LEGACY_CPU_SUPPORT%\" HISE_INCLUDE_FAUST=\"%HISE_INCLUDE_FAUST%\" HISE_USE_SYSTEM_APP_DATA_FOLDER=\"%USE_GLOBAL_APP_FOLDER%\" HISE_INCLUDE_RLOTTIE=\"enabled\" HLAC_MEASURE_DECODING_PERFORMANCE=\"disabled\" HLAC_DEBUG_LOG=\"disabled\" HLAC_INCLUDE_TEST_SUITE=\"disabled\" STANDALONE_STREAMING=\"disabled\""
-"				JUCE_ASSERTION_FIRFILTER=\"disabled\" JUCE_WEB_BROWSER=\"disabled\" JUCE_USE_CURL=\"enabled\" JUCE_DSP_USE_INTEL_MKL=\"disabled\" JUCE_DSP_USE_SHARED_FFTW=\"enabled\" JUCE_DSP_USE_STATIC_FFTW=\"disabled\"  HISE_USE_CUSTOM_EXPANSION_TYPE=\"%USE_CUSTOM_EXPANSION_TYPE%\" READ_ONLY_FACTORY_PRESETS=\"%READ_ONLY_FACTORY_PRESETS%\"  JUCE_HEADLESS_PLUGIN_CLIENT=\"%JUCE_HEADLESS_PLUGIN_CLIENT%\"/>/>\r\n"
+"				JUCE_ASSERTION_FIRFILTER=\"disabled\" JUCE_WEB_BROWSER=\"disabled\" JUCE_USE_CURL=\"enabled\" JUCE_DSP_USE_INTEL_MKL=\"disabled\" JUCE_DSP_USE_SHARED_FFTW=\"disabled\" JUCE_DSP_USE_STATIC_FFTW=\"disabled\"  HISE_USE_CUSTOM_EXPANSION_TYPE=\"%USE_CUSTOM_EXPANSION_TYPE%\" READ_ONLY_FACTORY_PRESETS=\"%READ_ONLY_FACTORY_PRESETS%\"  JUCE_HEADLESS_PLUGIN_CLIENT=\"%JUCE_HEADLESS_PLUGIN_CLIENT%\"/>/>\r\n"
 "</JUCERPROJECT>\r\n";
 
 const char* projectTemplate_jucer = (const char*)projectTemplate_jucer_lines;
