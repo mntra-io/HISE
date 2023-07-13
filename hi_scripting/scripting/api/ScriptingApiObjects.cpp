@@ -7408,9 +7408,12 @@ struct MacroCableTarget : public scriptnode::routing::GlobalRoutingManager::Cabl
 
 	void sendValue(double v) override
 	{
+		if (macroData == nullptr)
+			macroData = getMainController()->getMainSynthChain()->getMacroControlData(macroIndex);
+
 		auto newValue = 127.0f * jlimit(0.0f, 1.0f, (float)v);
 		
-		if (!filterRepetitions || lastValue != newValue)
+		if ((!filterRepetitions || lastValue != newValue) && macroData != nullptr)
 		{
 			lastValue = newValue;
 			macroData->setValue(newValue);
@@ -7480,12 +7483,16 @@ void ScriptingObjects::GlobalCableReference::connectToGlobalModulator(const Stri
 struct ProcessorParameterTarget : public scriptnode::routing::GlobalRoutingManager::CableTargetBase,
                                   public ControlledObject
 {
-    ProcessorParameterTarget(Processor* p, int index, const scriptnode::InvertableParameterRange& range) :
+    ProcessorParameterTarget(Processor* p, int index, const scriptnode::InvertableParameterRange& range, double smoothingTimeMs) :
         ControlledObject(p->getMainController()),
         targetRange(range),
         parameterIndex(index),
         processor(p)
     {
+		auto numSamples = p->getLargestBlockSize();
+
+		lastValue.prepare(p->getSampleRate() / (double)p->getLargestBlockSize(), smoothingTimeMs);
+
         id << processor->getId();
         id << "::";
         id << processor->parameterNames[index].toString();
@@ -7504,7 +7511,8 @@ struct ProcessorParameterTarget : public scriptnode::routing::GlobalRoutingManag
 
     void sendValue(double v) override
     {
-        auto newValue = jlimit(0.0f, 1.0f, (float)v);
+		lastValue.set(v);
+        auto newValue = jlimit(0.0f, 1.0f, (float)lastValue.advance());
         auto cv = targetRange.convertFrom0to1(newValue, true);
         processor->setAttribute(parameterIndex, cv, sendNotification);
     }
@@ -7520,6 +7528,7 @@ struct ProcessorParameterTarget : public scriptnode::routing::GlobalRoutingManag
     const scriptnode::InvertableParameterRange targetRange;
     WeakReference<Processor> processor;
     String id;
+	sdouble lastValue;
 };
 
 void ScriptingObjects::GlobalCableReference::connectToModuleParameter(const String& processorId, var parameterIndex, var targetRange)
@@ -7579,8 +7588,10 @@ void ScriptingObjects::GlobalCableReference::connectToModuleParameter(const Stri
             
             auto range = scriptnode::RangeHelpers::getDoubleRange(targetRange);
             
+			auto smoothing = (double)targetRange.getProperty("SmoothingTime", 0.0);
+
             if (indexToUse != -1)
-                c->addTarget(new ProcessorParameterTarget(p, indexToUse, range));
+                c->addTarget(new ProcessorParameterTarget(p, indexToUse, range, smoothing));
         }
     }
     else

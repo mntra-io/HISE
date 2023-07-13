@@ -601,26 +601,7 @@ public:
             bool prevValue;
         };
         
-		struct StoredModuleData : public ReferenceCountedObject
-		{
-			using Ptr = ReferenceCountedObjectPtr<StoredModuleData>;
-			using List = ReferenceCountedArray<StoredModuleData>;
-
-			StoredModuleData(var moduleId, Processor* pToRestore);
-
-			void stripValueTree(ValueTree& v);
-
-			void restoreValueTree(ValueTree& v);
-
-			String id;
-
-			WeakReference<Processor> p;
-			NamedValueSet removedProperties;
-			Array<ValueTree> removedChildElements;
-
-			JUCE_DECLARE_WEAK_REFERENCEABLE(StoredModuleData);
-			JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StoredModuleData);
-		};
+		
 
 		struct CustomAutomationData : public ReferenceCountedObject,
 									  public ControlledObject
@@ -867,8 +848,6 @@ public:
 			ValueTree defaultPreset;
 		};
 
-
-
 		/** Returns the currently loaded file. Can be used to display the user preset name. */
 		File getCurrentlyLoadedFile() const;;
 
@@ -880,7 +859,7 @@ public:
 
         bool isInternalPresetLoad() const { return isInternalPresetLoadFlag; }
         
-		bool isUsingCustomDataModel() const { return isUsingCustomData; };
+		bool isUsingCustomDataModel() const { return customStateManager != nullptr; };
 		
 		bool isUsingPersistentObject() const { return usePersistentObject; }
 
@@ -897,8 +876,6 @@ public:
 		*/
 		void savePreset(String presetName = String());
 
-		void loadCustomValueTree(const ValueTree& presetData);
-
 		StringArray getCustomAutomationIds() const;
 
 		int getNumCustomAutomationData() const { return customAutomationData.size(); }
@@ -907,11 +884,7 @@ public:
 
 		CustomAutomationData::Ptr getCustomAutomationData(int index) const;
 
-		StoredModuleData::List& getStoredModuleData() { return storedModuleData; }
-
 		int getCustomAutomationIndex(const Identifier& id) const;
-
-		ValueTree createCustomValueTree(const String& presetName);
 
 		/** Registers a listener that will be notified about preset changes. */
 		void addListener(Listener* listener);
@@ -936,7 +909,20 @@ public:
 
 		void setUseCustomDataModel(bool shouldUseCustomModel, bool usePersistentObject);
 
+		
+
 		LambdaBroadcaster<bool> deferredAutomationListener;
+
+		void addStateManager(UserPresetStateManager* newManager);
+
+		void removeStateManager(UserPresetStateManager* managerToRemove);
+
+		bool restoreStateManager(const ValueTree& presetRoot, const Identifier& stateId);
+		bool saveStateManager(ValueTree& preset, const Identifier& stateId);
+
+		
+
+		UserPresetStateManager::List stateManagers;
 
 #if READ_ONLY_FACTORY_PRESETS
 	private:
@@ -994,14 +980,35 @@ public:
 		MainController* mc;
 		bool useUndoForPresetLoads = false;
 
-		bool isUsingCustomData = false;
+		struct CustomStateManager : public UserPresetStateManager
+		{
+			CustomStateManager(UserPresetHandler& parent_);
+
+			void resetUserPresetState() override
+			{
+
+			};
+
+			Identifier getUserPresetStateId() const override { return UserPresetIds::CustomJSON; };
+			
+			void restoreFromValueTree(const ValueTree &previouslyExportedState) override;
+
+			ValueTree exportAsValueTree() const override;
+
+			UserPresetHandler& parent;
+		};
+
+		ScopedPointer<CustomStateManager> customStateManager;
+
 		bool usePersistentObject = false;
         bool isInternalPresetLoadFlag = false;
 
 		CustomAutomationData::List customAutomationData;
 
-		StoredModuleData::List storedModuleData;
-
+    private:
+        
+        bool processStateManager(bool shouldSave, ValueTree& presetRoot, const Identifier& stateId);
+        
 		JUCE_DECLARE_WEAK_REFERENCEABLE(UserPresetHandler);
 	};
 
@@ -1405,6 +1412,9 @@ public:
 	UserPresetHandler& getUserPresetHandler() noexcept { return userPresetHandler; };
 	const UserPresetHandler& getUserPresetHandler() const noexcept { return userPresetHandler; };
 
+	ModuleStateManager& getModuleStateManager() noexcept { return moduleStateManager; };
+	const ModuleStateManager& getModuleStateManager() const noexcept { return moduleStateManager; };
+
 	CodeHandler& getConsoleHandler() noexcept { return codeHandler; };
 	const CodeHandler& getConsoleHandler() const noexcept { return codeHandler; };
 
@@ -1605,6 +1615,8 @@ public:
 	void setBufferToPlay(const AudioSampleBuffer& buffer, const std::function<void(int)>& previewFunction = {});
 
 	int getPreviewBufferPosition() const;
+
+	int getPreviewBufferSize() const;
 
 	void setKeyboardCoulour(int keyNumber, Colour colour);
 
@@ -2034,6 +2046,7 @@ private:
 	HiseEventBuffer outputMidiBuffer;
 	EventIdHandler eventIdHandler;
 	LockFreeDispatcher lockfreeDispatcher;
+	ModuleStateManager moduleStateManager;
 	UserPresetHandler userPresetHandler;
 	ProcessorChangeHandler processorChangeHandler;
 	GlobalAsyncModuleHandler globalAsyncModuleHandler;

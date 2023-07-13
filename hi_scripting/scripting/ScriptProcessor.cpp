@@ -194,6 +194,15 @@ void ProcessorWithScriptingContent::controlCallback(ScriptingApi::Content::Scrip
 	}
 	else
 	{
+		if (auto modulationData = component->getModulationData())
+		{
+			if (modulationData->valueCallback)
+			{
+				modulationData->valueCallback((float)controllerValue);
+				return;
+			}
+		}
+
 		int callbackIndex = getControlCallbackIndex();
 
 		getMainController_()->getDebugLogger().logParameterChange(thisAsJavascriptProcessor, component, controllerValue);
@@ -332,7 +341,8 @@ void ProcessorWithScriptingContent::restoreContent(const ValueTree &restoredStat
 		if (uph.isUsingPersistentObject())
 		{
 			restoredContentValues = restoredState;
-			getMainController_()->getUserPresetHandler().loadCustomValueTree(restoredState);
+
+			getMainController_()->getUserPresetHandler().restoreStateManager(restoredState, UserPresetIds::CustomJSON);
 		}
 	}
 	else
@@ -952,7 +962,8 @@ JavascriptProcessor::SnippetResult JavascriptProcessor::compileInternal()
 			if (uph.isUsingPersistentObject())
 			{
 				thisAsScriptBaseProcessor->restoredContentValues = ValueTree("Content");
-				thisAsScriptBaseProcessor->restoredContentValues.addChild(uph.createCustomValueTree("data"), -1, nullptr);
+
+				uph.saveStateManager(thisAsScriptBaseProcessor->restoredContentValues, UserPresetIds::CustomJSON);
 			}
 		}
 		else
@@ -1064,7 +1075,7 @@ JavascriptProcessor::SnippetResult JavascriptProcessor::compileInternal()
 
 			if (uph.isUsingPersistentObject())
 			{
-				uph.loadCustomValueTree(thisAsScriptBaseProcessor->restoredContentValues);
+				uph.restoreStateManager(thisAsScriptBaseProcessor->restoredContentValues, UserPresetIds::CustomJSON);
 			}
 		}
 		else

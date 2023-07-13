@@ -5,32 +5,15 @@
 
 #if HISE_INCLUDE_SNEX
 
-#if HISE_INCLUDE_SNEX_X64_CODEGEN
+#if HISE_INCLUDE_SNEX_X64_CODEGEN || SNEX_MIR_BACKEND
 
-
-
-
+#if SNEX_ASMJIT_BACKEND
 #include "src/asmjit/asmjit.h"
-
-
-
-namespace asmjit
-{
-using X86Gp = x86::Gp;
-using X86Reg = x86::Reg;
-using X86Mem = x86::Mem;
-using X86Xmm = x86::Xmm;
-using X86Gpq = x86::Gpq;
-using X86Compiler = x86::Compiler;
-using Runtime = JitRuntime;
-using FuncSignatureX = FuncSignatureBuilder;
-using CodeEmitter = x86::Emitter;
-}
-
 #endif
 
-using String = juce::String;
+#include "asmjit_definitions.h"
 
+#endif
 
 #include "snex_parser/snex_jit_TokenIterator.h"
 #include "snex_parser/snex_jit_PreProcessor.h"
@@ -47,8 +30,11 @@ using String = juce::String;
 #include "unit_test/snex_jit_UnitTests.cpp"
 #include "api/SnexApi.cpp"
 
+
+
 #include "snex_components/snex_DebugTools.cpp"
 #include "snex_components/snex_WorkbenchData.cpp"
 #include "snex_components/snex_ExtraComponents.cpp"
 #include "snex_components/snex_JitPlayground.cpp"
+
 #endif
