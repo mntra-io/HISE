@@ -113,7 +113,7 @@ public:
 	void restoreFromValueTree(const ValueTree &v) override;
 
 	Identifier getUserPresetStateId() const override { return UserPresetIds::MidiAutomation; };
-	void resetUserPresetState() override { clear(); }
+	void resetUserPresetState() override { clear(sendNotification); }
 
 	bool isLearningActive(Processor *interfaceProcessor, int attributeIndex) const;
 	void deactivateMidiLearning();
@@ -337,12 +337,14 @@ public:
 
 	bool isMappable(int controllerValue) const
 	{
-		if (!exclusiveMode)
-			return shouldAddControllerToPopup(controllerValue);
-
 		if (isPositiveAndBelow(controllerValue, 128))
-			return automationData[controllerValue].isEmpty();
-
+		{
+			if (!exclusiveMode)
+				return shouldAddControllerToPopup(controllerValue);
+			else
+				return shouldAddControllerToPopup(controllerValue) && automationData[controllerValue].isEmpty();
+		}
+		
 		return false;
 	}
 

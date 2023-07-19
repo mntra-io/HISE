@@ -65,10 +65,13 @@ snex::jit::BaseScope* Operations::findFunctionScope(BaseScope* scope)
 		return findFunctionScope(scope->getParent());
 }
 
+
+#if SNEX_ASMJIT_BACKEND
 AsmJitRuntime* Operations::getRuntime(BaseCompiler* c)
 {
 	return dynamic_cast<ClassCompiler*>(c)->getRuntime();
 }
+#endif
 
 
 
@@ -310,7 +313,8 @@ bool Operations::Expression::hasSubExpr(int index) const
 snex::VariableStorage Operations::Expression::getPointerValue() const
 {
 	location.throwError("Can't use address of temporary register");
-	return {};
+
+	RETURN_DEBUG_ONLY({});
 }
 
 Operations::Expression::Ptr Operations::Expression::getSubExpr(int index) const

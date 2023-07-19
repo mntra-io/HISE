@@ -145,6 +145,7 @@ struct EnvelopePopup : public Component
 			case EnvelopeType::GainMode: return getLeft ? "Fade in" : "Fade out";
 			case EnvelopeType::PitchMode: return getLeft ? "Resolution" : "Intensity";
 			case EnvelopeType::PanMode: return getLeft ? "Hold" : "Target Frequency";
+			default: return {};
 			}
             
             return {};
@@ -217,6 +218,8 @@ struct EnvelopePopup : public Component
                 case Modulation::Mode::PanMode:
                     b.setMode(SamplerTools::Mode::FilterEnvelope);
                     break;
+				default:
+					break;
             }
         }
 	}
@@ -449,6 +452,8 @@ struct EnvelopePopup : public Component
 				}
 				break;
 			}
+			default:
+				break;
 			}
 		}
 	}
@@ -1445,7 +1450,7 @@ struct LoopImproveWindow: public Component,
 			b.applyGainRamp(0, 1024, 0.0f, 1.0f);
 			b.applyGainRamp(PreviewLength - 1024, 1024, 1.0f, 0.0f);
 
-            getMainController()->setBufferToPlay(b);
+            getMainController()->setBufferToPlay(b, sound->getSampleRate());
         }
         if(b == &findButton)
         {
@@ -1741,6 +1746,8 @@ void SampleEditor::perform(SampleMapCommands c)
 
         return;
     }
+	default:
+		return;
     }
     return;
 }

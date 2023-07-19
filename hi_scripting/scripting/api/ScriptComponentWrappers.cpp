@@ -102,8 +102,20 @@ struct ScriptCreatedComponentWrapper::AdditionalMouseCallback: public MouseListe
 
 							
 
-							if (!copy.startsWith("~~") && safeThis->data.enabledFunction && !safeThis->data.enabledFunction(index))
-								thisArray.add("~~" + copy + "~~");
+							if (!copy.contains("~~") && safeThis->data.enabledFunction && !safeThis->data.enabledFunction(index))
+							{
+								if (copy.contains("::"))
+								{
+									auto sub = copy.upToLastOccurrenceOf("::", true, false);
+									auto ite = copy.fromLastOccurrenceOf("::", false, false);
+
+									thisArray.add(sub + "~~" + ite + "~~");
+								}
+								else
+								{
+									thisArray.add("~~" + copy + "~~");
+								}
+							}
 							else
 								thisArray.add(copy);
 
@@ -2756,7 +2768,7 @@ ScriptCreatedComponentWrappers::WebViewWrapper::WebViewWrapper(ScriptContentComp
 	dynamic_cast<GlobalSettingManager*>(getProcessor()->getMainController())->addScaleFactorListener(this);
 	component = wc;
 
-	if (vp = content->findParentComponentOfClass<ZoomableViewport>())
+	if ((vp = content->findParentComponentOfClass<ZoomableViewport>()))
 		vp->addZoomListener(this);
 }
 

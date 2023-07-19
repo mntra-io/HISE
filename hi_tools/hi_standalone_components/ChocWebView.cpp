@@ -381,7 +381,7 @@ WebViewData::OpaqueResourceType WebViewData::fetch(const std::string& path)
 			ScopedPointer<ExternalResource> nr = new ExternalResource(pathToUse);
 			auto& dv = std::get<0>(nr->resource);
 			dv.resize(fis.getTotalLength());
-			fis.read(dv.data(), fis.getTotalLength());
+			fis.read(dv.data(), (int)fis.getTotalLength());
 
 			String mime;
 
@@ -525,12 +525,29 @@ void WebViewWrapper::refresh()
 
 void WebViewWrapper::refreshBounds(float newScaleFactor)
 {
-	if(content != nullptr)
+	auto currentBounds = getLocalBounds();
+
+	if (content != nullptr)
+	{
+		if (content->getLocalBounds().isEmpty())
+		{
+			content->setBounds(currentBounds);
+		}
+
 		content->resizeToFitCrossPlatform();
 
+		currentBounds = content->getLocalBounds();
+	}
+	
+	auto useZoom = data->shouldApplyScaleFactorAsZoom();
+
     juce::String s;
-    s << "document.body.style.zoom = " << juce::String(newScaleFactor) << ";";
-    
+
+	if (useZoom)
+		s << "document.body.style.zoom = " << juce::String(newScaleFactor) << ";";
+	else
+		s << "window.resizeTo(" << String(currentBounds.getWidth()) << ", " << String(currentBounds.getHeight()) << ");";
+
     data->evaluate("scaleFactor", s);
     
 #if !JUCE_LINUX

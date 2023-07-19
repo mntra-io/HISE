@@ -323,7 +323,7 @@ snex::Types::ID TypeParser::matchTypeId()
 
 	throwTokenMismatch("Type");
 
-	RETURN_IF_NO_THROW(Types::ID::Void);
+	RETURN_DEBUG_ONLY(Types::ID::Void);
 }
 
 ExpressionTypeParser::ExpressionTypeParser(NamespaceHandler& n, const String& statement, int lineNumber_) :

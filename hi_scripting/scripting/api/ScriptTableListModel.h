@@ -62,6 +62,7 @@ struct ScriptTableListModel : public juce::TableListBoxModel,
 		Image,
 		Slider,
 		ComboBox,
+		Hidden,
 		numCellTypes
 	};
 
@@ -265,7 +266,7 @@ private:
 
 	OwnedArray<TableRepainter> tableRepainters;
 
-	mutable Array<CellType> cellTypes;
+	Array<CellType> cellTypes;
 
 	LookAndFeelData d;
 

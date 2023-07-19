@@ -224,7 +224,7 @@ Component* ScriptTableListModel::refreshComponentForCell(int rowNumber, int colu
 
 	auto cellType = getCellType(columnId);
 
-	if (cellType == CellType::numCellTypes || cellType == CellType::Text)
+	if (cellType == CellType::numCellTypes || cellType == CellType::Text || cellType == CellType::Hidden)
 	{
 		jassert(existingComponentToUpdate == nullptr);
 		return nullptr;
@@ -286,6 +286,9 @@ Component* ScriptTableListModel::refreshComponentForCell(int rowNumber, int colu
 			jassertfalse;
 			break;
 		}
+        default:
+            jassertfalse;
+            break;    
 		}
 
 		return existingComponentToUpdate;
@@ -418,13 +421,12 @@ Component* ScriptTableListModel::refreshComponentForCell(int rowNumber, int colu
 			return cb;
 		}
 		case CellType::Image:
-		{
 			jassertfalse;
 			break;
+        default:
+            jassertfalse;
+            break;
 		}
-		}
-
-
 	}
 
 	return existingComponentToUpdate;
@@ -581,28 +583,6 @@ hise::ScriptTableListModel::CellType ScriptTableListModel::getCellType(int colum
 			return t;
 	}
 
-	if (isPositiveAndBelow(columnId, columnMetadata.size()))
-	{
-		if (auto obj = columnMetadata[columnId].getDynamicObject())
-		{
-			auto t = obj->getProperty(scriptnode::PropertyIds::Type).toString();
-
-			static const StringArray types =
-			{
-				"Text",
-				"Button",
-				"Image",
-				"Slider",
-				"ComboBox"
-			};
-
-			auto type = (CellType)types.indexOf(t);
-
-			cellTypes.set(columnId, type);
-			return type;
-		}
-	}
-
 	jassertfalse;
 	return CellType::numCellTypes;
 }
@@ -610,6 +590,8 @@ hise::ScriptTableListModel::CellType ScriptTableListModel::getCellType(int colum
 void ScriptTableListModel::setTableColumnData(var cd)
 {
 	columnMetadata = cd;
+
+	cellTypes.clear();
 
 	if (columnMetadata.isArray())
 	{
@@ -620,6 +602,29 @@ void ScriptTableListModel::setTableColumnData(var cd)
 		{
 			if (v["PeriodicRepaint"])
 				repaintedColumns.add(idx+1);
+
+			if (auto obj = v.getDynamicObject())
+			{
+				auto t = obj->getProperty(scriptnode::PropertyIds::Type).toString();
+
+				if (t.isNotEmpty())
+				{
+					static const StringArray types =
+					{
+						"Text",
+						"Button",
+						"Image",
+						"Slider",
+						"ComboBox",
+						"Hidden"
+					};
+
+					auto type = (CellType)types.indexOf(t);
+					cellTypes.add(type);
+				}
+				else
+					cellTypes.add(CellType::Text);
+			}
 
 			idx++;
 		}

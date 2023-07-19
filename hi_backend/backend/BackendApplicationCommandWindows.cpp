@@ -791,7 +791,7 @@ This will use Loris to separate the noise from the sinusoidal parts of the sampl
 			
 
 			parent.wait(50);
-			parent.chain->getMainController()->setBufferToPlay(b, BIND_MEMBER_FUNCTION_1(bl::previewUpdate));
+			parent.chain->getMainController()->setBufferToPlay(b, parent.converter->sampleRate, BIND_MEMBER_FUNCTION_1(bl::previewUpdate));
 		}
 
 		void buttonClicked(Button* b) override
@@ -809,8 +809,6 @@ This will use Loris to separate the noise from the sinusoidal parts of the sampl
 			}
 
 			parent.chain->getMainController()->stopBufferToPlay();
-
-			auto p = &parent;
 
 			parent.runTask(BIND_MEMBER_FUNCTION_0(bl::onPreview), false);
 		}
@@ -3403,11 +3401,13 @@ private:
 };
 
 
-struct ProjectImporter : public DialogWindowWithBackgroundThread,
+class ProjectImporter : public DialogWindowWithBackgroundThread,
 						 public ControlledObject,
 						 public URL::DownloadTaskListener,
 						 public hlac::HlacArchiver::Listener
 {
+public:
+
 	enum class SourceType
 	{
 		New,
@@ -3976,6 +3976,7 @@ struct ProjectImporter : public DialogWindowWithBackgroundThread,
 		{
 			auto wv = getMainController()->getOrCreateWebView(id);
 			auto ok = wv->explode();
+            ignoreUnused(ok);
 		}
 		
 	}
@@ -4110,6 +4111,7 @@ struct ProjectImporter : public DialogWindowWithBackgroundThread,
 			decompressor.setListener(this);
 
 			bool ok = decompressor.extractSampleData(data);
+            ignoreUnused(ok);
 
 		}
 

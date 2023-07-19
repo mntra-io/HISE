@@ -86,6 +86,9 @@ public:
     /** Returns true if the user preset that is about to be loaded is a DAW state (or initial state). This function is only useful during the pre / post load callbacks. */
     bool isInternalPresetLoad() const;
     
+	/** Returns true if this is called somewhere inside a preset load. This takes the thread ID into account to avoid false positives when calling this on another thread. */
+	bool isCurrentlyLoadingPreset() const;
+
 	/** Checks if the given version string is a older version than the current project version number. */
 	bool isOldVersion(const String& version);
 
@@ -95,8 +98,8 @@ public:
 	/** Enables host / MIDI automation with the custom user preset model. */
 	void setCustomAutomation(var automationData);
 
-	/** Attaches a callback to automation changes. Use empty string to attach to all callbacks. */
-	void attachAutomationCallback(String automationId, var updateCallback, bool isSynchronous);
+	/** Attaches a callback to automation changes. Pass a non-function as updateCallback to remove the callback for the given automation ID. */
+	void attachAutomationCallback(String automationId, var updateCallback, var isSynchronous);
 
 	/** Clears all attached callbacks. */
 	void clearAttachedCallbacks();
@@ -116,6 +119,12 @@ public:
 	/** Restores the values for all UI elements that are connected to a processor with the `processorID` / `parameterId` properties. */
 	void updateConnectedComponentsFromModuleState();
 	
+	/** Returns the automation index. */
+	int getAutomationIndex(String automationID);
+
+	/** Sends an automation value change for the given index. */
+	bool setAutomationValue(int automationIndex, float newValue);
+
 	/** Runs a few tests that catches data persistency issues. */
 	void runTest();
 
