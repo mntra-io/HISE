@@ -2815,7 +2815,7 @@ String ScriptingObjects::ScriptingModulator::exportState()
 {
 	if (checkValidObject())
 	{
-		return ProcessorHelpers::getBase64String(mod);
+		return ProcessorHelpers::getBase64String(mod, false);
 	}
 
 	return String();
@@ -3118,7 +3118,7 @@ String ScriptingObjects::ScriptingEffect::exportState()
 {
 	if (checkValidObject())
 	{
-		return ProcessorHelpers::getBase64String(effect);
+		return ProcessorHelpers::getBase64String(effect, false);
 	}
 
 	return String();
@@ -3859,7 +3859,7 @@ String ScriptingObjects::ScriptingSynth::exportState()
 {
 	if (checkValidObject())
 	{
-		return ProcessorHelpers::getBase64String(synth);
+		return ProcessorHelpers::getBase64String(synth, false);
 	}
 
 	return String();
