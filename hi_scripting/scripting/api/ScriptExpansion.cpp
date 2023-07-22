@@ -410,9 +410,15 @@ void ScriptUserPresetHandler::updateAutomationValues(var data, bool sendMessage,
 					Identifier i1(first["id"].toString());
 					Identifier i2(first["id"].toString());
 
-					auto firstIndex = uph.getCustomAutomationData(i1)->index;
-					auto secondIndex = uph.getCustomAutomationData(i2)->index;
+                    auto firstIndex = 0;
+                    auto secondIndex = 0;
 
+                    if(auto fi = uph.getCustomAutomationData(i1))
+                        firstIndex = fi->index;
+                    
+                    if(auto si = uph.getCustomAutomationData(i2))
+                        secondIndex = si->index;
+                    
 					if (firstIndex < secondIndex)
 						return -1;
 					if (firstIndex > secondIndex)
@@ -2639,6 +2645,12 @@ void ExpansionEncodingWindow::run()
 				mData.addChild(ValueTree::fromXml(*userXML), -1, nullptr);
 		}
 
+        String prevContent;
+        
+        if(f.existsAsFile())
+            prevContent = f.loadFileAsString();
+        
+        
 		auto xml = mData.createXml();
 		f.replaceWithText(xml->createDocument(""));
 		ScopedPointer<FullInstrumentExpansion> e = new FullInstrumentExpansion(getMainController(), h.getWorkDirectory());
@@ -2646,9 +2658,12 @@ void ExpansionEncodingWindow::run()
 		e->setIsProjectExporter();
 		encodeResult = e->encodeExpansion();
 
-		
-
-		f.deleteFile();
+		// This file is used by the FullInstrument Expansion so
+        // we have to restore it to not lose the original file data
+        if(prevContent.isNotEmpty())
+            f.replaceWithText(prevContent);
+        else
+            f.deleteFile();
 
 		if (exportMode > ExportMode::HXI)
 		{
