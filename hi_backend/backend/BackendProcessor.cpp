@@ -226,6 +226,8 @@ void BackendProcessor::refreshExpansionType()
 
 void BackendProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& midiMessages)
 {
+    TRACE_DSP();
+    
 #if !HISE_BACKEND_AS_FX
 	buffer.clear();
 #endif
@@ -315,6 +317,10 @@ void BackendProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& midiM
 #endif
 
 		getDelayedRenderer().processWrapped(buffer, midiMessages);
+
+#if IS_STANDALONE_APP
+		externalClockSim.addPostTimelineData(buffer, midiMessages);
+#endif
 	}
 
 #if IS_STANDALONE_APP
