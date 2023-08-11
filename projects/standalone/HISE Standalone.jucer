@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="jUHBuI" name="HISE Standalone" projectType="guiapp" version="3.5.0"
+<JUCERPROJECT id="jUHBuI" name="HISE Standalone" projectType="guiapp" version="3.6.0"
               bundleIdentifier="com.hartinstruments.HISEStandalone" includeBinaryInAppConfig="1"
               companyName="Hart Instruments" companyWebsite="http://hise.audio"
               companyCopyright="Hart Instruments" displaySplashScreen="0" reportAppUsage="0"
@@ -86,14 +86,10 @@
         <MODULEPATH id="juce_audio_devices" path="../../JUCE/modules"/>
         <MODULEPATH id="juce_audio_basics" path="../../JUCE/modules"/>
         <MODULEPATH id="hi_core" path="../../"/>
-        <MODULEPATH id="hi_modules" path="../../"/>
         <MODULEPATH id="hi_backend" path="../../"/>
         <MODULEPATH id="hi_scripting" path="../../"/>
         <MODULEPATH id="hi_dsp_library" path="../../"/>
         <MODULEPATH id="hi_lac" path="../../"/>
-        <MODULEPATH id="hi_sampler" path="../../"/>
-        <MODULEPATH id="hi_components" path="../../"/>
-        <MODULEPATH id="hi_dsp" path="../../"/>
         <MODULEPATH id="hi_streaming" path="../../"/>
         <MODULEPATH id="juce_product_unlocking" path="../../JUCE/modules"/>
         <MODULEPATH id="juce_dsp" path="../../JUCE/modules"/>
@@ -156,14 +152,10 @@
         <MODULEPATH id="juce_audio_devices" path="../../JUCE/modules"/>
         <MODULEPATH id="juce_audio_basics" path="../../JUCE/modules"/>
         <MODULEPATH id="hi_scripting" path="../../"/>
-        <MODULEPATH id="hi_modules" path="../../"/>
         <MODULEPATH id="hi_dsp_library" path="../../"/>
         <MODULEPATH id="hi_core" path="../../"/>
         <MODULEPATH id="hi_backend" path="../../"/>
         <MODULEPATH id="hi_lac" path="../../"/>
-        <MODULEPATH id="hi_sampler" path="../../"/>
-        <MODULEPATH id="hi_components" path="../../"/>
-        <MODULEPATH id="hi_dsp" path="../../"/>
         <MODULEPATH id="hi_streaming" path="../../"/>
         <MODULEPATH id="juce_product_unlocking" path="../../JUCE/modules"/>
         <MODULEPATH id="juce_dsp" path="../../JUCE/modules"/>
@@ -225,14 +217,10 @@
         <MODULEPATH id="juce_audio_devices" path="../../JUCE/modules"/>
         <MODULEPATH id="juce_audio_basics" path="../../JUCE/modules"/>
         <MODULEPATH id="hi_scripting" path="../../"/>
-        <MODULEPATH id="hi_modules" path="../../"/>
         <MODULEPATH id="hi_dsp_library" path="../../"/>
         <MODULEPATH id="hi_core" path="../../"/>
         <MODULEPATH id="hi_backend" path="../../"/>
         <MODULEPATH id="hi_lac" path="../../"/>
-        <MODULEPATH id="hi_sampler" path="../../"/>
-        <MODULEPATH id="hi_components" path="../../"/>
-        <MODULEPATH id="hi_dsp" path="../../"/>
         <MODULEPATH id="hi_streaming" path="../../"/>
         <MODULEPATH id="juce_product_unlocking" path="../../JUCE/modules"/>
         <MODULEPATH id="juce_dsp" path="../../JUCE/modules"/>
@@ -321,14 +309,10 @@
         <MODULEPATH id="juce_audio_devices" path="../../JUCE/modules"/>
         <MODULEPATH id="juce_audio_basics" path="../../JUCE/modules"/>
         <MODULEPATH id="hi_scripting" path="../../"/>
-        <MODULEPATH id="hi_modules" path="../../"/>
         <MODULEPATH id="hi_dsp_library" path="../../"/>
         <MODULEPATH id="hi_core" path="../../"/>
         <MODULEPATH id="hi_backend" path="../../"/>
         <MODULEPATH id="hi_lac" path="../../"/>
-        <MODULEPATH id="hi_sampler" path="../../"/>
-        <MODULEPATH id="hi_components" path="../../"/>
-        <MODULEPATH id="hi_dsp" path="../../"/>
         <MODULEPATH id="hi_streaming" path="../../"/>
         <MODULEPATH id="juce_product_unlocking" path="../../JUCE/modules"/>
         <MODULEPATH id="juce_dsp" path="../../JUCE/modules"/>
@@ -347,18 +331,14 @@
   </EXPORTFORMATS>
   <MODULES>
     <MODULE id="hi_backend" showAllCode="1" useLocalCopy="0"/>
-    <MODULE id="hi_components" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_core" showAllCode="1" useLocalCopy="0"/>
-    <MODULE id="hi_dsp" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_dsp_library" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_faust" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
     <MODULE id="hi_faust_jit" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
     <MODULE id="hi_faust_lib" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
     <MODULE id="hi_faust_types" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
     <MODULE id="hi_lac" showAllCode="1" useLocalCopy="0"/>
-    <MODULE id="hi_modules" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_rlottie" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
-    <MODULE id="hi_sampler" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_scripting" showAllCode="1" useLocalCopy="0"/>
     <MODULE id="hi_snex" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
     <MODULE id="hi_streaming" showAllCode="1" useLocalCopy="0"/>

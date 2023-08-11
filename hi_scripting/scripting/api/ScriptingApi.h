@@ -39,6 +39,8 @@ namespace hise { using namespace juce;
 class ScriptBaseMidiProcessor;
 class JavascriptMidiProcessor;
 
+
+
 /** This class wraps all available functions for the scripting engine provided by a ScriptProcessor.
 *	@ingroup scripting
 */
@@ -914,6 +916,12 @@ public:
 
 		/** Sets the timestretch ratio for the sampler depending on its timestretch mode. */
 		void setTimestretchRatio(double newRatio);
+
+		/** Returns the current timestretching options as JSON object. */
+		var getTimestretchOptions();
+
+		/** Sets the timestretching options from a JSON object. */
+		void setTimestretchOptions(var newOptions);
 
 		/** Converts the user preset data of a audio waveform to a base 64 samplemap. */
 		String getAudioWaveformContentAsBase64(var presetObj);

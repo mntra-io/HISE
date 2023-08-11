@@ -235,6 +235,9 @@ public:
 
 	void setDebugLogger(DebugLogger* newLogger);
 
+	void interpolateFromStereoData(int startSample, float* outL, float* outR, int numSamplesToCalculate,
+	                               const float* pitchDataToUse, double thisUptimeDelta, double startAlpha,
+	                               StereoChannelData data, int samplesAvailable);
 	/** Adds it's output to the outputBuffer. */
 	void renderNextBlock(AudioSampleBuffer &outputBuffer, int startSample, int numSamples) override;
 
@@ -297,19 +300,31 @@ public:
 	/** Set this to false if you're using HLAC compressed monoliths. */
 	void setStreamingBufferDataType(bool shouldBeFloat);
 
-	void setEnableTimestretch(bool shouldBeEnabled)
+	void setEnableTimestretch(bool shouldBeEnabled, const Identifier& engineId={})
 	{
-		stretcher.setEnabled(shouldBeEnabled);
+		stretcher.setEnabled(shouldBeEnabled, engineId);
 	}
 
 	void setTimestretchRatio(double newRatio)
 	{
-		stretchRatio = jlimit(0.5, 2.0, newRatio);
+		stretchRatio = jlimit(0.0625, 2.0, newRatio);
+	}
+
+	void setSkipLatency(bool shouldSkipLatency)
+	{
+		skipLatency = shouldSkipLatency;
+	}
+
+	void setTimestretchTonality(double tonality)
+	{
+		timestretchTonality = jlimit(0.0, 1.0, tonality);
 	}
 
 private:
 
-	bool skipStretcher = false;
+	double timestretchTonality = 0.0;
+
+	bool skipLatency = false;
 
 	double pitchCounter = 0.0;
 

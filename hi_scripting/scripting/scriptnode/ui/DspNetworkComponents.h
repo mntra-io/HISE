@@ -190,7 +190,7 @@ public:
 		{
 			Path p;
 
-			LOAD_PATH_IF_URL("help", MainToolbarIcons::help);
+			LOAD_EPATH_IF_URL("help", MainToolbarIcons::help);
 
 			return p;
 		}
@@ -482,9 +482,9 @@ public:
 
 			void mouseDown(const MouseEvent& );
 
-			void mouseUp(const MouseEvent& event);
+			void mouseDoubleClick(const MouseEvent& event) override;
 
-            bool keyPressed(const KeyPress& k) override;
+			bool keyPressed(const KeyPress& k) override;
             
 			void paint(Graphics& g) override;
 
@@ -574,7 +574,7 @@ struct DspNetworkPathFactory : public PathFactory
 
 
 
-class DspNetworkGraph : public Component,
+class DspNetworkGraph : public ComponentWithMiddleMouseDrag,
 	public AsyncUpdater,
 	public DspNetwork::SelectionListener
 {

@@ -420,13 +420,6 @@ MainTopBar::MainTopBar(FloatingTile* parent) :
 	layoutPath.loadPathFromData(ColumnIcons::layoutIcon, sizeof(ColumnIcons::layoutIcon));
 	layoutButton->setShape(layoutPath, false, true, true);
 	
-	addAndMakeVisible(tooltipBar = new TooltipBar());
-	
-	tooltipBar->setColour(TooltipBar::ColourIds::backgroundColour, Colour(0));
-	tooltipBar->setColour(TooltipBar::ColourIds::textColour, Colours::white);
-	tooltipBar->setColour(TooltipBar::ColourIds::iconColour, Colours::white);
-	//tooltipBar->setShowInfoIcon(false);
-
 	stop();
 
 
@@ -564,7 +557,6 @@ void MainTopBar::resized()
     auto b = getLocalBounds();
     
     customPopupButton->setBounds(b.removeFromLeft(getHeight()).reduced(8));
-    tooltipBar->setBounds(b.removeFromLeft(macroButton->getX()).reduced(7));
                                  
     macroButton->setBounds(frontendArea.removeFromLeft(bWidth).reduced(7));
     pluginPreviewButton->setBounds(frontendArea.removeFromLeft(bWidth).reduced(7));
@@ -696,9 +688,9 @@ struct PopupFloatingTile: public Component,
 	Path createPath(const String& url) const override
 	{
 		Path p;
-		LOAD_PATH_IF_URL("clear", SampleMapIcons::newSampleMap);
-		LOAD_PATH_IF_URL("load", SampleMapIcons::loadSampleMap);
-		LOAD_PATH_IF_URL("save", SampleMapIcons::saveSampleMap);
+		LOAD_EPATH_IF_URL("clear", SampleMapIcons::newSampleMap);
+		LOAD_EPATH_IF_URL("load", SampleMapIcons::loadSampleMap);
+		LOAD_EPATH_IF_URL("save", SampleMapIcons::saveSampleMap);
 		LOAD_PATH_IF_URL("layout", ColumnIcons::customizeIcon);
 		return p;
 	}
@@ -727,7 +719,7 @@ struct PopupFloatingTile: public Component,
         auto w = GET_BACKEND_ROOT_WINDOW(c);
         auto mc = w->getBackendProcessor();
         var dataToLoad;
-        PeriodicScreenshotter::PopupGlassLookAndFeel plaf(*c);
+		PopupLookAndFeel plaf;
         PopupMenu m;
         m.setLookAndFeel(&plaf);
 
@@ -985,11 +977,11 @@ struct ToolkitPopup : public Component,
 	{
 		Path p;
 
-		LOAD_PATH_IF_URL("Panic", HiBinaryData::FrontendBinaryData::panicButtonShape);
-		LOAD_PATH_IF_URL("midi", HiBinaryData::SpecialSymbols::midiData);
-        LOAD_PATH_IF_URL("pedal", BackendBinaryData::PopupSymbols::sustainIcon);
-        LOAD_PATH_IF_URL("octave_up", BackendBinaryData::PopupSymbols::octaveUpIcon);
-        LOAD_PATH_IF_URL("octave_down", BackendBinaryData::PopupSymbols::octaveDownIcon);
+		LOAD_EPATH_IF_URL("Panic", HiBinaryData::FrontendBinaryData::panicButtonShape);
+		LOAD_EPATH_IF_URL("midi", HiBinaryData::SpecialSymbols::midiData);
+        LOAD_EPATH_IF_URL("pedal", BackendBinaryData::PopupSymbols::sustainIcon);
+        LOAD_EPATH_IF_URL("octave_up", BackendBinaryData::PopupSymbols::octaveUpIcon);
+        LOAD_EPATH_IF_URL("octave_down", BackendBinaryData::PopupSymbols::octaveDownIcon);
 
 		return p;
 	}

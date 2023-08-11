@@ -94,8 +94,17 @@ static bool canConnectToWebsite(const URL& url)
 
 static bool areMajorWebsitesAvailable()
 {
-	if (canConnectToWebsite(URL("http://hartinstruments.net")))
-		return true;
+	const char* urlsToTry[] = { "http://google.com/generate_204", "https://amazon.com", nullptr };
+
+	for (const char** url = urlsToTry; *url != nullptr; ++url)
+	{
+		URL u(*url);
+
+		std::unique_ptr<InputStream> in(u.createInputStream(false, nullptr, nullptr, String(), HISE_SCRIPT_SERVER_TIMEOUT, nullptr));
+		
+		if (in != nullptr)
+			return true;
+	}
 
 	return false;
 }
@@ -133,24 +142,12 @@ public:
 
 	UpdateChecker() :
 		DialogWindowWithBackgroundThread("Checking for newer version."),
-		updatesAvailable(false),
-		lastUpdate(BUILD_SUB_VERSION)
+		updatesAvailable(false)
 	{
-
-
-		String changelog = getAllChangelogs();
+		updatesAvailable = checkUpdate();
 
 		if (updatesAvailable)
 		{
-			changelogDisplay = new TextEditor("Changelog");
-			changelogDisplay->setSize(500, 300);
-
-			changelogDisplay->setFont(GLOBAL_MONOSPACE_FONT());
-			changelogDisplay->setMultiLine(true);
-			changelogDisplay->setReadOnly(true);
-			changelogDisplay->setText(changelog);
-			addCustomComponent(changelogDisplay);
-
 			filePicker = new FilenameComponent("Download Location", File::getSpecialLocation(File::SpecialLocationType::userDesktopDirectory), false, true, true, "", "", "Choose Download Location");
 			filePicker->setSize(500, 24);
 
@@ -158,12 +155,11 @@ public:
 
 			addBasicComponents();
 
-			showStatusMessage("New build available: " + String(lastUpdate) + ". Press OK to download file to the selected location");
+			showStatusMessage("New build available: " + newVersion + ". Press OK to download file to the selected location");
 		}
 		else
 		{
 			addBasicComponents(false);
-
 			showStatusMessage("Your HISE build is up to date.");
 		}
 	}
@@ -183,17 +179,31 @@ public:
 
 	void run()
 	{
-		static String webFolder("http://hartinstruments.net/hise/download/nightly_builds/");
-
-		static String version = "099";
+		auto assets = obj["assets"];
 
 #if JUCE_WINDOWS
-		String downloadFileName = "HISE_" + version + "_build" + String(lastUpdate) + ".exe";
+		auto extension = ".exe";
+#elif JUCE_MAC
+		auto extension = ".pkg";
 #else
-		String downloadFileName = "HISE_" + version + "_build" + String(lastUpdate) + "_OSX.dmg";
+		auto extension = "david_has_to_build_it_himself";
 #endif
 
-		URL url(webFolder + downloadFileName);
+		URL url;
+
+		if(assets.isArray())
+		{
+			for(auto& a: *assets.getArray())
+			{
+				if(a["name"].toString().endsWith(extension))
+				{
+					url = URL(a["browser_download_url"].toString());
+					break;
+				}
+			}
+		}
+
+		auto downloadFileName = url.getFileName();
 
 		auto stream = url.createInputStream(false, &downloadProgress, this);
 
@@ -256,72 +266,35 @@ public:
 
 private:
 
-	String getAllChangelogs()
+	var obj;
+
+	bool checkUpdate()
 	{
-		int latestVersion = BUILD_SUB_VERSION + 1;
+		URL url("https://api.github.com");
+		url = url.withNewSubPath("repos/christophhart/HISE/releases/latest");
 
-		String completeLog;
+		auto response = url.readEntireTextStream();
 
-		bool lookFurther = true;
+		obj = JSON::parse(response);
 
-		while (lookFurther)
+		if(obj.isObject())
 		{
-			String log = getChangelog(latestVersion);
+			newVersion = obj["tag_name"].toString();
 
-			if (log == "404")
-			{
-				lookFurther = false;
-				continue;
-			}
+			auto thisVersion = "3.4.9";// ProjectInfo::versionString;
 
-			updatesAvailable = true;
+			SemanticVersionChecker svs(thisVersion, newVersion);
 
-			lastUpdate = latestVersion;
-
-			completeLog << log;
-			latestVersion++;
+			return svs.isUpdate();
 		}
 
-		return completeLog;
+		return false;
+		
 	}
 
-	String getChangelog(int i) const
-	{
-		static String webFolder("http://www.hartinstruments.net/hise/download/nightly_builds/");
-
-		String changelogFile("changelog_" + String(i) + ".txt");
-
-		URL url(webFolder + changelogFile);
-
-		String content;
-
-		auto stream = url.createInputStream(false);
-
-		if (stream != nullptr)
-		{
-			String changes = stream->readEntireStreamAsString();
-
-			if (changes.contains("404"))
-			{
-				return "404";
-			}
-			else if (changes.containsNonWhitespaceChars())
-			{
-				content = "Build " + String(i) + ":\n\n" + changes;
-				return content;
-			}
-
-			return String();
-		}
-		else
-		{
-			return "404";
-		}
-	}
+	String newVersion;
 
 	bool updatesAvailable;
-
-	int lastUpdate;
 
 	File target;
 	ScopedPointer<ScopedTempFile> tempFile;
@@ -2807,7 +2780,7 @@ public:
 		{
 			auto v = ValueTree::fromXml(*xml);
 
-			cppgen::ValueTreeIterator::forEach(v, snex::cppgen::ValueTreeIterator::Forward, [&](ValueTree& c)
+			valuetree::Helpers::forEach(v, [&](ValueTree& c)
 			{
 				if (c.hasType("path"))
 				{
@@ -3844,7 +3817,7 @@ public:
 
 		auto scriptRoot = newProjectFolder.getChildFile(ProjectHandler::getIdentifier(FileHandlerBase::Scripts));
 
-		snex::cppgen::ValueTreeIterator::forEach(e->presetToLoad, snex::cppgen::ValueTreeIterator::Forward, [&](ValueTree& v)
+		valuetree::Helpers::forEach(e->presetToLoad, [&](ValueTree& v)
 		{
 			if (v.hasProperty("Script"))
 			{
@@ -4179,353 +4152,6 @@ public:
 };
 
 
-struct DeviceTypeSanityCheck : public DialogWindowWithBackgroundThread,
-							   public ControlledObject
-{
-	enum TestIndex
-	{
-		ControlPersistency,
-		DefaultValues,
-		InitState,
-		AllTests
-	};
 
-	DeviceTypeSanityCheck(MainController* mc):
-		DialogWindowWithBackgroundThread("Checking Device type sanity"),
-		ControlledObject(mc)
-	{
-		StringArray options;
-
-		options.add("iPad only");
-		options.add("iPhone only");
-		options.add("iPad / iPhone");
-
-		addComboBox("targets", options, "Device Targets");
-
-		StringArray tests;
-
-		tests.add("Check Control persistency");
-		tests.add("Check default values");
-		tests.add("Check init state matches default values");
-		tests.add("All tests");
-
-		addComboBox("tests", tests, "Tests to run");
-
-		addBasicComponents(true);
-	}
-
-	void run() override
-	{
-		ok = true;
-		mp = JavascriptMidiProcessor::getFirstInterfaceScriptProcessor(getMainController());
-		content = mp->getScriptingContent();
-		desktopConnections = createArrayForCurrentDevice();
-
-		auto testIndex = getComboBoxComponent("tests")->getSelectedItemIndex();
-		auto index = getComboBoxComponent("targets")->getSelectedItemIndex();
-
-		CompileExporter::BuildOption option = CompileExporter::BuildOption::Cancelled;
-
-		if (index == 0) option = CompileExporter::BuildOption::StandaloneiPad;
-		if (index == 1) option = CompileExporter::BuildOption::StandaloneiPhone;
-		if (index == 2) option = CompileExporter::BuildOption::StandaloneiOS;
-
-
-		if (testIndex == ControlPersistency || testIndex == AllTests)
-		{
-			runTest(option, [this](HiseDeviceSimulator::DeviceType t) {this->checkPersistency(t); });
-			
-		}
-
-		if (testIndex == DefaultValues || testIndex == AllTests)
-		{
-			runTest(option, [this](HiseDeviceSimulator::DeviceType t) {this->checkDefaultValues(t); });
-		}
-
-		if (testIndex == InitState || testIndex == AllTests)
-		{
-			checkInitState();
-		}
-	}
-
-	void threadFinished() override
-	{
-		if (ok)
-			PresetHandler::showMessageWindow("Tests passed", "All tests are passed");
-		else
-			PresetHandler::showMessageWindow("Tests failed", "Some tests failed. Check the console for more info", PresetHandler::IconType::Error);
-	}
-
-	struct ProcessorConnection
-	{
-		bool operator==(const ProcessorConnection& other) const
-		{
-			return other.id == id;
-		}
-
-		Identifier id;
-		Processor* p = nullptr;
-		int parameterIndex = -1;
-		var defaultValue;
-	};
-
-	Array<ProcessorConnection> createArrayForCurrentDevice()
-	{
-		Array<ProcessorConnection> newList;
-
-		debugToConsole(mp, " - " + HiseDeviceSimulator::getDeviceName());
-
-		for (int i = 0; i < content->getNumComponents(); i++)
-		{
-			auto sc = content->getComponent(i);
-
-			if (!sc->getScriptObjectProperty(ScriptComponent::saveInPreset))
-				continue;
-
-			ProcessorConnection pc;
-			pc.id = sc->getName();
-			pc.p = sc->getConnectedProcessor();
-			pc.parameterIndex = sc->getConnectedParameterIndex();
-			pc.defaultValue = sc->getScriptObjectProperty(ScriptComponent::Properties::defaultValue);
-			newList.add(pc);
-		}
-
-		return newList;
-	}
-
-	void throwError(const String& message)
-	{
-		String error = HiseDeviceSimulator::getDeviceName() + ": " + message;
-
-		throw error;
-	}
-
-	bool ok = true;
-
-	void setDeviceType(HiseDeviceSimulator::DeviceType type)
-	{
-		showStatusMessage("Setting device type " + HiseDeviceSimulator::getDeviceName());
-
-		HiseDeviceSimulator::setDeviceType(type);
-		auto contentData = content->exportAsValueTree();
-		mp->setDeviceTypeForInterface((int)type);
-
-		showStatusMessage("Waiting for compilation");
-		waitingForCompilation = true;
-
-		bool* w = &waitingForCompilation;
-		auto& tmp = mp;
-
-		auto f = [tmp, w]()
-		{
-			auto rf = [w](const JavascriptProcessor::SnippetResult&)
-			{
-				*w = false;
-				return;
-			};
-
-			tmp->compileScript(rf);
-		};
-
-		MessageManager::callAsync(f);
-		
-
-		while (waitingForCompilation && !threadShouldExit())
-		{
-			Thread::sleep(500);
-		}
-
-		showStatusMessage("Restoring content values");
-		mp->getContent()->restoreFromValueTree(contentData);
-	}
-
-	void log(const String& s)
-	{
-		debugToConsole(mp, s);
-	}
-
-	Array<ProcessorConnection> setAndCreateArray(HiseDeviceSimulator::DeviceType type)
-	{
-		if (threadShouldExit())
-			return {};
-
-		setDeviceType(type);
-
-		if (!mp->hasUIDataForDeviceType())
-		{
-			if (HiseDeviceSimulator::isAUv3())
-				showStatusMessage("You need to define a interface for AUv3");
-
-			return {};
-		}
-
-		if (threadShouldExit())
-			return {};
-
-		return createArrayForCurrentDevice();
-	}
-
-	void checkDefaultValues(HiseDeviceSimulator::DeviceType type)
-	{
-		auto deviceConnections = setAndCreateArray(type);
-
-		showStatusMessage("Checking default values");
-
-		for (const auto& item : deviceConnections)
-		{
-			auto dItemIndex = desktopConnections.indexOf(item);
-
-			if (dItemIndex == -1)
-			{
-				log("Missing control found. Run persistency check");
-				ok = false;
-				return;
-			}
-
-			auto expected = desktopConnections[dItemIndex].defaultValue;
-			auto actual = item.defaultValue;
-
-			if (expected != actual)
-			{
-				ok = false;
-				log("Default value mismatch for " + item.id);
-			}
-				
-		}
-	}
-
-	void checkInitState()
-	{
-		setDeviceType(HiseDeviceSimulator::DeviceType::Desktop);
-
-		desktopConnections = createArrayForCurrentDevice();
-
-		for (int i = 0; i < content->getNumComponents(); i++)
-		{
-			auto sc = content->getComponent(i);
-
-			if (!sc->getScriptObjectProperty(ScriptComponent::saveInPreset))
-				continue;
-
-			if (sc->getValue() != sc->getScriptObjectProperty(ScriptComponent::defaultValue))
-			{
-				ok = false;
-				log("Init value mismatch for " + sc->getName().toString());
-			}
-				
-		}
-	}
-
-	void checkPersistency(HiseDeviceSimulator::DeviceType type)
-	{
-        log("Testing persistency for " + HiseDeviceSimulator::getDeviceName((int)type));
-        
-		auto deviceConnections = setAndCreateArray(type);
-        
-        if(deviceConnections.size() == 0)
-        {
-            return;
-        }
-        
-		showStatusMessage("Checking UI controls");
-
-		StringArray missingInDesktop;
-		StringArray missingInDevice;
-		StringArray connectionErrors;
-
-		compareArrays(desktopConnections, deviceConnections, missingInDesktop, connectionErrors);
-		compareArrays(deviceConnections, desktopConnections, missingInDevice, connectionErrors);
-		
-		if (!missingInDesktop.isEmpty())
-		{
-			log(String("Missing in Desktop: "));
-
-			for (const auto& s : missingInDesktop)
-				log(s);
-		}
-
-		if (!missingInDevice.isEmpty())
-		{
-			log("Missing in " + HiseDeviceSimulator::getDeviceName());
-
-			for (const auto& s : missingInDevice)
-				log(s);
-		}
-
-		if (!connectionErrors.isEmpty())
-		{
-			log("Connection errors");
-
-			for (const auto& s : connectionErrors)
-				log(s);
-		}
-	}
-
-	void compareArrays(const Array<ProcessorConnection>& testArray, const Array<ProcessorConnection>& compareArray, StringArray& missingNames, StringArray& connectionErrors)
-	{
-		for (const auto& item : testArray)
-		{
-			int index = compareArray.indexOf(item);
-
-			if (index == -1)
-			{
-				missingNames.add(item.id.toString());
-				ok = false;
-			}
-			else
-			{
-				const bool processorMatches = item.p == compareArray[index].p;
-				const bool parameterMatches = item.parameterIndex == compareArray[index].parameterIndex;
-
-				if (!processorMatches || !parameterMatches)
-				{
-					ok = false;
-					connectionErrors.add("Connection mismatch for " + item.id);
-				}
-			}
-		}
-	}
-
-	Array<ProcessorConnection> desktopConnections;
-
-	ScriptingApi::Content* content;
-	JavascriptMidiProcessor* mp;
-
-public:
-
-	bool waitingForCompilation = false;
-
-	using TestFunction = std::function<void(HiseDeviceSimulator::DeviceType)>;
-
-	void runTest(CompileExporter::BuildOption option, const TestFunction& tf)
-	{
-		if (HiseDeviceSimulator::getDeviceType() != HiseDeviceSimulator::DeviceType::Desktop)
-			log("Device Type must be Desktop for exporting");
-
-		try
-		{
-			if (CompileExporter::BuildOptionHelpers::isIPad(option))
-			{
-                tf(HiseDeviceSimulator::DeviceType::iPad);
-				tf(HiseDeviceSimulator::DeviceType::iPadAUv3);
-			}
-
-			if (CompileExporter::BuildOptionHelpers::isIPhone(option))
-			{
-				tf(HiseDeviceSimulator::DeviceType::iPhone);
-				tf(HiseDeviceSimulator::DeviceType::iPhoneAUv3);
-			}
-		}
-		catch (String& s)
-		{
-			setDeviceType(HiseDeviceSimulator::DeviceType::Desktop);
-			log(s);
-		}
-
-		setDeviceType(HiseDeviceSimulator::DeviceType::Desktop);
-	}
-
-	
-};
 
 } // namespace hise

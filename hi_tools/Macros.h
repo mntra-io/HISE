@@ -538,4 +538,5 @@ private:
 #define HI_RASTER_SIZE 10
 #endif
 
+
 } // namespace hise

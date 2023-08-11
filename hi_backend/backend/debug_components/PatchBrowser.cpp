@@ -245,7 +245,7 @@ void PatchBrowser::showProcessorInPopup(Component* c, const MouseEvent& e, Proce
 		b = bp->getLocalArea(c, b);
 		auto pe = dynamic_cast<ProcessorEditorContainer*>(DebugableObject::Helpers::showProcessorEditorPopup(e, c, p));
 		
-		Component::SafePointer<FloatingTilePopup> safePopup = ft->showComponentAsDetachedPopup(pe, bp, { b.getRight() + 50 + (CONTAINER_WIDTH)/2, b.getY() + 30 }, true);
+		Component::SafePointer<FloatingTilePopup> safePopup = ft->showComponentAsDetachedPopup(pe, bp, { b.getRight() + 50 + (CONTAINER_WIDTH)/2, b.getY() -10 }, true);
 
 		pe->rootBroadcaster.addListener(*bp, PatchBrowser::processorChanged);
 
@@ -890,7 +890,7 @@ isOver(false)
 
 	static Path soloPath;
 
-	soloPath.loadPathFromData(BackendBinaryData::PopupSymbols::soloShape, sizeof(BackendBinaryData::PopupSymbols::soloShape));
+	soloPath.loadPathFromData(BackendBinaryData::PopupSymbols::soloShape, SIZE_OF_PATH(BackendBinaryData::PopupSymbols::soloShape));
 	soloButton->setShape(soloPath, false, true, false);
 	soloButton->addListener(this);
 
@@ -898,7 +898,7 @@ isOver(false)
 
 	static Path hidePath;
 
-	hidePath.loadPathFromData(BackendBinaryData::ToolbarIcons::viewPanel, sizeof(BackendBinaryData::ToolbarIcons::viewPanel));
+	hidePath.loadPathFromData(BackendBinaryData::ToolbarIcons::viewPanel, SIZE_OF_PATH(BackendBinaryData::ToolbarIcons::viewPanel));
 	hideButton->setShape(hidePath, false, true, false);
 	hideButton->addListener(this);
  
@@ -1036,6 +1036,8 @@ hierarchy(hierarchy_)
 	addAndMakeVisible(idLabel);
 	addAndMakeVisible(foldButton = new ShapeButton("Fold Overview", Colour(0xFF222222), Colours::white.withAlpha(0.4f), Colour(0xFF222222)));
 
+	foldButton->setVisible(false);
+
     setTooltip("Show " + synth->getId() + " editor");
     
 	idLabel.setFont(GLOBAL_BOLD_FONT().withHeight(JUCE_LIVE_CONSTANT_OFF(16.0f)));
@@ -1093,12 +1095,12 @@ hierarchy(hierarchy_)
 
 		if (p != nullptr)
 		{
-			searchTerm << p->getId() << " " << p->getType();
+			searchTerm << p->getId() << ";" << p->getType();
 		}
 
 		if (parentSynth != nullptr)
 		{
-			searchTerm << parentSynth->getId() << " " << parentSynth->getType();
+			searchTerm << ";" << parentSynth->getId() << ";" << parentSynth->getType();
 		}
 
 		items.add(new PatchItem(p, parentSynth, iter.getHierarchyForCurrentProcessor(), searchTerm));
@@ -1249,7 +1251,7 @@ void PatchBrowser::PatchCollection::paint(Graphics &g)
 void PatchBrowser::PatchCollection::refreshFoldButton()
 {
 	Path foldShape;
-	foldShape.loadPathFromData(HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon, sizeof(HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon));
+	foldShape.loadPathFromData(HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon, SIZE_OF_PATH(HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon));
 
 	setFolded(getProcessor()->getEditorState(getProcessor()->getEditorStateForIndex(ModulatorSynth::OverviewFolded)));
 
@@ -1593,7 +1595,9 @@ void PatchBrowser::PatchItem::applyLayout()
     auto canBeDeleted = dynamic_cast<Chain*>(getProcessor()) == nullptr;
     canBeDeleted |= dynamic_cast<ModulatorSynth*>(getProcessor()) != nullptr;
     canBeDeleted &= getProcessor() != getProcessor()->getMainController()->getMainSynthChain();
-
+    canBeDeleted &= dynamic_cast<SlotFX*>(getProcessor()->getParentProcessor(false, true)) == nullptr;
+    
+    
     closeButton.setVisible(canBeDeleted && findParentComponentOfClass<PatchBrowser>()->showChains);
     
     if (closeButton.isVisible())
@@ -1910,7 +1914,7 @@ void PatchBrowser::MiniPeak::paint(Graphics& g)
 	case ProcessorType::Midi:
 	{
 		Path mp;
-		mp.loadPathFromData(HiBinaryData::SpecialSymbols::midiData, sizeof(HiBinaryData::SpecialSymbols::midiData));
+		mp.loadPathFromData(HiBinaryData::SpecialSymbols::midiData, SIZE_OF_PATH(HiBinaryData::SpecialSymbols::midiData));
 		PathFactory::scalePath(mp, getLocalBounds().toFloat().reduced(1.0f));
 		g.setColour(Colours::white.withAlpha(0.2f));
 		g.fillPath(mp);
@@ -2062,14 +2066,12 @@ void PatchBrowser::MiniPeak::timerCallback()
 juce::Path PatchBrowser::Factory::createPath(const String& url) const
 {
 	Path p;
-	LOAD_PATH_IF_URL("add", EditorIcons::penShape);
+	LOAD_EPATH_IF_URL("add", EditorIcons::penShape);
 	LOAD_PATH_IF_URL("workspace", ColumnIcons::openWorkspaceIcon);
-	LOAD_PATH_IF_URL("close", SampleMapIcons::deleteSamples);
-	LOAD_PATH_IF_URL("create", HiBinaryData::ProcessorEditorHeaderIcons::addIcon);
-
-	LOAD_PATH_IF_URL("folded", HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon);
-
-	LOAD_PATH_IF_URL("unfolded", HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon);
+	LOAD_EPATH_IF_URL("close", SampleMapIcons::deleteSamples);
+	LOAD_EPATH_IF_URL("create", HiBinaryData::ProcessorEditorHeaderIcons::addIcon);
+	LOAD_EPATH_IF_URL("folded", HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon);
+	LOAD_EPATH_IF_URL("unfolded", HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon);
 
 	if (url == "unfolded")
 		p.applyTransform(AffineTransform::rotation(float_Pi * 0.5f));
@@ -2335,8 +2337,8 @@ juce::Path AutomationDataBrowser::Factory::createPath(const String& url) const
 {
 	Path p;
 
-	LOAD_PATH_IF_URL("component", HiBinaryData::SpecialSymbols::macros);
-	LOAD_PATH_IF_URL("midi", HiBinaryData::SpecialSymbols::midiData);
+	LOAD_EPATH_IF_URL("component", HiBinaryData::SpecialSymbols::macros);
+	LOAD_EPATH_IF_URL("midi", HiBinaryData::SpecialSymbols::midiData);
 
 	return p;
 }
