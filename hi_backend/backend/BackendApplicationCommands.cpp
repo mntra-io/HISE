@@ -117,11 +117,12 @@ void BackendCommandTarget::getAllCommands(Array<CommandID>& commands)
 		MenuExportFileAsEffectPlugin,
 		MenuExportFileAsMidiFXPlugin,
 		MenuExportFileAsStandaloneApp,
-		MenuExportFileAsPlayerLibrary,
+		MenuExportProject,
 		MenuExportFileAsSnippet,
 		MenuExportSampleDataForInstaller,
 		MenuExportCompileFilesInPool,
 		MenuExportCompileNetworksAsDll,
+		MenuExportWavetablesToMonolith,
 		MenuFileQuit,
 		MenuEditUndo,
 		MenuEditRedo,
@@ -147,8 +148,6 @@ void BackendCommandTarget::getAllCommands(Array<CommandID>& commands)
 		MenuToolsConvertSVGToPathData,
 		MenuToolsCreateToolbarPropertyDefinition,
 		MenuToolsCreateExternalScriptFile,
-		MenuToolsCreateUIDataFromDesktop,
-		MenuToolsCheckDeviceSanity,
 		MenuToolsRestoreToDefault,
 		MenuToolsValidateUserPresets,
 		MenuToolsResolveMissingSamples,
@@ -191,10 +190,8 @@ void BackendCommandTarget::getAllCommands(Array<CommandID>& commands)
         MenuToolsSanityCheck,
 		MenuHelpShowAboutPage,
         MenuHelpCheckVersion,
-		MenuHelpShowDocumentation,
-		MenuHelpShowHelpForComponents
+		MenuHelpShowDocumentation
 	};
-
 	commands.addArray(id, numElementsInArray(id));
 }
 
@@ -325,8 +322,8 @@ void BackendCommandTarget::getCommandInfo(CommandID commandID, ApplicationComman
 		setCommandTarget(result, "Export as Standalone Application", true, false, 'X', false);
 		result.categoryName = "Export";
 		break;
-	case MenuExportFileAsPlayerLibrary:
-		setCommandTarget(result, "Export as Full Instrument Expansion", true, false, 'X', false);
+	case MenuExportProject:
+		setCommandTarget(result, "Export Project", true, false, 'X', false);
 		result.categoryName = "Export";
 		break;
 	case MenuExportFileAsMidiFXPlugin:
@@ -347,6 +344,10 @@ void BackendCommandTarget::getCommandInfo(CommandID commandID, ApplicationComman
 		break;
 	case MenuExportSampleDataForInstaller:
 		setCommandTarget(result, "Export Samples as archive", true, false, 'X', false);
+		result.categoryName = "Export";
+		break;
+	case MenuExportWavetablesToMonolith:
+		setCommandTarget(result, "Export Wavetables to monolith", true, false, 'X', false);
 		result.categoryName = "Export";
 		break;
 	case MenuExportCompileFilesInPool:
@@ -487,14 +488,6 @@ void BackendCommandTarget::getCommandInfo(CommandID commandID, ApplicationComman
 		break;
 	case MenuToolsCreateExternalScriptFile:
 		setCommandTarget(result, "Create external script file", true, false, 'X', false);
-		result.categoryName = "Tools";
-		break;
-	case MenuToolsCreateUIDataFromDesktop:
-		setCommandTarget(result, "Copy UI Data from Desktop", Helpers::canCopyDeviceType(bpe), Helpers::deviceTypeHasUIData(bpe), 'X', false);
-		result.categoryName = "Tools";
-		break;
-	case MenuToolsCheckDeviceSanity:
-		setCommandTarget(result, "Check Sanity for defined Devices", true, false, 'X', false);
 		result.categoryName = "Tools";
 		break;
 	case MenuToolsValidateUserPresets:
@@ -690,11 +683,6 @@ void BackendCommandTarget::getCommandInfo(CommandID commandID, ApplicationComman
 		result.addDefaultKeypress(KeyPress::F1Key, ModifierKeys::noModifiers);
 		result.categoryName = "Help";
 		break;
-	case MenuHelpShowHelpForComponents:
-		setCommandTarget(result, "Show Live Help", true, bpe->isHelpEnabled(), 'X', false);
-		result.addDefaultKeypress(KeyPress::F1Key, ModifierKeys::commandModifier);
-		result.categoryName = "Help";
-		break;
     case MenuHelpCheckVersion:
         setCommandTarget(result, "Check for newer version", true, false, 'X', false);
 		result.categoryName = "Help";
@@ -763,8 +751,6 @@ bool BackendCommandTarget::perform(const InvocationInfo &info)
 	case MenuToolsRestoreToDefault:		Actions::restoreToDefault(bpe); return true;
 	case MenuToolsResolveMissingSamples:Actions::resolveMissingSamples(bpe); return true;
 	case MenuToolsGetMissingSampleList:	Actions::copyMissingSampleListToClipboard(bpe); return true;
-	case MenuToolsCreateUIDataFromDesktop: Actions::createUIDataFromDesktop(bpe); updateCommands(); return true;
-	case MenuToolsCheckDeviceSanity:	Actions::checkDeviceSanity(bpe); return true;
 	case MenuToolsCheckUnusedImages:	Actions::checkUnusedImages(bpe); return true;
 	case MenuToolsShowDspNetworkDllInfo: Actions::showNetworkDllInfo(bpe); return true;
 	case MenuToolsRedirectScriptFolder: Actions::redirectScriptFolder(bpe); updateCommands(); return true;
@@ -827,8 +813,9 @@ bool BackendCommandTarget::perform(const InvocationInfo &info)
     }
 	case MenuExportCompileNetworksAsDll: Actions::compileNetworksToDll(bpe); return true;
     case MenuExportFileAsSnippet:       Actions::exportFileAsSnippet(bpe->getBackendProcessor()); return true;
-	case MenuExportFileAsPlayerLibrary: Actions::exportMainSynthChainAsPlayerLibrary(bpe); return true;
+	case MenuExportProject:				Actions::exportHiseProject(bpe); return true;
 	case MenuExportSampleDataForInstaller: Actions::exportSampleDataForInstaller(bpe); return true;
+	case MenuExportWavetablesToMonolith: Actions::exportWavetablesToMonolith(bpe); return true;
 	case MenuExportCompileFilesInPool:	Actions::exportCompileFilesInPool(bpe); return true;
 	case MenuViewResetLookAndFeel:		Actions::resetLookAndFeel(bpe); return true;
     case MenuToolsClearConsole:         owner->getConsoleHandler().clearConsole(); return true;
@@ -838,7 +825,6 @@ bool BackendCommandTarget::perform(const InvocationInfo &info)
 	case MenuTwoColumns:				Actions::setColumns(bpe, this, TwoColumns);  updateCommands(); return true;
 	case MenuThreeColumns:				Actions::setColumns(bpe, this, ThreeColumns);  updateCommands(); return true;
 	case MenuHelpShowDocumentation:		Actions::showDocWindow(bpe); return true;
-	case MenuHelpShowHelpForComponents: bpe->toggleHelp(); updateCommands(); return true;
 	}
 
 	return false;
@@ -996,8 +982,9 @@ PopupMenu BackendCommandTarget::getMenuForIndex(int topLevelMenuIndex, const Str
 		p.addSeparator();
 
 		ADD_DESKTOP_ONLY(MenuExportFileAsSnippet);
-		ADD_DESKTOP_ONLY(MenuExportFileAsPlayerLibrary);
+		ADD_DESKTOP_ONLY(MenuExportProject);
 		ADD_DESKTOP_ONLY(MenuExportSampleDataForInstaller);
+		ADD_DESKTOP_ONLY(MenuExportWavetablesToMonolith);
 
 		p.addSectionHeader("Export Tools");
 		
@@ -1021,22 +1008,6 @@ PopupMenu BackendCommandTarget::getMenuForIndex(int topLevelMenuIndex, const Str
 		ADD_DESKTOP_ONLY(MenuToolsRestoreToDefault);
 		ADD_DESKTOP_ONLY(MenuToolsConvertSVGToPathData);
 		
-
-		p.addSeparator();
-
-		PopupMenu sub;
-
-		
-		for (int i = 0; i < (int)HiseDeviceSimulator::DeviceType::numDeviceTypes; i++)
-		{
-			sub.addItem(MenuToolsDeviceSimulatorOffset + i, "Simulate " + HiseDeviceSimulator::getDeviceName(i), true, i == (int)HiseDeviceSimulator::getDeviceType());
-		}
-
-		p.addSubMenu("Device simulator", sub);
-
-		ADD_DESKTOP_ONLY(MenuToolsCreateUIDataFromDesktop);
-		ADD_DESKTOP_ONLY(MenuToolsCheckDeviceSanity);
-
 		p.addSeparator();
 		p.addSectionHeader("Sample Management");
 		
@@ -1098,7 +1069,6 @@ PopupMenu BackendCommandTarget::getMenuForIndex(int topLevelMenuIndex, const Str
 			ADD_ALL_PLATFORMS(MenuHelpShowAboutPage);
 			ADD_DESKTOP_ONLY(MenuHelpCheckVersion);
 			ADD_ALL_PLATFORMS(MenuHelpShowDocumentation);
-			ADD_ALL_PLATFORMS(MenuHelpShowHelpForComponents);
 		break;
 	default:
 		break;
@@ -1205,103 +1175,6 @@ void BackendCommandTarget::menuItemSelected(int menuItemID, int topLevelMenuInde
             
         Actions::openFileFromXml(bpe, presetToLoad);
     }
-    else if (menuItemID >= MenuToolsDeviceSimulatorOffset && menuItemID < (MenuToolsDeviceSimulatorOffset + 50))
-	{
-		HiseDeviceSimulator::DeviceType newDevice = (HiseDeviceSimulator::DeviceType)(menuItemID - (int)MenuToolsDeviceSimulatorOffset);
-
-		bool copyMissing = HiseDeviceSimulator::getDeviceType() == HiseDeviceSimulator::DeviceType::Desktop &&
-						   newDevice != HiseDeviceSimulator::DeviceType::Desktop;
-
-		HiseDeviceSimulator::setDeviceType(newDevice);
-
-		auto mp = JavascriptMidiProcessor::getFirstInterfaceScriptProcessor(owner);
-
-		
-
-		if (mp != nullptr)
-		{
-			auto c = mp->getContent();
-
-
-			ValueTree oldContent;
-			Array<Identifier> idList;
-
-			if (copyMissing)
-			{
-				
-
-				oldContent = c->getContentProperties();
-				
-				for (int i = 0; i < c->getNumComponents(); i++)
-				{
-					auto cmp = c->getComponent(i);
-
-					//bool x = ScriptingApi::Content::Helpers::hasLocation(cmp);
-
-					if (cmp->getScriptObjectProperty(ScriptComponent::Properties::saveInPreset))
-					{
-						idList.add(cmp->getName());
-					}
-				}
-			}
-
-			auto contentData = c->exportAsValueTree();
-			mp->setDeviceTypeForInterface((int)newDevice);
-			mp->compileScript();
-			mp->getContent()->restoreFromValueTree(contentData);
-
-			if (copyMissing)
-			{
-				auto newContentProperties = c->getContentProperties();
-
-				Array<Identifier> missingIds;
-
-				for (const auto& id : idList)
-				{
-					if (c->getComponentWithName(id) == nullptr)
-					{
-						missingIds.add(id);
-					}
-				}
-				
-				if (!missingIds.isEmpty() && PresetHandler::showYesNoWindow("Missing components found", "There are some components in the desktop UI that are not available in the new UI. Press OK to query which components should be transferred."))
-				{
-					{
-						ValueTreeUpdateWatcher::ScopedDelayer sd(c->getUpdateWatcher());
-
-						for (const auto& id : missingIds)
-						{
-							if (PresetHandler::showYesNoWindow("Copy " + id.toString(), "Do you want to transfer this component?"))
-							{
-								auto v = getChildWithPropertyRecursive(oldContent, "id", id.toString());
-
-								if (v.isValid())
-								{
-									v = v.createCopy();
-									v.removeAllChildren(nullptr);
-
-									v.removeProperty("parentComponent", nullptr);
-
-									newContentProperties.addChild(v, -1, nullptr);
-									debugToConsole(mp, "Added " + id.toString() + " to " + HiseDeviceSimulator::getDeviceName());
-								}
-							}
-						}
-					}
-
-					mp->compileScript();
-				}
-
-				
-			}
-
-			
-
-
-
-		}
-
-	}
 }
 
 
@@ -2177,10 +2050,27 @@ void BackendCommandTarget::Actions::loadProject(BackendRootWindow *bpe)
 #endif
 }
 
-void BackendCommandTarget::Actions::importProject(BackendRootWindow* bpe)
+DialogWindowWithBackgroundThread* BackendCommandTarget::Actions::importProject(BackendRootWindow* bpe)
 {
 	auto importWindow = new ProjectImporter(bpe);
 	importWindow->setModalBaseWindowComponent(bpe);
+
+	return importWindow;
+}
+
+void BackendCommandTarget::Actions::extractProject(BackendRootWindow* bpe, const File& newProjectRoot, const File& sourceFile)
+{
+	auto importWindow = new ProjectImporter(bpe);
+	importWindow->setModalBaseWindowComponent(bpe);
+
+	jassert(newProjectRoot.isDirectory());
+	jassert(sourceFile.existsAsFile());
+
+	importWindow->newProjectFolder = newProjectRoot;
+	importWindow->sourceType = ProjectImporter::SourceType::Import;
+	importWindow->header->importFile = sourceFile;
+
+	importWindow->runThread();
 }
 
 void BackendCommandTarget::Actions::convertSVGToPathData(BackendRootWindow* bpe)
@@ -2621,7 +2511,13 @@ void BackendCommandTarget::Actions::exportSampleDataForInstaller(BackendRootWind
     exporter->setModalBaseWindowComponent(bpe->mainEditor);
 }
                          
-void BackendCommandTarget::Actions::exportMainSynthChainAsPlayerLibrary(BackendRootWindow * bpe)
+void BackendCommandTarget::Actions::exportWavetablesToMonolith(BackendRootWindow* bpe)
+{
+	auto exporter = new WavetableMonolithExporter(bpe->getMainController());
+	exporter->setModalBaseWindowComponent(bpe->mainEditor);
+}
+
+void BackendCommandTarget::Actions::exportHiseProject(BackendRootWindow * bpe)
 {
 	auto e = new ExpansionEncodingWindow(bpe->owner, nullptr, true);
 
@@ -2630,7 +2526,6 @@ void BackendCommandTarget::Actions::exportMainSynthChainAsPlayerLibrary(BackendR
 		PresetHandler::showMessageWindow("Encoding Error", e->encodeResult.getErrorMessage(), PresetHandler::IconType::Error);
 		return;
 	}
-
 
 	e->setModalBaseWindowComponent(bpe);
 }
@@ -2834,16 +2729,6 @@ void BackendCommandTarget::Actions::unloadAllAudioFiles(BackendRootWindow * bpe)
 }
 
 
-void BackendCommandTarget::Actions::createUIDataFromDesktop(BackendRootWindow * bpe)
-{
-	auto mp = JavascriptMidiProcessor::getFirstInterfaceScriptProcessor(bpe->getBackendProcessor());
-
-	if (mp != nullptr)
-	{
-		mp->createUICopyFromDesktop();
-	}
-}
-
 #define REPLACE_WILDCARD(wildcard, x) templateProject = templateProject.replace(wildcard, data.getSetting(x).toString())
 #define REPLACE_WILDCARD_WITH_STRING(wildcard, s) (templateProject = templateProject.replace(wildcard, s))
 
@@ -2890,12 +2775,6 @@ void BackendCommandTarget::Actions::exportCompileFilesInPool(BackendRootWindow* 
 {
 	auto pet = new PoolExporter(bpe->getBackendProcessor());
 	pet->setModalBaseWindowComponent(bpe);
-}
-
-void BackendCommandTarget::Actions::checkDeviceSanity(BackendRootWindow * bpe)
-{
-	auto window = new DeviceTypeSanityCheck(bpe->getBackendProcessor());
-	window->setModalBaseWindowComponent(bpe);
 }
 
 void BackendCommandTarget::Actions::copyMissingSampleListToClipboard(BackendRootWindow * bpe)
@@ -3227,30 +3106,6 @@ void BackendCommandTarget::Actions::restoreToDefault(BackendRootWindow * bpe)
 #undef ADD_IOS_ONLY
 #undef ADD_DESKTOP_ONLY
 #undef toggleVisibility
-
-bool BackendCommandTarget::Helpers::deviceTypeHasUIData(BackendRootWindow* bpe)
-{
-	auto mp = JavascriptMidiProcessor::getFirstInterfaceScriptProcessor(bpe->getBackendProcessor());
-
-	if (mp == nullptr)
-		return false;
-
-	return mp->hasUIDataForDeviceType();
-}
-
-bool BackendCommandTarget::Helpers::canCopyDeviceType(BackendRootWindow* bpe)
-{
-	if (!HiseDeviceSimulator::isMobileDevice())
-		return false;
-
-	auto mp = JavascriptMidiProcessor::getFirstInterfaceScriptProcessor(bpe->getBackendProcessor());
-
-	if (mp == nullptr)
-		return false;
-
-	return !mp->hasUIDataForDeviceType();
-	
-}
 
 void XmlBackupFunctions::removeEditorStatesFromXml(XmlElement &xml)
 {

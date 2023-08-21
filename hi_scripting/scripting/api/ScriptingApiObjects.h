@@ -37,6 +37,8 @@
 
 namespace hise { using namespace juce;
 
+
+
 class ApiHelpers
 {
 public:
@@ -48,18 +50,18 @@ public:
 		ModuleHandler(Processor* parent_, JavascriptProcessor* sp);
 
 		~ModuleHandler();
-		
+
 		bool removeModule(Processor* p);
 
 		Processor* addModule(Chain* c, const String& type, const String& id, int index = -1);
 
-		Modulator* addAndConnectToGlobalModulator(Chain* c, Modulator* globalModulator, const String& modName, bool connectAsStaticMod=false);
+		Modulator* addAndConnectToGlobalModulator(Chain* c, Modulator* globalModulator, const String& modName, bool connectAsStaticMod = false);
 
 		JavascriptProcessor* getScriptProcessor() { return scriptProcessor.get(); };
 
 	private:
 
-		
+
 
 		WeakReference<Processor> parent;
 		WeakReference<JavascriptProcessor> scriptProcessor;
@@ -67,31 +69,31 @@ public:
 		Component::SafePointer<Component> mainEditor;
 	};
 
-    static constexpr int SyncMagicNumber = 911;
-    static constexpr int AsyncMagicNumber = 912;
-    
-    static bool isSynchronous(var syncValue)
-    {
-        if((int)syncValue == SyncMagicNumber)
-            return true;
-        
-        if((int)syncValue == AsyncMagicNumber)
-            return false;
-        
-        return (bool)syncValue;
-    }
-    
+	static constexpr int SyncMagicNumber = 911;
+	static constexpr int AsyncMagicNumber = 912;
+
+	static bool isSynchronous(var syncValue)
+	{
+		if ((int)syncValue == SyncMagicNumber)
+			return true;
+
+		if ((int)syncValue == AsyncMagicNumber)
+			return false;
+
+		return (bool)syncValue;
+	}
+
 	static var getVarFromPoint(Point<float> pos);
 
 	static Point<float> getPointFromVar(const var& data, Result* r = nullptr);
 
 	static var getVarRectangle(Rectangle<float> floatRectangle, Result* r = nullptr);
 
-	static Rectangle<float> getRectangleFromVar(const var &data, Result *r = nullptr);
+	static Rectangle<float> getRectangleFromVar(const var& data, Result* r = nullptr);
 
-	static Rectangle<int> getIntRectangleFromVar(const var &data, Result* r = nullptr);
+	static Rectangle<int> getIntRectangleFromVar(const var& data, Result* r = nullptr);
 
-	static String getFileNameFromErrorMessage(const String &errorMessage);
+	static String getFileNameFromErrorMessage(const String& errorMessage);
 
 	static StringArray getJustificationNames();
 
@@ -105,14 +107,12 @@ public:
 
 #if USE_BACKEND
 
-	static String getValueType(const var &v);
+	static String getValueType(const var& v);
 
 	static ValueTree getApiTree();
 
 #endif
 };
-
-
 
 
 class ScriptCreatedComponentWrapper;
@@ -560,6 +560,9 @@ namespace ScriptingObjects
 		/** Kills all voices and calls the given function on the sample loading thread. */
 		bool killVoicesAndCall(var loadingFunction);
 
+		/** Spawns a OS process and executes it with the given command line arguments. */
+		void runProcess(var command, var args, var logFunction);
+
 		/** Set a progress for this task. */
 		void setProgress(double p);
 
@@ -612,6 +615,27 @@ namespace ScriptingObjects
 		NamedValueSet synchronisedData;
 		WeakCallbackHolder currentTask;
 		WeakCallbackHolder finishCallback;
+
+		struct ChildProcessData
+		{
+			ChildProcessData(ScriptBackgroundTask& parent_, const String& command_, const var& args_, const var& pf);
+
+			void run();
+
+		private:
+
+			void callLog(var* a);
+
+			ScriptBackgroundTask& parent;
+			juce::ChildProcess childProcess;
+			WeakCallbackHolder processLogFunction;
+			StringArray args;
+		};
+
+		ScopedPointer<ChildProcessData> childProcessData;
+		
+
+
 
         bool realtimeSafe = true;
         

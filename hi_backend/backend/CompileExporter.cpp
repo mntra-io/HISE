@@ -1395,6 +1395,9 @@ hise::CompileExporter::ErrorCodes CompileExporter::createPluginProjucerFile(Targ
 	String readOnlyFactoryPresets = GET_SETTING(HiseSettings::Project::ReadOnlyFactoryPresets) == "1" ? "enabled" : "disabled";
 	REPLACE_WILDCARD_WITH_STRING("%READ_ONLY_FACTORY_PRESETS%", readOnlyFactoryPresets);
 
+	String overwriteUserPresets = GET_SETTING(HiseSettings::Project::OverwriteOldUserPresets) == "1" ? "enabled" : "disabled";
+	REPLACE_WILDCARD_WITH_STRING("%OVERWRITE_OLD_USER_PRESETS%", overwriteUserPresets);
+
     String vst3Category = GET_SETTING(HiseSettings::Project::VST3Category);
     
 	if (type == TargetTypes::EffectPlugin)
@@ -1683,6 +1686,9 @@ hise::CompileExporter::CompileExporter::ErrorCodes CompileExporter::createStanda
 
 	String readOnlyFactoryPresets = GET_SETTING(HiseSettings::Project::ReadOnlyFactoryPresets) == "1" ? "enabled" : "disabled";
 	REPLACE_WILDCARD_WITH_STRING("%READ_ONLY_FACTORY_PRESETS%", readOnlyFactoryPresets);
+
+	String overwriteUserPresets = GET_SETTING(HiseSettings::Project::OverwriteOldUserPresets) == "1" ? "enabled" : "disabled";
+	REPLACE_WILDCARD_WITH_STRING("%OVERWRITE_OLD_USER_PRESETS%", overwriteUserPresets);
 
 	ProjectTemplateHelpers::handleVisualStudioVersion(dataObject,templateProject);
 
@@ -2644,7 +2650,7 @@ void CompileExporter::HeaderHelpers::addStaticDspFactoryRegistration(String& plu
 	
 	// We need to add this function body or the linker will complain (if the file exists, it'll be defined
 	if(!nodeIncludeFile.existsAsFile())
-		pluginDataHeaderFile << "scriptnode::dll::FactoryBase* hise::FrontendHostFactory::createStaticFactory() { return nullptr; }\n";
+		pluginDataHeaderFile << "scriptnode::dll::FactoryBase* scriptnode::DspNetwork::createStaticFactory() { return nullptr; }\n";
 }
 
 void CompileExporter::HeaderHelpers::addCopyProtectionHeaderLines(const String &publicKey, String& pluginDataHeaderFile)
@@ -2682,7 +2688,7 @@ void CompileExporter::HeaderHelpers::addProjectInfoLines(CompileExporter* export
 	const String expType = exporter->GET_SETTING(HiseSettings::Project::ExpansionType);
 	const String expKey = exporter->GET_SETTING(HiseSettings::Project::EncryptionKey);
 	const String defaultPreset = exporter->GET_SETTING(HiseSettings::Project::DefaultUserPreset);
-	const String hiseVersion = ProjectInfo::versionString;
+	const String hiseVersion = PresetHandler::getVersionString();
 
 	String nl = "\n";
 	
