@@ -34,7 +34,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 bool TypeInfo::operator==(const Types::ID other) const

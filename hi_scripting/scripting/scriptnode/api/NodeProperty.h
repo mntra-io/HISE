@@ -44,9 +44,13 @@ using namespace hise;
 */
 struct NodeProperty
 {
-	NodeProperty(const Identifier& baseId_, const var& defaultValue_, bool isPublic_);;
+	NodeProperty(const Identifier& baseId_, const var& defaultValue_, bool isPublic_) :
+		baseId(baseId_),
+		defaultValue(defaultValue_),
+		isPublic(isPublic_)
+	{};
 
-	virtual ~NodeProperty();;
+	virtual ~NodeProperty() {};
 
 	/** Call this in the initialise() function of your node as well as in the createParameters() function (with nullptr as argument).
 
@@ -62,9 +66,12 @@ struct NodeProperty
 	/** Returns the ID in the ValueTree. */
 	Identifier getValueTreePropertyId() const;
 
-	ValueTree getPropertyTree() const;
+	ValueTree getPropertyTree() const { return d; }
 
-	juce::Value asJuceValue();
+	juce::Value asJuceValue()
+	{
+		return d.getPropertyAsValue(PropertyIds::Value, um);
+	}
 
 private:
 
@@ -84,17 +91,42 @@ template <class T, int Value> struct StaticProperty
 
 template <class T> struct NodePropertyT : public NodeProperty
 {
-	NodePropertyT(const Identifier& id, T defaultValue);;
+	NodePropertyT(const Identifier& id, T defaultValue) :
+		NodeProperty(id, defaultValue, false),
+		value(defaultValue)
+	{};
 
-	void postInit(NodeBase* ) override;
+	void postInit(NodeBase* ) override
+	{
+		updater.setCallback(getPropertyTree(), { PropertyIds::Value }, valuetree::AsyncMode::Synchronously,
+			BIND_MEMBER_FUNCTION_2(NodePropertyT::update));
+	}
 
-	void storeValue(const T& newValue, UndoManager* um);
+	void storeValue(const T& newValue, UndoManager* um)
+	{
+		if(getPropertyTree().isValid())
+			getPropertyTree().setPropertyExcludingListener(&updater, PropertyIds::Value, newValue, um);
 
-	void update(Identifier id, var newValue);
+		value = newValue;
+	}
 
-	void setAdditionalCallback(const valuetree::PropertyListener::PropertyCallback& c, bool callWithValue=false);
+	void update(Identifier id, var newValue)
+	{
+		value = newValue;
 
-	T getValue() const;
+		if (additionalCallback)
+			additionalCallback(id, newValue);
+	}
+
+	void setAdditionalCallback(const valuetree::PropertyListener::PropertyCallback& c, bool callWithValue=false)
+	{
+		additionalCallback = c;
+
+		if (callWithValue && additionalCallback)
+			additionalCallback(PropertyIds::Value, var(value));
+	}
+
+	T getValue() const { return value; }
 
 private:
 
@@ -105,26 +137,45 @@ private:
 };
 
 
-extern template struct NodePropertyT<int>;
-extern template struct NodePropertyT<String>;
-extern template struct NodePropertyT<bool>;
-
 struct ComboBoxWithModeProperty : public ComboBox,
-                                  public ComboBoxListener
+	public ComboBoxListener
 {
-	ComboBoxWithModeProperty(String defaultValue, const Identifier& id=PropertyIds::Mode);
+	ComboBoxWithModeProperty(String defaultValue, const Identifier& id=PropertyIds::Mode) :
+		ComboBox(),
+		mode(id, defaultValue)
+	{
+		addListener(this);
+		setLookAndFeel(&plaf);
+		setColour(ColourIds::textColourId, Colour(0xFFAAAAAA));
+	}
 
-	void comboBoxChanged(ComboBox* comboBoxThatHasChanged);
+	void comboBoxChanged(ComboBox* comboBoxThatHasChanged)
+	{
+		if (initialised)
+			mode.storeValue(getText(), um);
+	}
 
-	void valueTreeCallback(Identifier id, var newValue);
+	void valueTreeCallback(Identifier id, var newValue)
+	{
+        SafeAsyncCall::call<ComboBoxWithModeProperty>(*this, [newValue](ComboBoxWithModeProperty& c)
+        {
+            c.setText(newValue.toString(), dontSendNotification);
+        });
+	}
 
-	void mouseDown(const MouseEvent& e) override;
+	void initModes(const StringArray& modes, NodeBase* n)
+	{
+		if (initialised)
+			return;
 
-	void mouseDrag(const MouseEvent& e) override;
+		clear(dontSendNotification);
+		addItemList(modes, 1);
 
-	void mouseUp(const MouseEvent& e) override;
-
-	void initModes(const StringArray& modes, NodeBase* n);
+		um = n->getUndoManager();
+		mode.initialise(n);
+		mode.setAdditionalCallback(BIND_MEMBER_FUNCTION_2(ComboBoxWithModeProperty::valueTreeCallback), true);
+		initialised = true;
+	}
 
 	bool initialised = false;
 	UndoManager* um;
@@ -133,40 +184,5 @@ struct ComboBoxWithModeProperty : public ComboBox,
     JUCE_DECLARE_WEAK_REFERENCEABLE(ComboBoxWithModeProperty);
 };
 
-
-template <class T> class ScriptnodeExtraComponent : public ComponentWithMiddleMouseDrag,
-public PooledUIUpdater::SimpleTimer
-{
-public:
-
-	using ObjectType = T;
-
-	ObjectType* getObject() const
-	{
-		return object.get();
-	}
-
-protected:
-
-	ScriptnodeExtraComponent(ObjectType* t, PooledUIUpdater* updater) :
-		SimpleTimer(updater),
-		object(t)
-	{};
-
-private:
-
-	WeakReference<ObjectType> object;
-};
-
-struct NodeComponentFactory : public PathFactory
-{
-	static Component* createComponent(NodeBase* node);
-
-	String getId() const;;
-
-	Array<Description> getDescription() const override;
-
-	Path createPath(const String& id) const override;
-};
 
 }

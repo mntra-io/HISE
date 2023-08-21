@@ -137,9 +137,6 @@ Contributors(This may not be a complete list):
 #ifndef NMD_ASSEMBLY_H
 #define NMD_ASSEMBLY_H
 
-#pragma warning( push )
-#pragma warning( disable : 4505 )
-
 #ifndef _NMD_DEFINE_INT_TYPES
 #ifdef NMD_DEFINE_INT_TYPES
 #define _NMD_DEFINE_INT_TYPES
@@ -10760,7 +10757,5 @@ NMD_ASSEMBLY_API void nmd_x86_format(const nmd_x86_instruction* instruction, cha
 
 	*si.buffer = '\0';
 }
-
-#pragma warning( pop )
 
 #endif /* NMD_ASSEMBLY_IMPLEMENTATION */

@@ -100,8 +100,6 @@ public:
 
 	static bool isLockedBySameThread(const MainController* mc, Type lockToCheck);
 
-	static void* getCurrentThreadHandleOrMessageManager();
-
 	static bool isDuringInitialisation(const MainController* mc);
 
 	/** Checks if the current thread (!= message thread) holds the message lock.

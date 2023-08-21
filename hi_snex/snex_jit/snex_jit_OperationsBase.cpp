@@ -34,7 +34,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 
@@ -65,13 +65,10 @@ snex::jit::BaseScope* Operations::findFunctionScope(BaseScope* scope)
 		return findFunctionScope(scope->getParent());
 }
 
-
-#if SNEX_ASMJIT_BACKEND
-AsmJitRuntime* Operations::getRuntime(BaseCompiler* c)
+asmjit::Runtime* Operations::getRuntime(BaseCompiler* c)
 {
 	return dynamic_cast<ClassCompiler*>(c)->getRuntime();
 }
-#endif
 
 
 
@@ -286,7 +283,8 @@ void Operations::Expression::replaceMemoryWithExistingReference(BaseCompiler* co
 
 	auto prevReg = compiler->registerPool.getRegisterWithMemory(reg);
 
-	ASMJIT_ONLY(if (prevReg != reg) reg->setReferToReg(prevReg));
+	if (prevReg != reg)
+		reg->setReferToReg(prevReg);
 }
 
 bool Operations::Expression::isAnonymousStatement() const
@@ -313,8 +311,7 @@ bool Operations::Expression::hasSubExpr(int index) const
 snex::VariableStorage Operations::Expression::getPointerValue() const
 {
 	location.throwError("Can't use address of temporary register");
-
-	RETURN_DEBUG_ONLY({});
+	return {};
 }
 
 Operations::Expression::Ptr Operations::Expression::getSubExpr(int index) const
@@ -656,7 +653,7 @@ void Operations::ConditionalBranch::preallocateVariableRegistersBeforeBranching(
 				if (d != nullptr || (v != nullptr && v->isClassVariable(s)))
 					p->reg->loadMemoryIntoRegister(cc);
 
-				ASMJIT_ONLY(p->reg->setWriteBackToMemory(true));
+				p->reg->setWriteBackToMemory(true);
 			}
 		}
 		

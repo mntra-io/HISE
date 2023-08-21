@@ -442,7 +442,7 @@ struct AudioPreviewComponent: public Component,
         addAndMakeVisible(stopButton);
         
         double unused;
-        b = hlac::CompressionHelpers::loadFile(f, unused, &sr);
+        b = hlac::CompressionHelpers::loadFile(f, unused);
         
         getMainController()->addPreviewListener(this);
         
@@ -459,8 +459,6 @@ struct AudioPreviewComponent: public Component,
         startPreview();
     }
     
-	double sr = 44100.0;
-
     void buttonClicked(Button* b) override
     {
         if(b == &startButton)
@@ -548,7 +546,7 @@ struct AudioPreviewComponent: public Component,
     
     void startPreview()
     {
-        getMainController()->setBufferToPlay(b, sr);
+        getMainController()->setBufferToPlay(b);
     }
     
     void stopPreview()
@@ -934,7 +932,7 @@ void FileBrowser::mouseDoubleClick(const MouseEvent& )
     }
 }
 
-void FileBrowser::textEditorTextChanged(TextEditor& editor)
+void FileBrowser::textEditorReturnKeyPressed(TextEditor& editor)
 {
 	if (&editor == textEditor)
 	{

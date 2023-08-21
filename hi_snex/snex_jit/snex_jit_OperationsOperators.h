@@ -35,7 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 
@@ -428,14 +428,6 @@ struct Operations::Assignment : public Expression,
 		t.setProperty("First", isFirstAssignment, nullptr);
 		t.setProperty("AssignmentType", assignmentType, nullptr);
 
-        auto targetTypeInfo = getSubExpr(1)->getTypeInfo();
-        
-        
-        if(targetTypeInfo.isComplexType() && !targetTypeInfo.isRef())
-        {
-            t.setProperty("NumBytesToCopy", targetTypeInfo.getRequiredByteSizeNonZero(), nullptr);
-        }
-        
 		return t;
 	}
 

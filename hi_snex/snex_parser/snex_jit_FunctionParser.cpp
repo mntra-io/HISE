@@ -35,7 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 snex::jit::BlockParser::StatementPtr CodeParser::parseStatementToBlock()

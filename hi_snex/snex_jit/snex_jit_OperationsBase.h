@@ -35,8 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
-
+using namespace asmjit;
 
 class FunctionScope;
 
@@ -51,25 +50,13 @@ class FunctionScope;
 /** This class has a variable pool that will not exceed the lifetime of the compilation. */
 namespace Operations
 {
-	using FunctionCompiler = AsmJitX86Compiler;
+
+
+	using FunctionCompiler = asmjit::X86Compiler;
 
 	static FunctionCompiler& getFunctionCompiler(BaseCompiler* c);
 	static BaseScope* findClassScope(BaseScope* scope);
 	static BaseScope* findFunctionScope(BaseScope* scope);
-
-    static bool callRecursive(ValueTree& root, const std::function<bool(ValueTree&)>& f)
-    {
-        if(f(root))
-            return true;
-        
-        for(auto c: root)
-        {
-            if(callRecursive(c, f))
-                return true;
-        }
-        
-        return false;
-    }
 
 	enum class IterationType
 	{
@@ -81,9 +68,7 @@ namespace Operations
 
 	using RegPtr = AssemblyRegister::Ptr;
 
-#if SNEX_ASMJIT_BACKEND
-	static AsmJitRuntime* getRuntime(BaseCompiler* c);
-#endif
+	static asmjit::Runtime* getRuntime(BaseCompiler* c);
 
 	using Location = ParserHelpers::CodeLocation;
 	using TokenType = ParserHelpers::TokenType;
@@ -338,7 +323,7 @@ namespace Operations
 
 			if (currentPass == BaseCompiler::CodeGeneration && asmComment.isNotEmpty())
 			{
-				ASMJIT_ONLY(getFunctionCompiler(compiler).setInlineComment(asmComment.getCharPointer().getAddress()));
+				getFunctionCompiler(compiler).setInlineComment(asmComment.getCharPointer().getAddress());
 			}
 		}
 
@@ -582,7 +567,7 @@ namespace Operations
 	{
 		static void preallocateVariableRegistersBeforeBranching(Statement::Ptr stament, BaseCompiler* c, BaseScope* s);
 
-		virtual AsmJitLabel getJumpTargetForEnd(bool getContinue) = 0;
+		virtual asmjit::Label getJumpTargetForEnd(bool getContinue) = 0;
 
 		virtual ~ConditionalBranch() {}
 

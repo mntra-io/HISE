@@ -61,9 +61,7 @@ struct HiseJavascriptEngine::RootObject::BinaryOperator : public BinaryOperatorB
 
 	var throwError(const char* typeName) const
 	{
-		location.throwError(getTokenName(operation) + " is not allowed on the " + typeName + " type"); 
-		
-		return var();
+		location.throwError(getTokenName(operation) + " is not allowed on the " + typeName + " type"); return var();
 	}
 };
 

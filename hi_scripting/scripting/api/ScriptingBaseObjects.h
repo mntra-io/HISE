@@ -119,29 +119,53 @@ class ConstScriptingObject : public ScriptingObject,
 {
 public:
 
-	ConstScriptingObject(ProcessorWithScriptingContent* p, int numConstants);
+	ConstScriptingObject(ProcessorWithScriptingContent* p, int numConstants):
+		ScriptingObject(p),
+		ApiClass(numConstants)
+	{
+
+	}
 
 	virtual Identifier getObjectName() const = 0;
-	Identifier getInstanceName() const override;
+	Identifier getInstanceName() const override { return name.isValid() ? name : getObjectName(); }
 
 	/** \internal Overwrite this method and check if the object got deleted. Best thing is to use a WeakReference and check if it's nullptr. */
-	virtual bool objectDeleted() const;
+	virtual bool objectDeleted() const { return false; }
 
 	/** \internal Overwrite this method and check if the object exists. Best thing is to initialize the pointer to nullptr and check that. */
-	virtual bool objectExists() const;
+	virtual bool objectExists() const { return false; }
 
-
+	
 	/** Return all attached functions and callbacks of this object so that the compiler can run its optimisations. */
 	//virtual var getOptimizableFunctions() const { return {}; }
 
 	/** The parser will call this function with every function call and its location so you can use it to track down calls. 
 		Note: this will only work with objects that are defined as const variables. */
-	virtual bool addLocationForFunctionCall(const Identifier& id, const DebugableObjectBase::Location& location);;
+	virtual bool addLocationForFunctionCall(const Identifier& id, const DebugableObjectBase::Location& location) 
+	{
+		ignoreUnused(id, location);
+		return false;
+	};
 
 	/** \internal This method combines the calls to objectDeleted() and objectExists() and creates a nice error message. */
-	bool checkValidObject() const;
+	bool checkValidObject() const
+	{
+		if (!objectExists())
+		{
+			reportScriptError(getObjectName().toString() + " " + getInstanceName() + " does not exist.");
+			RETURN_IF_NO_THROW(false)
+		}
 
-	void setName(const Identifier &name_) noexcept;;
+		if (objectDeleted())
+		{
+			reportScriptError(getObjectName().toString() + " " + getInstanceName() + " was deleted");
+			RETURN_IF_NO_THROW(false)
+		}
+
+		return true;
+	}
+
+	void setName(const Identifier &name_) noexcept{ name = name_; };
 
 	void gotoLocationWithDatabaseLookup();
 
@@ -167,14 +191,19 @@ class DynamicScriptingObject: public ScriptingObject,
 {
 public:
 
-	DynamicScriptingObject(ProcessorWithScriptingContent *p);;
+	DynamicScriptingObject(ProcessorWithScriptingContent *p):
+		ScriptingObject(p)
+	{
+		setMethod("exists", Wrappers::checkExists);
+		
+	};
 
-	virtual ~DynamicScriptingObject();;
+	virtual ~DynamicScriptingObject() {};
 
 	/** \internal Overwrite this method and return the class name of the object which will be used in the script context. */
 	virtual Identifier getObjectName() const = 0;
 
-	String getInstanceName() const;
+	String getInstanceName() const { return name; }
 
 protected:
 
@@ -185,9 +214,24 @@ protected:
 	virtual bool objectExists() const = 0;
 
 	/** \internal This method combines the calls to objectDeleted() and objectExists() and creates a nice error message. */
-	bool checkValidObject() const;
+	bool checkValidObject() const
+	{
+		if(!objectExists())
+		{
+			reportScriptError(getObjectName().toString() + " " + getInstanceName() + " does not exist.");
+			RETURN_IF_NO_THROW(false)
+		}
 
-	void setName(const String &name_) noexcept;;
+		if(objectDeleted())
+		{
+			reportScriptError(getObjectName().toString() + " " + getInstanceName() + " was deleted");	
+			RETURN_IF_NO_THROW(false)
+		}
+
+		return true;
+	}
+
+	void setName(const String &name_) noexcept { name = name_; };
 
 private:
 
@@ -453,9 +497,14 @@ public:
 	JUCE_DECLARE_WEAK_REFERENCEABLE(AssignableObject);
 };
 
-struct JSONConversionHelpers: public valuetree::Helpers
+
+struct JSONConversionHelpers
 {
 	static bool isPluginState(const ValueTree& v) { return v.getType() == Identifier("ControlData"); };
+
+	static var valueTreeToJSON(const ValueTree& v);
+
+	static ValueTree jsonToValueTree(var data, const Identifier& typeId, bool isParentData = true);
 
 	static var convertBase64Data(const String& d, const ValueTree& cTree);
 

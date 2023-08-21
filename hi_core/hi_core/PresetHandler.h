@@ -98,43 +98,6 @@ private:
 
 class ModulatorSynthChain;
 
-#define DECLARE_ID(x) static const Identifier x(#x);
-
-namespace UserPresetIds
-{
-	DECLARE_ID(MPEData);
-	DECLARE_ID(MidiAutomation);
-	DECLARE_ID(Modules);
-	DECLARE_ID(Preset);
-	DECLARE_ID(CustomJSON);
-	DECLARE_ID(AdditionalStates);
-}
-
-#undef DECLARE_ID
-
-class UserPresetStateManager: public RestorableObject
-{
-public:
-
-	using Ptr = WeakReference<UserPresetStateManager>;
-	using List = Array<Ptr>;
-
-	virtual ~UserPresetStateManager();;
-
-	virtual Identifier getUserPresetStateId() const = 0;
-
-	/** Override this and reset the state (this is called when the user preset doesn't contain a matching child. */
-	virtual void resetUserPresetState() = 0;
-
-	bool restoreUserPresetState(const ValueTree& root);
-
-	void saveUserPresetState(ValueTree& presetRoot) const;
-
-private:
-
-	JUCE_DECLARE_WEAK_REFERENCEABLE(UserPresetStateManager);
-};
-
 class PoolCollection;
 
 /** The base class for handling external resources. 
@@ -278,11 +241,15 @@ class ProjectHandler: public FileHandlerBase
 {
 public:
 
-	ProjectHandler(MainController* mc_);
+	ProjectHandler(MainController* mc_):
+		FileHandlerBase(mc_)
+	{
+		
+	}
 
 	struct Listener
 	{
-		virtual ~Listener();;
+		virtual ~Listener() {};
 
 		/** Whenever a project is changed, this method is called on its registered Listeners. */
 		virtual void projectChanged(const File& newRootDirectory) = 0;
@@ -296,9 +263,9 @@ public:
 
 	Result setWorkingProject(const File &workingDirectory, bool checkDirectories=true);
 
-	static const StringArray &getRecentWorkDirectories();
+	static const StringArray &getRecentWorkDirectories() { return recentWorkDirectories; }
 
-	File getRootFolder() const override;
+	File getRootFolder() const override { return getWorkDirectory(); }
 
 	File getWorkDirectory() const;
 
@@ -308,7 +275,10 @@ public:
 
 	/** Checks if a directory is redirected. */
 
-	bool isRedirected(ProjectHandler::SubDirectories dir) const;
+	bool isRedirected(ProjectHandler::SubDirectories dir) const
+	{
+		return subDirectories[(int)dir].isReference;
+	}
 
 	/** Checks if the ProjectHandler is active (if a directory is set). */
 	bool isActive() const;
@@ -331,11 +301,20 @@ public:
 
 	
 
-	void addListener(Listener* newProjectListener, bool sendWithInitialValue=false);
+	void addListener(Listener* newProjectListener, bool sendWithInitialValue=false)
+	{
+		listeners.addIfNotAlreadyThere(newProjectListener);
+        
+        if(sendWithInitialValue && currentWorkDirectory.isDirectory())
+            newProjectListener->projectChanged(currentWorkDirectory);
+	}
 
-	void removeListener(Listener* listenerToRemove);
+	void removeListener(Listener* listenerToRemove)
+	{
+		listeners.removeAllInstancesOf(listenerToRemove);
+	}
 
-	/** This function will return the directory where the app data is stored.
+    /** This function will return the directory where the app data is stored.
         It uses getAppDataRoot in order to figure out the folder from where it has to go.
         If you pass in nullptr, it will always default to the local app data folder, otherwise
         it might use the global app data folder as root (see getAppDataRoot()).
@@ -531,7 +510,11 @@ public:
 
 	static StringArray checkRequiredExpansions(MainController* mc, ValueTree& preset);
 
+	static ValueTree createModuleStateTree(ModulatorSynthChain* chain);
+
     static void loadUserPreset(ModulatorSynthChain *chain, const File &fileToLoad);
+
+	static void restoreModuleStates(ModulatorSynthChain* chain, const ValueTree& v);
 
 	static void loadUserPreset(ModulatorSynthChain* chain, const ValueTree &v);
     
@@ -554,47 +537,7 @@ public:
 
 	static void extractDirectory(ValueTree directory, File parent);
 
-	
-};
 
-struct ModuleStateManager : public UserPresetStateManager,
-							public ControlledObject
-{
-	ModuleStateManager(MainController* mc);;
-
-	struct StoredModuleData : public ReferenceCountedObject
-	{
-		using Ptr = ReferenceCountedObjectPtr<StoredModuleData>;
-		using List = ReferenceCountedArray<StoredModuleData>;
-
-		StoredModuleData(var moduleId, Processor* pToRestore);
-
-		void stripValueTree(ValueTree& v);
-
-		void restoreValueTree(ValueTree& v);
-
-		String id;
-
-		WeakReference<Processor> p;
-		NamedValueSet removedProperties;
-		Array<ValueTree> removedChildElements;
-
-		JUCE_DECLARE_WEAK_REFERENCEABLE(StoredModuleData);
-		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StoredModuleData);
-	};
-
-	StoredModuleData** begin();
-	StoredModuleData** end();
-
-	Identifier getUserPresetStateId() const override;
-
-	ValueTree exportAsValueTree() const override;
-
-	StoredModuleData::List modules;
-
-	void resetUserPresetState() override;;
-
-	void restoreFromValueTree(const ValueTree &previouslyExportedState) override;
 };
 
 /** A helper class which provides loading and saving Processors to files and clipboard. 
@@ -638,18 +581,52 @@ public:
 	/** Returns a popupmenu with all suiting Processors for the supplied FactoryType. */
 	static PopupMenu getAllSavedPresets(int minIndex, Processor *parentChain);
 
-	static void stripViewsFromPreset(ValueTree &preset);
+	static void stripViewsFromPreset(ValueTree &preset)
+	{
+		preset.removeProperty("views", nullptr);
+		preset.removeProperty("currentView", nullptr);
 
-	static File loadFile(const String &extension);
+		preset.removeProperty("EditorState", nullptr);
 
-	static void saveFile(const String &dataToSave, const String &extension);
+		for(int i = 0; i < preset.getNumChildren(); i++)
+		{
+            ValueTree child = preset.getChild(i);
+            
+			stripViewsFromPreset(child);
+		}
+	}
+    
+    static File loadFile(const String &extension)
+    {
+		jassert(extension.isEmpty() || extension.startsWith("*"));
 
-	static void setChanged(Processor *p);
+        FileChooser fc("Load File", File(), extension, true);
+        
+        if(fc.browseForFileToOpen())
+        {
+            
+            return fc.getResult();
+        }
+        return File();
+    }
+	
+    static void saveFile(const String &dataToSave, const String &extension)
+    {
+		jassert(extension.isEmpty() || extension.startsWith("*"));
 
-#if USE_BACKEND
-	static String getVersionString();
-#endif
+        FileChooser fc("Save File", File(), extension);
+        
+        if(fc.browseForFileToSave(true))
+        {
+            fc.getResult().deleteFile();
+            fc.getResult().create();
+            fc.getResult().appendText(dataToSave);
+        }
+        
+    }
 
+    static void setChanged(Processor *p);
+    
 	/** Checks if the. */
 	static String getProcessorNameFromClipboard(const FactoryType *t);
 
@@ -678,8 +655,30 @@ public:
 	static ValueTree changeFileStructureToNewFormat(const ValueTree &v);
 
 	/** Opens a file dialog and saves the new path into the library's setting file. */
-	static File getSampleFolder(const String &libraryName);
+	static File getSampleFolder(const String &libraryName)
+	{
+		const bool search = NativeMessageBox::showOkCancelBox(AlertWindow::WarningIcon, "Sample Folder can't be found", "The sample folder for " + libraryName + "can't be found. Press OK to search or Cancel to abort loading");
 
+		if(search)
+		{
+			FileChooser fc("Searching Sample Folder");
+
+			if(fc.browseForDirectory())
+			{
+				File sampleFolder = fc.getResult();
+
+				
+
+				return sampleFolder;
+			}
+		}
+		
+
+		return File();
+		
+		
+	}
+    
 	static File getGlobalScriptFolder(Processor* p);
 
     static AudioFormatReader *getReaderForFile(const File &file);
@@ -688,11 +687,72 @@ public:
 
 	static void checkMetaParameters(Processor* p);
 
-	static ValueTree loadValueTreeFromData(const void* data, size_t size, bool wasCompressed);
+	static ValueTree loadValueTreeFromData(const void* data, size_t size, bool wasCompressed)
+	{
+		if (wasCompressed)
+		{
+			return ValueTree::readFromGZIPData(data, size);
+		}
+		else
+		{
+			return ValueTree::readFromData(data, size);
+		}
+	}
 
-	static void writeValueTreeAsFile(const ValueTree &v, const String &fileName, bool compressData=false);
+	static void writeValueTreeAsFile(const ValueTree &v, const String &fileName, bool compressData=false)
+	{
+		File file(fileName);
+		file.deleteFile();
+		file.create();
 
-	static var writeValueTreeToMemoryBlock(const ValueTree &v, bool compressData=false);
+		if (compressData)
+		{
+			FileOutputStream fos(file);
+
+			GZIPCompressorOutputStream gzos(&fos, 9, false);
+
+			MemoryOutputStream mos;
+
+			v.writeToStream(mos);
+
+			gzos.write(mos.getData(), mos.getDataSize());
+			gzos.flush();
+		}
+		else
+		{
+			FileOutputStream fos(file);
+
+			v.writeToStream(fos);
+		}
+	}
+
+	static var writeValueTreeToMemoryBlock(const ValueTree &v, bool compressData=false)
+	{
+
+        juce::MemoryBlock mb;
+
+		if (compressData)
+		{
+			MemoryOutputStream mos(mb, false);
+
+			GZIPCompressorOutputStream gzos(&mos, 9, false);
+
+			MemoryOutputStream internalMos;
+
+			v.writeToStream(internalMos);
+
+			gzos.write(internalMos.getData(), internalMos.getDataSize());
+			gzos.flush();
+		}
+		else
+		{
+			MemoryOutputStream mos(mb, false);
+
+			v.writeToStream(mos);
+		}
+
+		return var(mb.getData(), mb.getSize());
+	}
 
 	static void writeSampleMapsToValueTree(ValueTree &sampleMapTree, ValueTree &preset);
 
@@ -703,9 +763,15 @@ public:
 	// creates a processor from the file
 	static Processor *loadProcessorFromFile(File fileName, Processor *parent);
 
-	static void setCurrentMainController(void* mc);
+	static void setCurrentMainController(void* mc)
+	{
+		currentController = mc;
+	}
 
-	static LookAndFeel* createAlertWindowLookAndFeel();
+	static LookAndFeel* createAlertWindowLookAndFeel()
+	{
+		return HiseColourScheme::createAlertWindowLookAndFeel(currentController);
+	}
 
 private:
 

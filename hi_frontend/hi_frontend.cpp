@@ -33,9 +33,8 @@
 /* HI Module */
 
 
-#include <BinaryData.h>
+#include <JuceHeader.h>
 
-#include "hi_frontend.h"
-
+#include "frontend/FrontendHostFactory.cpp"
 #include "frontend/FrontEndProcessor.cpp"
 #include "frontend/FrontendProcessorEditor.cpp"

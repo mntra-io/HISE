@@ -34,7 +34,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 ClassParser::ClassParser(BaseCompiler* c, const juce::String& code) :
@@ -255,7 +255,7 @@ BlockParser::StatementPtr ClassParser::parseVariableDefinition()
 		if (!s.typeInfo.isTemplateType())
 		{
 			location.throwError("Expected initialiser for non-templated member");
-			return nullptr;
+			RETURN_IF_NO_THROW(nullptr);
 		}
 		else
 		{

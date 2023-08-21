@@ -69,11 +69,18 @@ public:
 
 	void resized() override;
 
-	void codeDocumentTextInserted(const String &/*newText*/, int /*insertIndex*/) override;
+	void codeDocumentTextInserted(const String &/*newText*/, int /*insertIndex*/) override
+	{
+		auto fh = newTextConsole->getFont().getHeight();
 
-	void codeDocumentTextDeleted(int /*startIndex*/, int /*endIndex*/) override;
+		int numLinesVisible = jmax<int>(0, newTextConsole->getDocument().getNumLines() - (int)((float)newTextConsole->getHeight() / fh));
 
-	void clear();
+		newTextConsole->scrollToLine(numLinesVisible);
+	}
+
+	void codeDocumentTextDeleted(int /*startIndex*/, int /*endIndex*/) override {}
+
+    void clear();
 
 	/** Adds a new line to the console.
     *
@@ -81,9 +88,17 @@ public:
 	*   on the timer callback.
 	*/
 
-	void setTokeniser(CodeTokeniser* newTokeniser);
+	void setTokeniser(CodeTokeniser* newTokeniser)
+	{
+		tokeniser = newTokeniser;
+		addAndMakeVisible(newTextConsole = new ConsoleEditorComponent(*mc->getConsoleHandler().getConsoleData(), tokeniser.get()));
+		newTextConsole->addMouseListener(this, true);
+	}
 
-	static void updateFontSize(Console& c, float newSize);
+	static void updateFontSize(Console& c, float newSize)
+	{
+		c.newTextConsole->setFont(GLOBAL_MONOSPACE_FONT().withHeight(newSize));
+	}
 
 private:
 
@@ -95,7 +110,8 @@ private:
 
 		int readNextToken(CodeDocument::Iterator& source);
 
-		CodeEditorComponent::ColourScheme getDefaultColourScheme() override;
+		CodeEditorComponent::ColourScheme getDefaultColourScheme() override { return s; }
+
 
 	private:
 
@@ -112,7 +128,7 @@ private:
 
 		ConsoleEditorComponent(CodeDocument &doc, CodeTokeniser *tok);
 
-		void addPopupMenuItems(PopupMenu &/*menuToAddTo*/, const MouseEvent *) override;;
+		void addPopupMenuItems(PopupMenu &/*menuToAddTo*/, const MouseEvent *) override {};
         
         ScrollbarFader fader;
 	};

@@ -478,12 +478,8 @@ ProjectDll::ProjectDll(const File& f):
 ProjectDll::~ProjectDll()
 {
 	clearAllFunctions();
-    
-    if(dll != nullptr)
-    {
-        dll->close();
-        dll = nullptr;
-    }
+	dll->close();
+	dll = nullptr;
 }
 
 

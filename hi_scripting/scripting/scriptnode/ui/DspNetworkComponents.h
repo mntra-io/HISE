@@ -190,7 +190,7 @@ public:
 		{
 			Path p;
 
-			LOAD_EPATH_IF_URL("help", MainToolbarIcons::help);
+			LOAD_PATH_IF_URL("help", MainToolbarIcons::help);
 
 			return p;
 		}
@@ -265,7 +265,7 @@ public:
 		helpButton.addListener(this);
 		setSize(tagList.getWidth(), 64 + 240 + 2 * UIValues::NodeMargin);
 		nodeEditor.addKeyListener(this);
-		list.rebuild(getWidthForListItems(), true);
+		list.rebuild(getWidthForListItems());
 	}
 
 	void buttonClicked(Button* )
@@ -320,7 +320,7 @@ public:
 	{
 		nodeEditor.setText(text, dontSendNotification);
 		list.setSearchText(nodeEditor.getText());
-		list.rebuild(getWidthForListItems(), true);
+		list.rebuild(getWidthForListItems());
 		resized();
 	}
 
@@ -337,7 +337,7 @@ public:
 		b.removeFromTop(UIValues::NodeMargin);
 
 		tagList.setBounds(b.removeFromTop(32));
-		list.rebuild(getWidthForListItems(), false);
+		list.rebuild(getWidthForListItems());
 		
 		b.removeFromTop(UIValues::NodeMargin);
 
@@ -413,7 +413,7 @@ public:
 				allIds.add(nItem);
 			}
 
-			rebuild(getWidth(), true);
+			rebuild(getWidth());
 		}
 
 		WeakReference<DspNetwork> network;
@@ -462,7 +462,7 @@ public:
 		void setSearchText(const String& text)
 		{
 			searchTerm = text.toLowerCase();
-			rebuild(maxWidth, true);
+			rebuild(maxWidth);
 
 			selectedIndex = 0;
 			setSelected(items[selectedIndex], true);
@@ -482,10 +482,8 @@ public:
 
 			void mouseDown(const MouseEvent& );
 
-			void mouseDoubleClick(const MouseEvent& event) override;
+			void mouseUp(const MouseEvent& event);
 
-			bool keyPressed(const KeyPress& k) override;
-            
 			void paint(Graphics& g) override;
 
 			void resized() override;
@@ -513,37 +511,34 @@ public:
 
 		int maxWidth = 0;
 
-		void rebuild(int maxWidthToUse, bool force)
+		void rebuild(int maxWidthToUse)
 		{
-            if(maxWidthToUse != maxWidth || force)
-            {
-                items.clear();
+			items.clear();
 
-                int y = 0;
-                
-                maxWidth = maxWidthToUse;
+			int y = 0;
+			
+			maxWidth = maxWidthToUse;
 
-                auto f = GLOBAL_MONOSPACE_FONT();
+			auto f = GLOBAL_MONOSPACE_FONT();
 
-                for (auto id : allIds)
-                {
-                    if (searchTerm.isNotEmpty() && !id.displayName.contains(searchTerm))
-                        continue;
+			for (auto id : allIds)
+			{
+				if (searchTerm.isNotEmpty() && !id.displayName.contains(searchTerm))
+					continue;
 
-                    if (searchTerm == id.displayName)
-                        selectedIndex = items.size();
+				if (searchTerm == id.displayName)
+					selectedIndex = items.size();
 
-                    auto newItem = new Item(id, selectedIndex == items.size());
-                    items.add(newItem);
-                    addAndMakeVisible(newItem);
+				auto newItem = new Item(id, selectedIndex == items.size());
+				items.add(newItem);
+				addAndMakeVisible(newItem);
 
-                    maxWidth = jmax(f.getStringWidth(id.displayName) + 20, maxWidth);
-                    y += ItemHeight;
-                }
+				maxWidth = jmax(f.getStringWidth(id.displayName) + 20, maxWidth);
+				y += ItemHeight;
+			}
 
-                setSize(maxWidth, y);
-                resized();
-            }
+			setSize(maxWidth, y);
+			resized();
 		}
 
 		OwnedArray<Item> items;
@@ -574,7 +569,7 @@ struct DspNetworkPathFactory : public PathFactory
 
 
 
-class DspNetworkGraph : public ComponentWithMiddleMouseDrag,
+class DspNetworkGraph : public Component,
 	public AsyncUpdater,
 	public DspNetwork::SelectionListener
 {

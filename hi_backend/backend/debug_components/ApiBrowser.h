@@ -355,18 +355,17 @@ public:
 
 			bypassListener.setCallback(node->getValueTree(), { PropertyIds::Bypassed }, valuetree::AsyncMode::Asynchronously,
 				BIND_MEMBER_FUNCTION_2(NodeItem::updateBypassState));
-
-			auto fid = node->getValueTree()[PropertyIds::FactoryPath].toString();
-
-			searchKeywords << ";" << fid;
-
-
+            
+            scriptnode::NodeComponent::Factory f;
+            
+            auto fid = node->getValueTree()[PropertyIds::FactoryPath].toString();
+            
+            searchKeywords << " " << fid;
+            
             if(fid.startsWith("container.") && fid != "container.chain")
             {
-				scriptnode::NodeComponentFactory f;
                 icon = f.createPath(fid.fromFirstOccurrenceOf("container.", false, false));
             }
-
 		}
         
         Path icon;
@@ -450,7 +449,7 @@ public:
 		valuetree::PropertyListener bypassListener;
 
 		NodeBase::Ptr node;
-		NodeComponentFactory f;
+		NodeComponent::Factory f;
 		NiceLabel label;
 		HiseShapeButton powerButton;
         

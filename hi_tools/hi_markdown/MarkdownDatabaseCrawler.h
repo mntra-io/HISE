@@ -205,20 +205,58 @@ public:
 	void createContentTree();
 	void addImagesFromContent(float maxWidth = 1000.0f);
 
-	static void createImagesInHtmlFolder(File htmlRoot, MarkdownDatabaseHolder& holder, DatabaseCrawler::Logger* nonOwnedLogger, double* progress);
-	static void createHtmlFilesInHtmlFolder(File htmlRoot, MarkdownDatabaseHolder& holder, DatabaseCrawler::Logger* nonOwnedLogger, double* progress);
+	static void createImagesInHtmlFolder(File htmlRoot, MarkdownDatabaseHolder& holder, DatabaseCrawler::Logger* nonOwnedLogger, double* progress)
+	{
+		DatabaseCrawler crawler(holder);
 
+		auto contentDirectory = htmlRoot;
+
+		crawler.setLogger(nonOwnedLogger, false);
+		crawler.setProgressCounter(progress);
+		crawler.loadDataFiles(holder.getCachedDocFolder());
+		crawler.writeImagesToSubDirectory(contentDirectory);
+	}
+
+	static void createHtmlFilesInHtmlFolder(File htmlRoot, MarkdownDatabaseHolder& holder, DatabaseCrawler::Logger* nonOwnedLogger, double* progress)
+	{
+		DatabaseCrawler crawler(holder);
+
+		auto contentDirectory = htmlRoot;
+
+		crawler.setLogger(nonOwnedLogger, false);
+		crawler.setProgressCounter(progress);
+
+		crawler.loadDataFiles(holder.getCachedDocFolder());
+		crawler.writeJSONTocFile(htmlRoot);
+		crawler.createHtmlFilesInternal(contentDirectory, Markdown2HtmlConverter::LinkMode::LocalFile, htmlRoot.getFullPathName());
+	}
+
+	
 	void createImageTree();
 	void writeImagesToSubDirectory(File htmlDirectory);
 
+	
+
+	
+
 	void createDataFiles(File root, bool createImages);
+
 	void loadDataFiles(File root);
 
 	void writeJSONTocFile(File htmlDirectory);
 
-	void setLogger(Logger* l, bool ownThisLogger);
+	void setLogger(Logger* l, bool ownThisLogger)
+	{
+		if (ownThisLogger)
+			logger = l;
+		else
+			nonOwnedLogger = l;
+	}
 
-	void setStyleData(MarkdownLayout::StyleData& newStyleData);
+	void setStyleData(MarkdownLayout::StyleData& newStyleData)
+	{
+		styleData = newStyleData;
+	}
 
 	void setProgressCounter(double* p)
 	{
@@ -233,7 +271,16 @@ private:
 
 	void createHtmlFilesInternal(File htmlTemplateDirectoy, Markdown2HtmlConverter::LinkMode m, const String& linkBase);
 
-	void addPathResolver();
+	void addPathResolver()
+	{
+		for (auto lr : linkResolvers)
+		{
+			if (lr->getPriority() == MarkdownParser::ResolveType::EmbeddedPath)
+				return;
+		}
+
+		addImageProvider(new MarkdownParser::GlobalPathProvider(nullptr));
+	}
 
 	double* progressCounter = nullptr;
 

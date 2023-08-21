@@ -722,8 +722,6 @@ public:
 
 		static void tableUpdated(ViewportWrapper& w, int index);
 
-		static void columnNeedsRepaint(ViewportWrapper& w, int index);
-
 	private:
 
 		void scrollBarMoved(ScrollBar* scrollBarThatHasMoved,

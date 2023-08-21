@@ -35,9 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
-
-
+using namespace asmjit;
 
 
 class ClassScope : public BaseScope
@@ -60,7 +58,7 @@ public:
 		{
 			gs->setCurrentClassScope(this);
 
-			runtime = new AsmJitRuntime();
+			runtime = new asmjit::JitRuntime();
 			rootData = new RootClassData();
 		}
 		else
@@ -97,7 +95,7 @@ public:
 
 	
 
-	ScopedPointer<AsmJitRuntime> runtime;
+	ScopedPointer<asmjit::JitRuntime> runtime;
 	ReferenceCountedObjectPtr<RootClassData> rootData;
 	ComplexType::WeakPtr typePtr;
 	NamespaceHandler* handler = nullptr;

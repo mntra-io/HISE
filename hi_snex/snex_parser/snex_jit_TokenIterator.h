@@ -601,8 +601,7 @@ struct ParserHelpers
 			}
 
 			location.throwError("Unsupported operator overload");
-
-            RETURN_DEBUG_ONLY({});
+            return {};
 		}
 
 		Identifier parseIdentifier()

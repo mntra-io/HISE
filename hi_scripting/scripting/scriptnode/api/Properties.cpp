@@ -44,7 +44,7 @@ struct ColourSelectorPropertyComponent : public PropertyComponent
 		PropertyComponent(id.toString()),
 		value(d.getPropertyAsValue(id, um))
 	{
-        addAndMakeVisible(comp);
+		addAndMakeVisible(comp);
 		refresh();
 	}
 
@@ -79,22 +79,9 @@ struct ColourSelectorPropertyComponent : public PropertyComponent
 					ColourSelector::ColourSelectorOptions::showColourspace |
 					ColourSelector::ColourSelectorOptions::showSliders)
 			{
-                setLookAndFeel(&laf);
-				
-                selector.setColour(ColourSelector::ColourIds::backgroundColourId, Colours::transparentBlack);
-                selector.setColour(ColourSelector::ColourIds::labelTextColourId, Colours::white);
-                selector.setColour(ColourSelector::ColourIds::labelTextColourId, Colours::white);
+				selector.setColour(ColourSelector::ColourIds::backgroundColourId, Colours::transparentBlack);
+				selector.setColour(ColourSelector::ColourIds::labelTextColourId, Colours::white);
 
-                juce::Component::callRecursive<Component>(&selector, [](Component* s)
-                {
-                    s->setColour(Slider::ColourIds::textBoxTextColourId, Colours::white.withAlpha(0.8f));
-                    s->setColour(Slider::ColourIds::backgroundColourId, Colours::black.withAlpha(0.3f));
-                    s->setColour(Slider::ColourIds::thumbColourId, Colours::white.withAlpha(0.8f));
-                    s->setColour(Slider::ColourIds::trackColourId, Colours::white.withAlpha(0.5f));
-                    return false;
-                });
-                
-                
 				selector.setCurrentColour(parent->colour);
 
 				addAndMakeVisible(selector);
@@ -110,12 +97,11 @@ struct ColourSelectorPropertyComponent : public PropertyComponent
 			}
 
 			ColourSelector selector;
-            LookAndFeel_V4 laf;
 		};
 
 		ColourComp()
 		{
-            addAndMakeVisible(l);
+			addAndMakeVisible(l);
 
 			l.setColour(Label::ColourIds::backgroundColourId, Colours::transparentBlack);
 			l.setColour(Label::ColourIds::outlineColourId, Colours::transparentBlack);
@@ -197,8 +183,6 @@ struct ColourSelectorPropertyComponent : public PropertyComponent
 		Label l;
 
 		Colour colour;
-        
-        
 	};
 
 	ColourComp comp;
@@ -716,45 +700,8 @@ void ExpressionPropertyComponent::Comp::Display::mouseDown(const MouseEvent& )
 	CallOutBox::launchAsynchronously(std::unique_ptr<Component>(bigOne), b, pc);
 }
 #endif
-
-	Colour PropertyHelpers::getColour(ValueTree data)
-	{
-		while (data.getParent().isValid())
-		{
-			if (data.hasProperty(PropertyIds::NodeColour))
-			{
-				auto c = getColourFromVar(data[PropertyIds::NodeColour]);
-
-				if (!c.isTransparent())
-					return c;
-			}
-
-			data = data.getParent();
-		}
-
-		return Colour();
-	}
-
-	Colour PropertyHelpers::getColourFromVar(const var& value)
-	{
-		int64 colourValue = 0;
-
-		if (value.isInt64() || value.isInt())
-			colourValue = (int64)value;
-		else if (value.isString())
-		{
-			auto string = value.toString();
-
-			if (string.startsWith("0x"))
-				colourValue = string.getHexValue64();
-			else
-				colourValue = string.getLargeIntValue();
-		}
-
-		return Colour((uint32)colourValue);
-	}
-
-	juce::PropertyComponent* PropertyHelpers::createPropertyComponent(ProcessorWithScriptingContent* s, ValueTree& d, const Identifier& id, UndoManager* um)
+    
+juce::PropertyComponent* PropertyHelpers::createPropertyComponent(ProcessorWithScriptingContent* s, ValueTree& d, const Identifier& id, UndoManager* um)
 {
 	using namespace PropertyIds;
 

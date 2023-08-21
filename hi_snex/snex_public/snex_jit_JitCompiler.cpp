@@ -34,7 +34,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 
@@ -638,7 +638,7 @@ String SyntaxTreeExtractor::getBase64DataLayout(const Array<ValueTree>& dataLayo
         MemoryBlock mb;
         comp.compress(x, mb);
         
-        mos.writeInt((int)mb.getSize());
+        mos.writeInt(mb.getSize());
         mos.write(mb.getData(), mb.getSize());
     }
     
@@ -752,7 +752,7 @@ juce::uint32 InitValueParser::getNumBytesRequired() const
 
 	forEach([&b](uint32 offset, Types::ID t, const VariableStorage&)
 	{
-		auto nb = (uint32)Types::Helpers::getSizeForType(t);
+		auto nb = Types::Helpers::getSizeForType(t);
 
 		if (t == Types::ID::Integer)
 			nb = sizeof(int64);

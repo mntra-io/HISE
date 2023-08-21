@@ -32,8 +32,6 @@
 
 #pragma once
 
-
-
 namespace snex {
 
 using namespace juce;
@@ -43,7 +41,6 @@ namespace jit
 
 
 struct AsmInlineData;
-
 
 namespace WrapIds
 {
@@ -56,8 +53,6 @@ DECLARE_ID(NumChannels);
 DECLARE_ID(NodeId);
 #undef DECLARE_ID
 }
-
-
 
 struct WrapBuilder : public TemplateClassBuilder
 {
@@ -419,7 +414,5 @@ struct WrapLibraryBuilder : public LibraryBuilderBase
 	void registerCoreTemplates();
 };
 
-
 }
 }
-

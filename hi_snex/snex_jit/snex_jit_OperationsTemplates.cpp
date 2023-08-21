@@ -34,7 +34,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 snex::jit::ComplexType::Ptr Operations::TemplateDefinition::createTemplate(const TemplateObject::ConstructData& d)

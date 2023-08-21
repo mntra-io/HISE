@@ -51,8 +51,7 @@ void ChainNode::process(ProcessDataDyn& data)
 {
 	NodeProfiler np(this, data.getNumSamples());
 	ProcessDataPeakChecker pd(this, data);
-    TRACE_DSP();
-    
+	
 	if (isBypassed())
 		return;
 
@@ -135,7 +134,6 @@ void SplitNode::process(ProcessDataDyn& data)
 
 	NodeProfiler np(this, data.getNumSamples());
     ProcessDataPeakChecker pd(this, data);
-    TRACE_DSP();
     
 	float* ptrs[NUM_MAX_CHANNELS];
 	int numSamples = data.getNumSamples();
@@ -221,8 +219,6 @@ void ModulationChainNode::process(ProcessDataDyn& data) noexcept
 		return;
 
 	NodeProfiler np(this, data.getNumSamples());
-    TRACE_DSP();
-    
 	obj.process(data);
 }
 
@@ -342,8 +338,7 @@ template <int OversampleFactor>
 void OversampleNode<OversampleFactor>::process(ProcessDataDyn& d) noexcept
 {
 	ProcessDataPeakChecker pd(this, d);
-    TRACE_DSP();
-    
+	
 	if (isBypassed())
 	{
 		NodeProfiler np(this, d.getNumSamples());
@@ -387,8 +382,6 @@ SerialNode(network, d)
 template <int B>
 void FixedBlockNode<B>::process(ProcessDataDyn& d)
 {
-    TRACE_DSP();
-    
 	if (isBypassed())
 	{
 		NodeProfiler np(this, d.getNumSamples());
@@ -569,7 +562,6 @@ void MultiChannelNode::process(ProcessDataDyn& d)
 {
 	NodeProfiler np(this, d.getNumSamples());
     ProcessDataPeakChecker pd(this, d);
-    TRACE_DSP();
     
 	int channelIndex = 0;
 
@@ -861,9 +853,9 @@ struct CloneOptionComponent : public Component,
 		Path p;
 
 #if USE_BACKEND
-		LOAD_EPATH_IF_URL("hide", BackendBinaryData::ToolbarIcons::viewPanel);
-		LOAD_EPATH_IF_URL("duplicate", SampleMapIcons::duplicateSamples);
-		LOAD_EPATH_IF_URL("delete", SampleMapIcons::deleteSamples);
+		LOAD_PATH_IF_URL("hide", BackendBinaryData::ToolbarIcons::viewPanel);
+		LOAD_PATH_IF_URL("duplicate", SampleMapIcons::duplicateSamples);
+		LOAD_PATH_IF_URL("delete", SampleMapIcons::deleteSamples);
 #endif
 
 		return p;
@@ -1276,8 +1268,6 @@ void FixedBlockXNode::process(ProcessDataDyn& data)
 {
 	NodeProfiler np(this, getBlockSizeForChildNodes());
 	ProcessDataPeakChecker pd(this, data);
-    TRACE_DSP();
-    
 	obj.process(data);
 }
 
@@ -1404,8 +1394,6 @@ void SoftBypassNode::process(ProcessDataDyn& data) noexcept
 {
 	NodeProfiler np(this, getBlockSizeForChildNodes());
 	ProcessDataPeakChecker pd(this, data);
-    TRACE_DSP();
-    
 	obj.process(data);
 }
 

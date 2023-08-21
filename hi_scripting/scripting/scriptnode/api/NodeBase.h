@@ -215,11 +215,18 @@ public:
 
 	struct Holder
 	{
-		virtual ~Holder();
+		virtual ~Holder() 
+		{
+			root = nullptr;
+			nodes.clear();
+		}
 
-		NodeBase* getRootNode() const;
+		NodeBase* getRootNode() const { return root.get(); }
 
-		void setRootNode(NodeBase::Ptr newRootNode);
+		void setRootNode(NodeBase::Ptr newRootNode)
+		{
+			root = newRootNode;
+		}
 
 		ReferenceCountedObjectPtr<NodeBase> root;
 		ReferenceCountedArray<NodeBase> nodes;
@@ -231,9 +238,17 @@ public:
 	{
 		struct ScopedUndoDeactivator
 		{
-			ScopedUndoDeactivator(NodeBase* n);
+			ScopedUndoDeactivator(NodeBase* n):
+				p(*n)
+			{
+				prevState = p.enableUndo;
+				p.enableUndo = false;
+			}
 
-			~ScopedUndoDeactivator();
+			~ScopedUndoDeactivator()
+			{
+				p.enableUndo = prevState;
+			}
 
 			NodeBase& p;
 			bool prevState;
@@ -241,9 +256,21 @@ public:
 
 		DynamicBypassParameter(NodeBase* n, Range<double> enabledRange_);;
 
-		~DynamicBypassParameter();
+		~DynamicBypassParameter()
+		{
+			if (node != nullptr)
+				node->dynamicBypassId = prevId;
+		}
 
-		void call(double v) final override;
+		void call(double v) final override
+		{
+			setDisplayValue(v);
+			bypassed = !enabledRange.contains(v) && enabledRange.getEnd() != v;
+
+			ScopedUndoDeactivator sns(node);
+
+			node->setBypassed(bypassed);
+		}
 
 		bool bypassed = false;
 		WeakReference<NodeBase> node;
@@ -258,13 +285,20 @@ public:
 
 	virtual void prepare(PrepareSpecs specs);
 
-	Identifier getObjectName() const final override;;
+	Identifier getObjectName() const final override { return PropertyIds::Node; };
 
 	virtual void processFrame(FrameType& data) = 0;
 	
-	virtual bool forEach(const std::function<bool(NodeBase::Ptr)>& f);
+	virtual bool forEach(const std::function<bool(NodeBase::Ptr)>& f)
+	{
+		return f(this);
+	}
 
-	virtual void processMonoFrame(MonoFrameType& data);
+	virtual void processMonoFrame(MonoFrameType& data)
+	{
+		FrameType dynData(data);
+		processFrame(dynData);
+	}
 
 	template <typename T> T* findParentNodeOfType() const
 	{
@@ -281,26 +315,37 @@ public:
 		return nullptr;
 	}
 
-	virtual void processStereoFrame(StereoFrameType& data);
+	virtual void processStereoFrame(StereoFrameType& data)
+	{
+		FrameType dynData(data);
+		processFrame(dynData);
+	}
 
-	virtual bool isProcessingHiseEvent() const;
+	virtual bool isProcessingHiseEvent() const { return false; }
 
-	virtual void handleHiseEvent(HiseEvent& e);
+	virtual void handleHiseEvent(HiseEvent& e)
+	{
+		ignoreUnused(e);
+	}
 
 	/** Reset the node's internal state (eg. at voice start). */
 	virtual void reset() = 0;
 
 	virtual NodeComponent* createComponent();
 
-	virtual String getNodeDescription() const;
+	virtual String getNodeDescription() const { return {}; }
 
 	virtual Rectangle<int> getPositionInCanvas(Point<int> topLeft) const;
 	
-	virtual ParameterDataList createInternalParameterList();;
+	virtual ParameterDataList createInternalParameterList() { return {}; };
 
 	virtual var addModulationConnection(var source, Parameter* targetParameter);
 
-	virtual void processProfileInfo(double cpuUsage, int numSamples);
+	virtual void processProfileInfo(double cpuUsage, int numSamples)
+	{
+		lastBlockSize = numSamples;
+		ignoreUnused(cpuUsage, numSamples);
+	}
 
 	NamespacedIdentifier getPath() const;
 
@@ -328,8 +373,29 @@ public:
 	void set(var id, var value);
 
     /** Sets the complex data type at the dataSlot to the given index and data (if embedded). */
-    bool setComplexDataIndex(String dataType, int dataSlot, int indexValue);
-
+    bool setComplexDataIndex(String dataType, int dataSlot, int indexValue)
+    {
+        auto v = getValueTree().getChildWithName(PropertyIds::ComplexData);
+        
+        if(!v.isValid())
+            return false;
+        
+        auto types = dataType + "s";
+        v = v.getChildWithName(Identifier(types));
+        
+        if(!v.isValid())
+            return false;
+        
+        v = v.getChild(dataSlot);
+        
+        if(!v.isValid())
+            return false;
+        
+        v.setProperty(PropertyIds::Index, dataSlot, getUndoManager());
+        
+        return true;
+    }
+    
 	/** Returns a property of the node. */
 	var get(var id);
 
@@ -357,25 +423,50 @@ public:
 
 	Value getNodePropertyAsValue(const Identifier& id);
 
-	virtual bool isPolyphonic() const;
+	virtual bool isPolyphonic() const { return false; }
 
-	bool isBodyShown() const;
+	bool isBodyShown() const
+	{
+		if (v_data[PropertyIds::Folded])
+			return false;
 
-	HelpManager& getHelpManager();
+		if (auto p = getParentNode())
+		{
+			return p->isBodyShown();
+		}
 
+		return true;
+	}
+
+	HelpManager& getHelpManager() { return helpManager; }
+
+	
 
 	DspNetwork* getRootNetwork() const;
 
 	/** Not necessarily the DSP network. */
 	NodeBase::Holder* getNodeHolder() const;
 
-	ValueTree getParameterTree();
-
-	ValueTree getPropertyTree();
+	ValueTree getParameterTree() { return v_data.getOrCreateChildWithName(PropertyIds::Parameters, getUndoManager()); }
+	
+	ValueTree getPropertyTree() { return v_data.getOrCreateChildWithName(PropertyIds::Properties, getUndoManager()); }
 
 	void checkValid() const;
 	
-	bool isBeingMoved() const;
+	bool isBeingMoved() const
+	{
+		auto pNode = getParentNode();
+
+		while (pNode != nullptr)
+		{
+			if (pNode->isCurrentlyMoved)
+				return true;
+
+			pNode = pNode->getParentNode();
+		}
+
+		return isCurrentlyMoved;
+	}
 
 	NodeBase* getParentNode() const;
 	ValueTree getValueTree() const;
@@ -390,9 +481,9 @@ public:
 
 	struct ParameterIterator
 	{
-		ParameterIterator(NodeBase& n);
-		Parameter** begin() const;
-		Parameter** end() const;
+		ParameterIterator(NodeBase& n): node(n), size(n.getNumParameters()) {}
+		Parameter** begin() const { return node.parameters.begin(); }
+		Parameter** end() const { return node.parameters.end(); }
 
 	private:
 
@@ -411,20 +502,26 @@ public:
 
 	void setParentNode(Ptr newParentNode);
 
-	void setCurrentId(const String& newId);
+	void setCurrentId(const String& newId)
+	{
+		currentId = newId;
+	}
 
-	String getCurrentId() const;
+	String getCurrentId() const { return currentId; }
 
 	static void showPopup(Component* childOfGraph, Component* c);
 
 	struct Wrapper;
 
-	virtual Rectangle<int> getExtraComponentBounds() const;
+	virtual Rectangle<int> getExtraComponentBounds() const
+	{
+		return {};
+	}
 
-	static bool sendResizeMessage(Component* c, bool async);
+    static bool sendResizeMessage(Component* c, bool async);
     
     
-	double& getCpuFlag();
+	double& getCpuFlag() { return cpuUsage; }
 
 	String getCpuUsageInPercent() const;
 
@@ -435,20 +532,29 @@ public:
 	DspNetwork* getEmbeddedNetwork();
 	const DspNetwork* getEmbeddedNetwork() const;
 
-	bool& getPreserveAutomationFlag();
+	bool& getPreserveAutomationFlag() { return preserveAutomation; }
 
-	int getCurrentChannelAmount() const;;
+    int getCurrentChannelAmount() const { return lastSpecs.numChannels; };
     
-    virtual int getNumChannelsToDisplay() const;;
+    virtual int getNumChannelsToDisplay() const { return getCurrentChannelAmount(); };
     
 	String getDynamicBypassSource(bool forceUpdate) const;
 
-	int getCurrentBlockRate() const;
+	int getCurrentBlockRate() const { return lastBlockSize; }
 
-	void setSignalPeaks(float* p, int numChannels, bool postSignal);
+    void setSignalPeaks(float* p, int numChannels, bool postSignal)
+    {
+		auto& s = signalPeaks[(int)postSignal];
 
-	float getSignalPeak(int channel, bool post) const;
-
+        for(int i = 0; i < numChannels; i++)
+        {
+            s[i] *= 0.5f;
+            s[i] += 0.5f * p[i];
+        }
+    }
+    
+    float getSignalPeak(int channel, bool post) const { return signalPeaks[(int)post][channel]; }
+    
 protected:
 
 	ValueTree v_data;
@@ -458,7 +564,16 @@ private:
 
     span<span<float, NUM_MAX_CHANNELS>, 2> signalPeaks;
     
-	void updateBypassState(Identifier, var newValue);
+	void updateBypassState(Identifier, var newValue)
+	{
+		auto shouldBeBypassed = (bool)newValue;
+		setBypassed((bool)newValue);
+
+        ignoreUnused(shouldBeBypassed);
+        
+		// This needs to be set in the virtual method above
+		jassert(shouldBeBypassed == bypassState);
+	}
 
 	int lastBlockSize = 0;
 
@@ -535,7 +650,16 @@ struct RealNodeProfiler
 {
 	RealNodeProfiler(NodeBase* n, int numSamples);
 
-	~RealNodeProfiler();
+	~RealNodeProfiler()
+	{
+		if (enabled)
+		{
+			auto delta = Time::getMillisecondCounterHiRes() - start;
+			profileFlag = profileFlag * 0.9 + 0.1 * delta;
+
+			node->processProfileInfo(profileFlag, numSamples);
+		}
+	}
 
 	NodeBase* node;
 	bool enabled;

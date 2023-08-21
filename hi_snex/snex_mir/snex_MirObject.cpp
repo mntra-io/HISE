@@ -40,7 +40,7 @@ namespace snex {
 namespace mir {
 using namespace juce;
 
-[[maybe_unused]] static void mirError(MIR_error_type_t error_type, const char* format, ...)
+static void mirError(MIR_error_type_t error_type, const char* format, ...)
 {
 	DBG(format);
 	jassertfalse;
@@ -321,9 +321,8 @@ snex::mir::MirFunctionCollection* MirCompiler::getFunctionClass()
 
 void MirCompiler::setLibraryFunctions(const Array<StaticFunctionPointer>& functionMap)
 {
-    currentFunctions.clearQuick();
-    
-	currentFunctions.addArray(functionMap);
+	if (currentFunctions.size() == 0)
+		currentFunctions.addArray(functionMap);
 }
 
 void* MirCompiler::resolve(const char* name)
@@ -349,7 +348,6 @@ void* MirCompiler::resolve(const char* name)
     for(const auto& f: currentFunctions)
     {
         DBG(f.label);
-        ignoreUnused(f);
     }
     
 	
@@ -445,7 +443,7 @@ snex::jit::FunctionCollectionBase* MirCompiler::compileMirCode(const String& cod
 						else
 							fd.returnType = Types::ID::Void;
 
-						for (uint32 i = 0; i < x->nargs; i++)
+						for (int i = 0; i < x->nargs; i++)
 						{
 							auto v = x->vars->varr[i];
 							fd.addArgs(v.name, TypeInfo(MirHelpers::getTypeFromMirEnum(v.type)));

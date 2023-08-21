@@ -313,11 +313,7 @@ void SnexPlayground::resized()
 	
 	auto buttonWidth = topRight.getHeight();
 
-#if SNEX_MIR_BACKEND
-    showInfo.setVisible(false);
-#else
 	showInfo.setBounds(topRight.removeFromLeft(buttonWidth).reduced(2));
-#endif
 	showWatch.setBounds(topRight.removeFromLeft(buttonWidth).reduced(2));
 	showAssembly.setBounds(topRight.removeFromLeft(buttonWidth).reduced(2));
 	showConsole.setBounds(topRight.removeFromLeft(buttonWidth).reduced(2));
@@ -857,7 +853,7 @@ int AssemblyTokeniser::readNextToken(CodeDocument::Iterator& source)
 {
     auto c = source.nextChar();
 
-    auto commentChar = (juce_wchar)((SNEX_MIR_BACKEND && !SNEX_INCLUDE_NMD_ASSEMBLY) ? '#' : ';');
+    auto commentChar = (SNEX_MIR_BACKEND && !SNEX_INCLUDE_NMD_ASSEMBLY) ? '#' : ';';
     
     if (c == commentChar)
     {
@@ -1085,7 +1081,7 @@ CodeEditorComponent::ColourScheme AssemblyTokeniser::getDefaultColourScheme()
 		LOAD_PATH_IF_URL("asm", SnexIcons::asmIcon);
 		LOAD_PATH_IF_URL("optimise", SnexIcons::optimizeIcon);
 		LOAD_PATH_IF_URL("console", SnexIcons::debugPanel);
-		LOAD_EPATH_IF_URL("watch", BackendBinaryData::ToolbarIcons::viewPanel);
+		LOAD_PATH_IF_URL("watch", BackendBinaryData::ToolbarIcons::viewPanel);
 
         return p;
     }

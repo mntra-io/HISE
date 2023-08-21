@@ -125,7 +125,7 @@ struct OscillatorDisplayProvider: public scriptnode::data::display_buffer_base<t
 		numModes
 	};
 
-	struct osc_display : public ComponentWithMiddleMouseDrag,
+	struct osc_display : public Component,
 		public RingBufferComponentBase,
 		public ComponentWithDefinedSize
 	{

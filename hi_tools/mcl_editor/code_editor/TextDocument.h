@@ -19,27 +19,50 @@ using namespace juce;
 
 class BreakpointManager
 {
-    virtual ~BreakpointManager();;
+    virtual ~BreakpointManager() {};
     
 	struct Listener
 	{
-        virtual ~Listener();;
+        virtual ~Listener() {};
 		virtual void breakpointsChanged() = 0;
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(Listener);
 	};
 
-	void addListener(Listener* l);
+	void addListener(Listener* l)
+	{
+		listeners.addIfNotAlreadyThere(l);
+	}
 
-    void removeListener(Listener* l);
+	void removeListener(Listener* l)
+	{
+		listeners.removeAllInstancesOf(l);
+	}
 
-    void addBreakpoint(int lineNumber, NotificationType notifyListeners);
+	void addBreakpoint(int lineNumber, NotificationType notifyListeners)
+	{
+		if (!breakpoints.contains(lineNumber))
+		{
+			breakpoints.add(lineNumber);
+			breakpoints.sort();
+
+			if (notifyListeners != dontSendNotification)
+				sendListenerMessage();
+		}
+	}
 
 private:
 
-	void sendListenerMessage();
+	void sendListenerMessage()
+	{
+		for (auto l : listeners)
+		{
+			if (l != nullptr)
+				l->breakpointsChanged();
+		}
+	}
 
-    Array<int> breakpoints;
+	Array<int> breakpoints;
 	Array<WeakReference<Listener>> listeners;
 
 	JUCE_DECLARE_WEAK_REFERENCEABLE(BreakpointManager);
@@ -55,25 +78,78 @@ class FoldableLineRange : public ReferenceCountedObject
 {
 public:
 
-	FoldableLineRange(const CodeDocument& doc, Range<int> r, bool folded_=false);;
+	FoldableLineRange(const CodeDocument& doc, Range<int> r, bool folded_=false) :
+		start(doc, r.getStart(), 0),
+		end(doc, r.getEnd(), 0),
+		folded(folded_)
+	{
+		start.setPositionMaintained(true);
+		end.setPositionMaintained(true);
+	};
 
 	using Ptr = ReferenceCountedObjectPtr<FoldableLineRange>;
 	using List = ReferenceCountedArray<FoldableLineRange>;
 	using WeakPtr = WeakReference<FoldableLineRange>;
 	using LineRangeFunction = std::function<FoldableLineRange::List(const CodeDocument&)> ;
 
-	static void sortList(List listToSort, bool sortChildren = false);
+	static void sortList(List listToSort, bool sortChildren = false)
+	{
+		struct PositionSorter
+		{
+			static int compareElements(FoldableLineRange* first, FoldableLineRange* second)
+			{
+				auto start1 = first->start.getLineNumber();
+				auto start2 = second->start.getLineNumber();
+
+				if (start1 < start2)
+					return -1;
+				if (start1 > start2)
+					return 1;
+
+				return 0;
+			}
+		};
+
+		PositionSorter s;
+		listToSort.sort(s);
+
+		if (sortChildren)
+		{
+			for (auto l : listToSort)
+				sortList(l->children, true);
+		}
+	}
 
 	/** This will check whether the list is correctly nested with a weak ref to the parent. */
-	static Result checkList(List& listToCheck, WeakPtr parent=nullptr);
+	static Result checkList(List& listToCheck, WeakPtr parent=nullptr)
+	{
+		for (int i = 0; i < listToCheck.size(); i++)
+		{
+			if (listToCheck[i]->getLineRange().getLength() <= 1)
+				listToCheck.remove(i--);
+		}
+
+		for (auto l : listToCheck)
+		{
+			if (l->parent != parent)
+				return Result::fail("Illegal parent in list");
+
+			auto r = checkList(l->children, l);
+
+			if (!r.wasOk())
+				return r;
+		}
+
+		return Result::ok();
+	}
 
 	class Listener
 	{
 	public:
 
-        virtual ~Listener();;
+        virtual ~Listener() {};
 		virtual void foldStateChanged(WeakPtr rangeThatHasChanged) = 0;
-		virtual void rootWasRebuilt(WeakPtr newRoot);;
+		virtual void rootWasRebuilt(WeakPtr newRoot) {};
 
 	private:
 
@@ -84,7 +160,9 @@ public:
 	{
 	public:
 
-		Holder(CodeDocument& d);;
+		Holder(CodeDocument& d) :
+			doc(d)
+		{};
 
 		enum LineType
 		{
@@ -96,29 +174,178 @@ public:
 			RangeEnd
 		};
 
-		void toggleFoldState(int lineNumber);
+		void toggleFoldState(int lineNumber)
+		{
+			if (auto r = getRangeWithStartAtLine(lineNumber))
+			{
+				r->folded = !r->folded;
+				updateFoldState(r);
+			}
+		}
 
-		void unfold(int lineNumber);
+		void unfold(int lineNumber)
+		{
+			for (auto a : all)
+			{
+				if (a->getLineRange().contains(lineNumber))
+					a->folded = false;
+			}
 
-		void updateFoldState(WeakPtr r);
+			updateFoldState(nullptr);
+		}
 
-		void sendFoldChangeMessage(WeakPtr r);
+		void updateFoldState(WeakPtr r)
+		{
+			lineStates.clear();
 
-		WeakPtr getRangeWithStartAtLine(int lineNumber) const;
+			for (auto a : all)
+			{
+				if (a->folded)
+				{
+					auto r = a->getLineRange();
+					lineStates.setRange(r.getStart() + 1, r.getLength() - 1, true);
+				}
+			}
 
-		int getNearestLineStartOfAnyRange(int lineNumber);
+			sendFoldChangeMessage(r);
+		}
 
-		WeakPtr getRangeContainingLine(int lineNumber) const;
+		void sendFoldChangeMessage(WeakPtr r)
+		{
+			for (auto l : listeners)
+			{
+				if (l.get() != nullptr)
+					l->foldStateChanged(r);
+			}
+		}
 
-		Range<int> getRangeForLineNumber(int lineNumber) const;
+		WeakPtr getRangeWithStartAtLine(int lineNumber) const
+		{
+			for (auto r : all)
+			{
+				if (r->getLineRange().getStart() == lineNumber)
+					return r;
+			}
 
-		LineType getLineType(int lineNumber) const;
+			return nullptr;
+		}
 
-		bool isFolded(int lineNumber) const;
+		int getNearestLineStartOfAnyRange(int lineNumber)
+		{
+			for (auto r : all)
+			{
+				auto n = r->getNearestLineStart(lineNumber);
 
-		void addToFlatList(List& flatList, const List& nestedList);
+				if (n != -1)
+					return n;
+			}
 
-		void setRanges(FoldableLineRange::List newRanges);
+			return lineNumber;
+		}
+
+		WeakPtr getRangeContainingLine(int lineNumber) const
+		{
+			for (auto r : all)
+			{
+				if (r->getLineRange().contains(lineNumber))
+					return r;
+			}
+
+			return nullptr;
+		}
+
+		Range<int> getRangeForLineNumber(int lineNumber) const
+		{
+			if (auto p = getRangeContainingLine(lineNumber))
+			{
+				if (p->folded)
+					return { lineNumber, lineNumber + 1 };
+				else
+					return p->getLineRange();
+			}
+
+			return {};
+		}
+
+		LineType getLineType(int lineNumber) const
+		{
+			bool isBetween = false;
+			
+			for (auto l : all)
+			{
+				auto lineRange = l->getLineRange();
+
+				isBetween |= lineRange.contains(lineNumber);
+
+				if (lineRange.getStart() == lineNumber)
+					return l->isFolded() ? RangeStartClosed : RangeStartOpen;
+
+				if (lineRange.contains(lineNumber) && l->isFolded())
+					return Folded;
+
+				if (lineRange.getEnd()-1 == lineNumber)
+					return RangeEnd;
+			}
+
+			if (isBetween)
+				return Between;
+			else
+				return Nothing;
+		}
+
+		bool isFolded(int lineNumber) const
+		{
+			return lineStates[lineNumber];
+		}
+
+		void addToFlatList(List& flatList, const List& nestedList)
+		{
+			for (auto l : nestedList)
+			{
+				flatList.add(l);
+				addToFlatList(flatList, l->children);
+			}
+		}
+
+		void setRanges(FoldableLineRange::List newRanges)
+		{
+			
+
+			Array<int> foldedLines;
+
+			checkList(newRanges, nullptr);
+
+			List l;
+			
+			addToFlatList(l, newRanges);
+
+			std::swap(newRanges, roots);
+
+			for (auto old : all)
+			{
+				if (old->folded)
+				{
+					for (auto n : l)
+					{
+						if (*old == *n)
+						{
+							n->setFolded(true);
+							break;
+						}
+					}
+				}
+			}
+
+			std::swap(all, l);
+
+			for (auto l : listeners)
+			{
+				if (l.get() != nullptr)
+					l->rootWasRebuilt(nullptr);
+			}
+
+			updateFoldState(nullptr);
+		}
 
 		CodeDocument& doc;
 
@@ -130,29 +357,87 @@ public:
 	};
 
 
-	bool contains(Ptr other) const;
+	bool contains(Ptr other) const
+	{
+		return getLineRange().contains(other->getLineRange());
+	}
 
-	WeakPtr getParent() const;
+	WeakPtr getParent() const { return parent; }
 
+	
+	bool isFolded() const
+	{
+		if (folded)
+			return true;
 
-	bool isFolded() const;
+		WeakPtr p = parent;
 
-	bool forEach(const std::function<bool(WeakPtr)>& f);
+		while (p != nullptr)
+		{
+			if (p->folded)
+				return true;
 
-	Range<int> getLineRange() const;
+			p = p->parent;
+		}
+
+		return false;
+	}
+
+	bool forEach(const std::function<bool(WeakPtr)>& f)
+	{
+		if (f(this))
+			return true;
+
+		for (auto c : children)
+		{
+			if (c->forEach(f))
+				return true;
+		}
+
+		return false;
+	}
+
+	Range<int> getLineRange() const
+	{
+		return { start.getLineNumber(), end.getLineNumber() +1};
+	}
 
 	Bookmark getBookmark() const;
 	
-	void setFolded(bool shouldBeFolded);
+	void setFolded(bool shouldBeFolded)
+	{
+		folded = shouldBeFolded;
+	}
 
-	bool operator==(const FoldableLineRange& other) const;
+	bool operator==(const FoldableLineRange& other) const
+	{
+		return other.start.getPosition() == start.getPosition();
+	}
 
 	List children;
 	WeakPtr parent;
 
-	void setEnd(int charPos);
+	void setEnd(int charPos)
+	{
+		end.setPosition(charPos);
+	}
 
-	int getNearestLineStart(int lineNumber);
+	int getNearestLineStart(int lineNumber)
+	{
+		if (getLineRange().contains(lineNumber))
+		{
+			for (auto c : children)
+			{
+				auto n = c->getNearestLineStart(lineNumber);
+				if (n != -1)
+					return n;
+			}
+
+			return start.getLineNumber();
+		}
+
+		return -1;
+	}
 
 private:
 
@@ -208,11 +493,24 @@ public:
 
 	struct SelectionAction : public UndoableAction
 	{
-		SelectionAction(TextDocument& t, const Array<Selection>& now_);;
+		SelectionAction(TextDocument& t, const Array<Selection>& now_) :
+			now(now_),
+			doc(t)
+		{
+			before.addArray(t.selections);
+		};
 
-		bool perform() override;
+		bool perform() override
+		{
+			doc.setSelections(now, false);
+			return true;
+		}
 
-		bool undo() override;
+		bool undo() override
+		{
+			doc.setSelections(before, false);
+			return true;
+		}
 
 		TextDocument& doc;
 		Array<Selection> before;
@@ -232,16 +530,24 @@ public:
 
 	TextDocument(CodeDocument& doc_);;
 
-	void deactivateLines(SparseSet<int> deactivatedLines);
+	void deactivateLines(SparseSet<int> deactivatedLines)
+	{
+		
+	}
 
 	/** Get the current font. */
-	juce::Font getFont() const;
+	juce::Font getFont() const { return font; }
 
 	/** Get the line spacing. */
-	float getLineSpacing() const;
+	float getLineSpacing() const { return lineSpacing; }
 
 	/** Set the font to be applied to all text. */
-	void setFont(juce::Font fontToUse);
+	void setFont(juce::Font fontToUse)
+	{
+
+		font = fontToUse; lines.font = fontToUse;
+		lines.characterRectangle = { 0.0f, 0.0f, font.getStringWidthFloat(" "), font.getHeight() };
+	}
 
 	/** Replace the whole document content. */
 	void replaceAll(const juce::String& content);
@@ -250,19 +556,48 @@ public:
 	void setSelections(const juce::Array<Selection>& newSelections, bool useUndo);
 
 	/** Add a selection to the list. */
-	void addSelection(Selection selection);
+	void addSelection(Selection selection) 
+	{ 
+		auto newSelections = selections;
+		newSelections.add(selection);
+		setSelections(newSelections, true);
+	}
 
 	/** Replace the selection at the given index. The index must be in range. */
-	void setSelection(int index, Selection newSelection, bool useUndo);
+	void setSelection(int index, Selection newSelection, bool useUndo) 
+	{
+		if (useUndo)
+		{
+			auto copy = selections;
+			copy.setUnchecked(index, newSelection);
 
-	void sendSelectionChangeMessage() const;
+			viewUndoManagerToUse->perform(new SelectionAction(*this, copy));
+		}
+		else
+			selections.setUnchecked(index, newSelection); sendSelectionChangeMessage(); 
+	}
+
+	void sendSelectionChangeMessage() const
+	{
+		for (auto l : selectionListeners)
+		{
+			if (l != nullptr)
+				l.get()->selectionChanged();
+		}
+	}
 
 	/** Get the number of rows in the document. */
 	int getNumRows() const;
 
-	void foldStateChanged(FoldableLineRange::WeakPtr rangeThatHasChanged);
+	void foldStateChanged(FoldableLineRange::WeakPtr rangeThatHasChanged)
+	{
+		rebuildRowPositions();
+	}
 
-	void rootWasRebuilt(FoldableLineRange::WeakPtr newRoot);
+	void rootWasRebuilt(FoldableLineRange::WeakPtr newRoot)
+	{
+
+	}
 
 	/** Get the number of columns in the given row. */
 	int getNumColumns(int row) const;
@@ -351,24 +686,30 @@ public:
 	
 
 	/** Return the number of active selections. */
-	int getNumSelections() const;
+	int getNumSelections() const { return selections.size(); }
 
 	/** Return a line in the document. */
-	const juce::String& getLine(int lineIndex) const;
+	const juce::String& getLine(int lineIndex) const { return lines[lineIndex]; }
 
 	/** Return one of the current selections. */
 	const Selection& getSelection(int index) const;
 
 	
 
-	float getRowHeight() const;
+	float getRowHeight() const
+	{
+		return font.getHeight() * lineSpacing;
+	}
 
 	/** Return the current selection state. */
 	const juce::Array<Selection>& getSelections() const;
 
 	Array<Selection>& getSelections();
 
-	Rectangle<float> getCharacterRectangle() const;
+	Rectangle<float> getCharacterRectangle() const
+	{
+		return lines.characterRectangle;
+	}
 
 	/** Return the content within the given selection, with newlines if the
 		selection spans muliple lines.
@@ -386,46 +727,208 @@ public:
 	/** Apply tokens from a set of zones to a range of rows. */
 	void applyTokens(juce::Range<int> rows, const juce::Array<Selection>& zones);
 
-	void setMaxLineWidth(int maxWidth);
+	void setMaxLineWidth(int maxWidth)
+	{
+		if (maxWidth != lines.maxLineWidth)
+		{
+			lines.maxLineWidth = maxWidth;
+			invalidate({});
+		}
+	}
 
-	CodeDocument& getCodeDocument();
+	CodeDocument& getCodeDocument()
+	{
+		return doc;
+	}
 
-	void invalidate(Range<int> lineRange);
+	void invalidate(Range<int> lineRange)
+	{
+		lines.invalidate(lineRange);
+		cachedBounds = {};
+		rebuildRowPositions();
+	}
 
-	void rebuildRowPositions();
+	void rebuildRowPositions()
+	{
+		rowPositions.clearQuick();
+		rowPositions.ensureStorageAllocated(lines.size());
 
-	void lineRangeChanged(Range<int> r, bool wasAdded) override;
+		float yPos = 0.0f;
 
-	void codeChanged(bool wasInserted, int startIndex, int endIndex) override;
+		float gap = getCharacterRectangle().getHeight() * (lineSpacing - 1.f) * 0.5f;
+
+		for (int i = 0; i < lines.size(); i++)
+		{
+			rowPositions.add(yPos);
+
+			auto l = lines.lines[i];
+
+			lines.ensureValid(i);
+
+			if(!foldManager.isFolded(i))
+				yPos += l->height + gap;
+		}
+
+		rowPositions.add(yPos);
+	}
+
+	void lineRangeChanged(Range<int> r, bool wasAdded) override
+	{
+		if (!wasAdded)
+		{
+			auto rangeToInvalidate = r;
+			rangeToInvalidate.setLength(jmax(1, r.getLength()));
+			invalidate(rangeToInvalidate);
+		}
+			
+		if (!wasAdded && r.getLength() > 0)
+		{
+			lines.removeRange(r);
+			lines.set(r.getStart(), doc.getLine(r.getStart()));
+			return;
+		}
+
+		if (r.getLength() > 1)
+		{
+			lines.set(r.getStart(), doc.getLine(r.getStart()));
+
+			for (int i = r.getStart() + 1; i < r.getEnd(); i++)
+				lines.insert(i, doc.getLine(i));
+		}
+		else
+		{
+			auto lineNumber = r.getStart();
+			lines.set(lineNumber, doc.getLine(lineNumber));
+		}
+
+		if (wasAdded && r.getEnd() > getNumRows())
+		{
+			lines.set(r.getEnd(), "");
+			
+			
+		}
+
+
+		
+	}
+
+	void codeChanged(bool wasInserted, int startIndex, int endIndex) override
+	{
+		CodeDocument::Position pos(getCodeDocument(), wasInserted ? endIndex : startIndex);
+
+		if (getNumSelections() == 1)
+		{
+			setSelections(Selection(pos.getLineNumber(), pos.getIndexInLine(), pos.getLineNumber(), pos.getIndexInLine()), false);
+		}
+	}
 
 	/** returns the amount of lines occupied by the row. This can be > 1 when the line-break is active. */
-	int getNumLinesForRow(int rowIndex) const;
+	int getNumLinesForRow(int rowIndex) const
+	{
+		if(isPositiveAndBelow(rowIndex, lines.lines.size()))
+			return roundToInt(lines.lines[rowIndex]->height / font.getHeight());
 
-	float getFontHeight() const;;
+		return 1;
+	}
 
-	void addSelectionListener(Selection::Listener* l);
+	float getFontHeight() const { return font.getHeight(); };
 
-	void removeSelectionListener(Selection::Listener* l);
+	void addSelectionListener(Selection::Listener* l)
+	{
+		selectionListeners.addIfNotAlreadyThere(l);
+		l->displayedLineRangeChanged(currentlyDisplayedLineRange);
+	}
 
-	void setDisplayedLineRange(Range<int> newRange);
+	void removeSelectionListener(Selection::Listener* l)
+	{
+		selectionListeners.removeAllInstancesOf(l);
+	}
 
-	bool jumpToLine(int lineNumber, bool justScroll=false);
+	void setDisplayedLineRange(Range<int> newRange)
+	{
+		if (newRange != currentlyDisplayedLineRange)
+		{
+			currentlyDisplayedLineRange = newRange;
 
-	void setDuplicateOriginal(const Selection& s);
+			for (auto sl : selectionListeners)
+			{
+                if(sl != nullptr)
+                    sl->displayedLineRangeChanged(currentlyDisplayedLineRange);
+			}
+		}
+	}
 
-	FoldableLineRange::Holder& getFoldableLineRangeHolder();
+	bool jumpToLine(int lineNumber, bool justScroll=false)
+	{
+		if (lineNumber >= 0)
+		{
+			if (justScroll)
+			{
+				auto newRange = currentlyDisplayedLineRange.movedToStartAt(lineNumber - currentlyDisplayedLineRange.getLength()/2);
+				setDisplayedLineRange(newRange);
+				return true;
+			}
 
-	const FoldableLineRange::Holder& getFoldableLineRangeHolder() const;
+			auto sourceLine = Point<int>(lineNumber, 0);
 
-	void addFoldListener(FoldableLineRange::Listener* l);
+			navigate(sourceLine, Target::character, Direction::backwardCol);
+			navigate(sourceLine, Target::firstnonwhitespace, Direction::backwardCol);
 
-	void removeFoldListener(FoldableLineRange::Listener* l);
+			Selection ss(sourceLine, sourceLine);
 
-	void setSearchResults(const Array<Selection>& newSearchResults);
+			auto newRange = currentlyDisplayedLineRange.movedToStartAt(lineNumber - currentlyDisplayedLineRange.getLength() / 2 - 4);
 
-	void setExternalViewUndoManager(UndoManager* um);
+			setDisplayedLineRange(newRange);
 
-	Array<Selection> getSearchResults() const;
+			setSelections({ ss }, true);
+
+
+
+			return true;
+		}
+
+		return false;
+	}
+
+	void setDuplicateOriginal(const Selection& s)
+	{
+		duplicateOriginal = s;
+	}
+
+	FoldableLineRange::Holder& getFoldableLineRangeHolder()
+	{
+		return foldManager;
+	}
+
+	const FoldableLineRange::Holder& getFoldableLineRangeHolder() const
+	{
+		return foldManager;
+	}
+
+	void addFoldListener(FoldableLineRange::Listener* l)
+	{
+		foldManager.listeners.addIfNotAlreadyThere(l);
+	}
+
+	void removeFoldListener(FoldableLineRange::Listener* l)
+	{
+		foldManager.listeners.removeAllInstancesOf(l);
+	}
+
+	void setSearchResults(const Array<Selection>& newSearchResults)
+	{
+		searchResults = newSearchResults;
+	}
+
+    void setExternalViewUndoManager(UndoManager* um)
+    {
+        viewUndoManagerToUse = um;
+    }
+    
+	Array<Selection> getSearchResults() const
+	{
+		return searchResults;
+	}
 
 private:
 

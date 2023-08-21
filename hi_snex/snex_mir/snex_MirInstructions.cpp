@@ -379,22 +379,11 @@ struct InstructionParsers
 		if (state.isParsingFunction())
 		{
 			auto opType = state[InstructionPropertyIds::AssignmentType];
-			
-            if(state.currentTree.hasProperty("NumBytesToCopy"))
-            {
-                auto s = rm.loadIntoRegister(0, RegisterType::Pointer);
-                auto t = rm.loadIntoRegister(1, RegisterType::Pointer);
-                
-                auto numBytes = (int)state.currentTree.getProperty("NumBytesToCopy", 0);
-                
-                rm.emitMultiLineCopy(t, s, numBytes);
-                
-                return Result::ok();
-            }
-            
+			auto t = rm.getTypeForChild(0);
+
 			TextLine l(&state);
 
-            auto t = rm.getTypeForChild(0);
+            
             
 			if (state[InstructionPropertyIds::First] == "1")
 			{
@@ -836,9 +825,6 @@ struct InstructionParsers
                                 auto isExpression = type != Types::ID::Pointer && f.getType() == Types::ID::Pointer;
 
                                 String value;
-                                
-                                if(type == Types::ID::Pointer && f.getType() == Types::ID::Pointer)
-                                    return;
                                 
                                 DBG(mn);
 

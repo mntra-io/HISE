@@ -175,24 +175,16 @@ namespace waveshapers
 		auto newPrepareFunc = getFunctionAsObjectCallback("prepare");
 		auto newResetFunc = getFunctionAsObjectCallback("reset");
 
-		Array<Types::ID> argTypes = { Types::ID::Pointer };
-		Array<Types::ID> argTypes0 = {  };
-
-#if SNEX_MIR_BACKEND
-		argTypes.add(Types::ID::Pointer);
-		argTypes0.add(Types::ID::Pointer);
-#endif
-
-		auto r = newProcessFunction.validateWithArgs(Types::ID::Void, argTypes);
+		auto r = newProcessFunction.validateWithArgs(Types::ID::Void, { Types::ID::Pointer, Types::ID::Pointer });
 
 		if (r.wasOk())
-			r = newProcessFrameFunction.validateWithArgs(Types::ID::Void, argTypes);
+			r = newProcessFrameFunction.validateWithArgs(Types::ID::Void, { Types::ID::Pointer, Types::ID::Pointer });
 
 		if (r.wasOk())
-			r = newPrepareFunc.validateWithArgs(Types::ID::Void, argTypes);
+			r = newPrepareFunc.validateWithArgs(Types::ID::Void, { Types::ID::Pointer, Types::ID::Pointer });
 
 		if (r.wasOk())
-			r = newResetFunc.validateWithArgs(Types::ID::Void, argTypes0);
+			r = newResetFunc.validateWithArgs(Types::ID::Void, { Types::ID::Pointer, });
 
 		{
 			SimpleReadWriteLock::ScopedWriteLock l(getAccessLock());

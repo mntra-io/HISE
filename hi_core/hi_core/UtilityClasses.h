@@ -77,9 +77,20 @@ public:
 
 	UpdateDispatcher(MainController* mc_);;
 
-	~UpdateDispatcher();
+	~UpdateDispatcher()
+	{
+		pendingListeners.clear();
 
-	void suspendUpdates(bool shouldSuspendUpdates);
+		stopTimer();
+	}
+
+	void suspendUpdates(bool shouldSuspendUpdates)
+	{
+		if (shouldSuspendUpdates)
+			stopTimer();
+		else
+			startTimer(30);
+	}
 
 	/** This class contains the sender logic of the UpdateDispatcher scheme.
 	*
@@ -93,11 +104,20 @@ public:
 
 		Listener(UpdateDispatcher* dispatcher_);;
 
-		virtual ~Listener();;
+		virtual ~Listener()
+		{
+			masterReference.clear();
+		};
 
 		virtual void handleAsyncUpdate() = 0;
 
-		void cancelPendingUpdate();
+		void cancelPendingUpdate()
+		{
+			if (!pending)
+				return;
+
+			cancelled.store(true);
+		}
 
 		void triggerAsyncUpdate();
 
@@ -137,25 +157,39 @@ class AsyncValueTreePropertyListener : public ValueTree::Listener
 {
 public:
 
-	AsyncValueTreePropertyListener(ValueTree state_, UpdateDispatcher* dispatcher_);
+	AsyncValueTreePropertyListener(ValueTree state_, UpdateDispatcher* dispatcher_) :
+		state(state_),
+		dispatcher(dispatcher_),
+		asyncHandler(*this)
+	{
+		pendingPropertyChanges.ensureStorageAllocated(1024);
+		state.addListener(this);
+	}
 
-	void valueTreePropertyChanged(ValueTree& v, const Identifier& id) final override;;
+	void valueTreePropertyChanged(ValueTree& v, const Identifier& id) final override
+	{
+		pendingPropertyChanges.addIfNotAlreadyThere(PropertyChange(v, id));
+		asyncHandler.triggerAsyncUpdate();
+	};
 
 	virtual void asyncValueTreePropertyChanged(ValueTree& v, const Identifier& id) = 0;
 
-	void valueTreeChildAdded(ValueTree&, ValueTree&) override;
-	void valueTreeChildRemoved(ValueTree&, ValueTree&, int) override;
-	void valueTreeChildOrderChanged(ValueTree&, int, int) override;
-	void valueTreeParentChanged(ValueTree&) override;
+	void valueTreeChildAdded(ValueTree&, ValueTree&) override {}
+	void valueTreeChildRemoved(ValueTree&, ValueTree&, int) override {}
+	void valueTreeChildOrderChanged(ValueTree&, int, int) override {}
+	void valueTreeParentChanged(ValueTree&) override {}
 
 private:
 
 	struct PropertyChange
 	{
-		PropertyChange(ValueTree v_, Identifier id_);;
-		PropertyChange();;
+		PropertyChange(ValueTree v_, Identifier id_) : v(v_), id(id_) {};
+		PropertyChange() {};
 
-		bool operator==(const PropertyChange& other) const;
+		bool operator==(const PropertyChange& other) const
+		{
+			return v == other.v && id == other.id;
+		}
 
 		ValueTree v;
 		Identifier id;
@@ -163,9 +197,19 @@ private:
 
 	struct AsyncHandler : public UpdateDispatcher::Listener
 	{
-		AsyncHandler(AsyncValueTreePropertyListener& parent_);;
+		AsyncHandler(AsyncValueTreePropertyListener& parent_) :
+			Listener(parent_.dispatcher),
+			parent(parent_)
+		{};
 
-		void handleAsyncUpdate() override;
+		void handleAsyncUpdate() override
+		{
+			while (!parent.pendingPropertyChanges.isEmpty())
+			{
+				auto pc = parent.pendingPropertyChanges.removeAndReturn(0);
+				parent.asyncValueTreePropertyChanged(pc.v, pc.id);
+			}
+		}
 
 		AsyncValueTreePropertyListener& parent;
 	};
@@ -372,9 +416,9 @@ private:
 
 
 #if USE_GLITCH_DETECTION // && !JUCE_DEBUG
-#define ADD_GLITCH_DETECTOR(processor, location) TRACE_DSP(); ScopedGlitchDetector sgd(processor, (int)location)
+#define ADD_GLITCH_DETECTOR(processor, location) ScopedGlitchDetector sgd(processor, (int)location)
 #else
-#define ADD_GLITCH_DETECTOR(processor, loc) TRACE_DSP();
+#define ADD_GLITCH_DETECTOR(processor, loc)
 #endif
 
 
@@ -448,21 +492,45 @@ class CustomKeyboardState : public MidiKeyboardState,
 public:
 
 	/** Creates a new keyboard state. */
-	CustomKeyboardState();
+	CustomKeyboardState() :
+		MidiKeyboardState(),
+		lowestKey(40)
+	{
+		for (int i = 0; i < 127; i++)
+		{
+			setColourForSingleKey(i, Colours::transparentBlack);
+		}
+	}
 
 	/** Returns the colour for the given note number. */
-	Colour getColourForSingleKey(int noteNumber) const;;
+	Colour getColourForSingleKey(int noteNumber) const
+	{
+		return noteColours[noteNumber];
+	};
 
 	/** Checks if a colour was specified for the given note number. */
-	bool isColourDefinedForKey(int noteNumber) const;;
+	bool isColourDefinedForKey(int noteNumber) const
+	{
+		return noteColours[noteNumber] != Colours::transparentBlack;
+	};
 
 	/** Changes the colour for the given note number. */
-	void setColourForSingleKey(int noteNumber, Colour colour);
+	void setColourForSingleKey(int noteNumber, Colour colour)
+	{
+		if (noteNumber >= 0 && noteNumber < 127)
+		{
+			noteColours[noteNumber] = colour;
+		}
 
-	void setLowestKeyToDisplay(int lowestKeyToDisplay);
+		sendChangeMessage();
+	}
+	void setLowestKeyToDisplay(int lowestKeyToDisplay)
+	{
+		lowestKey = lowestKeyToDisplay;
+	}
 
 
-	int getLowestKeyToDisplay() const;
+	int getLowestKeyToDisplay() const { return lowestKey; }
 
 private:
 
@@ -481,19 +549,34 @@ public:
 
 	
 
-	AutoSaver(MainController *mc_);;
+	AutoSaver(MainController *mc_) :
+		mc(mc_),
+		currentAutoSaveIndex(0)
+	{
+		
+	};
 
 	
 
-	void updateAutosaving();
+	void updateAutosaving()
+	{
+		if (isAutoSaving()) enableAutoSaving();
+		else disableAutoSaving();
+	}
 
 private:
 
 	int getIntervalInMinutes() const;
 
-	void enableAutoSaving();
+	void enableAutoSaving()
+	{
+		IF_NOT_HEADLESS(startTimer(1000 * 60 * getIntervalInMinutes())); // autosave all 5 minutes
+	}
 
-	void disableAutoSaving();
+	void disableAutoSaving()
+	{
+		stopTimer();
+	}
 
 	bool isAutoSaving() const;
 
@@ -516,10 +599,22 @@ class DelayedFunctionCaller: public Timer
 {
 public:
 
-	DelayedFunctionCaller(std::function<void(void)> func, int delayInMilliseconds);
+	DelayedFunctionCaller(std::function<void(void)> func, int delayInMilliseconds) :
+		f(func)
+	{
+		startTimer(delayInMilliseconds);
+	}
 
 
-	void timerCallback() override;
+	void timerCallback() override
+	{
+		stopTimer();
+
+		if(f)
+			f();
+
+		delete this;
+	}
 
 private:
 

@@ -133,7 +133,8 @@ ValueTree MirBuilder::getGlobalData()
 String MirBuilder::getMirText() const
 {
 	auto text = currentState->toString(true);
-    return text;
+    DBG(text);
+	return text;
 }
 
 juce::Result MirBuilder::parseInternal(const ValueTree& v)

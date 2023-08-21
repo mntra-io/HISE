@@ -34,7 +34,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 snex::jit::Operations::Statement::Ptr Operations::InlinedParameter::clone(Location l) const
@@ -52,7 +52,6 @@ void Operations::InlinedParameter::process(BaseCompiler* compiler, BaseScope* sc
 		reg = source->reg;
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		if (source->currentPass != BaseCompiler::CodeGeneration)
@@ -68,7 +67,6 @@ void Operations::InlinedParameter::process(BaseCompiler* compiler, BaseScope* sc
 
 		jassert(reg != nullptr);
 	}
-#endif
 }
 
 Operations::TokenType Operations::VariableReference::getWriteAccessType()
@@ -289,7 +287,6 @@ void Operations::VariableReference::process(BaseCompiler* compiler, BaseScope* s
 			objectExpression->location.throwError("expression must have class type");
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::RegisterAllocation)
 	{
 		if (isConstExpr())
@@ -316,7 +313,6 @@ void Operations::VariableReference::process(BaseCompiler* compiler, BaseScope* s
 			return;
 		}
 	}
-
 
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
@@ -460,7 +456,6 @@ void Operations::VariableReference::process(BaseCompiler* compiler, BaseScope* s
 			}
 		}
 	}
-#endif
 }
 
 bool Operations::VariableReference::isLastVariableReference() const
@@ -586,7 +581,6 @@ void Operations::DotOperator::process(BaseCompiler* compiler, BaseScope* scope)
 		}
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		if (auto vp = as<SymbolStatement>(getDotChild()))
@@ -637,7 +631,6 @@ void Operations::DotOperator::process(BaseCompiler* compiler, BaseScope* scope)
 			jassertfalse;
 		}
 	}
-#endif
 }
 
 
@@ -645,7 +638,6 @@ void Operations::ThisPointer::process(BaseCompiler* compiler, BaseScope* scope)
 {
 	processBaseWithoutChildren(compiler, scope);
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		auto fScope = scope->getParentScopeOfType<FunctionScope>();
@@ -681,7 +673,6 @@ void Operations::ThisPointer::process(BaseCompiler* compiler, BaseScope* scope)
 		// the scope will fuck up the object pointer of the function
 		// check the object pointer from the inlined function (arg is -1)		
 	}
-#endif
 }
 
 void Operations::InlinedArgument::process(BaseCompiler* compiler, BaseScope* scope)
@@ -690,7 +681,6 @@ void Operations::InlinedArgument::process(BaseCompiler* compiler, BaseScope* sco
 
 	processBaseWithChildren(compiler, scope);
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		if (s.typeInfo.isComplexType() && !s.isReference())
@@ -707,14 +697,12 @@ void Operations::InlinedArgument::process(BaseCompiler* compiler, BaseScope* sco
 			reg = getSubRegister(0);
 		}
 	}
-#endif
 }
 
 void Operations::Immediate::process(BaseCompiler* compiler, BaseScope* scope)
 {
 	processBaseWithoutChildren(compiler, scope);
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		// We don't need to use the target register from the 
@@ -726,14 +714,12 @@ void Operations::Immediate::process(BaseCompiler* compiler, BaseScope* scope)
 
 		reg->createMemoryLocation(getFunctionCompiler(compiler));
 	}
-#endif
 }
 
 void Operations::MemoryReference::process(BaseCompiler* compiler, BaseScope* scope)
 {
 	processBaseWithChildren(compiler, scope);
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		auto registerType = compiler->getRegisterType(type);
@@ -768,7 +754,6 @@ void Operations::MemoryReference::process(BaseCompiler* compiler, BaseScope* sco
 
 		reg = compiler->registerPool.getRegisterWithMemory(reg);
 	}
-#endif
 }
 
 }

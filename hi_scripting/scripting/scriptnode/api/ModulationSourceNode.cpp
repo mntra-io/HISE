@@ -96,7 +96,7 @@ void ModulationSourceNode::rebuildCallback()
 ModulationSourceBaseComponent::ModulationSourceBaseComponent(PooledUIUpdater* updater) :
 	SimpleTimer(updater, true)
 {
-	unscaledPath.loadPathFromData(ScriptnodeIcons::unscaledMod, SIZE_OF_PATH(ScriptnodeIcons::unscaledMod));
+	unscaledPath.loadPathFromData(ScriptnodeIcons::unscaledMod, sizeof(ScriptnodeIcons::unscaledMod));
 
 	dragPath.loadPathFromData(ColumnIcons::targetIcon, sizeof(ColumnIcons::targetIcon));
 
@@ -175,10 +175,8 @@ juce::MouseCursor ModulationSourceBaseComponent::createMouseCursor()
 	return mc;
 }
 
-void ModulationSourceBaseComponent::mouseDrag(const MouseEvent& e)
+void ModulationSourceBaseComponent::mouseDrag(const MouseEvent&)
 {
-	CHECK_MIDDLE_MOUSE_DRAG(e);
-
 	if (getSourceNodeFromParent() == nullptr)
 		return;
 
@@ -204,8 +202,6 @@ void ModulationSourceBaseComponent::mouseDrag(const MouseEvent& e)
 
 void ModulationSourceBaseComponent::mouseUp(const MouseEvent& e)
 {
-	CHECK_MIDDLE_MOUSE_UP(e);
-
 	findParentComponentOfClass<DspNetworkGraph>()->dragOverlay.setEnabled(false);
 }
 
@@ -224,8 +220,6 @@ void ModulationSourceBaseComponent::resized()
 
 void ModulationSourceBaseComponent::mouseDown(const MouseEvent& e)
 {
-	CHECK_MIDDLE_MOUSE_DOWN(e);
-
 	if (getSourceNodeFromParent() == nullptr)
 		return;
 

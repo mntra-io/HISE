@@ -34,7 +34,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 bool NamespaceHandler::Namespace::contains(const NamespacedIdentifier& symbol) const
 {

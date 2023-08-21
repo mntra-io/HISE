@@ -56,9 +56,8 @@ END_JUCE_MODULE_DECLARATION
 #if HISE_INCLUDE_FAUST_JIT
 #include <optional>
 #include "../hi_faust_lib/hi_faust_lib.h"
-#include "../hi_core/hi_core.h" // FileHandlerBase
 #include "../hi_scripting/hi_scripting.h" // DspNetwork, NodeBase, WrapperNode
-
+#include "../hi_core/hi_core.h" // FileHandlerBase
 
 #include "FaustWrapper.h"
 #include "FaustJitNode.h"

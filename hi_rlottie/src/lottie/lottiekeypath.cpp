@@ -12,7 +12,7 @@ LOTKeyPath::LOTKeyPath(const std::string &keyPath)
     }
 }
 
-bool LOTKeyPath::matches(const std::string &key, uint32_t depth)
+bool LOTKeyPath::matches(const std::string &key, uint depth)
 {
     if (skip(key)) {
         // This is an object we programatically create.
@@ -28,7 +28,7 @@ bool LOTKeyPath::matches(const std::string &key, uint32_t depth)
     return false;
 }
 
-uint32_t LOTKeyPath::nextDepth(const std::string key, uint32_t depth)
+uint LOTKeyPath::nextDepth(const std::string key, uint depth)
 {
     if (skip(key)) {
         // If it's a container then we added programatically and it isn't a part
@@ -51,7 +51,7 @@ uint32_t LOTKeyPath::nextDepth(const std::string key, uint32_t depth)
     return depth;
 }
 
-bool LOTKeyPath::fullyResolvesTo(const std::string key, uint32_t depth)
+bool LOTKeyPath::fullyResolvesTo(const std::string key, uint depth)
 {
     if (depth > mKeys.size()) {
         return false;

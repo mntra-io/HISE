@@ -91,8 +91,8 @@ public:
 	{
 	public:
 
-		Listener();
-		virtual ~Listener();
+		Listener() {}
+		virtual ~Listener() { masterReference.clear(); }
 		virtual void mouseCallback(const var &mouseInformation) = 0;
 
 		virtual void fileDropCallback(const var& dropInformation) = 0;
@@ -109,7 +109,7 @@ public:
 	{
 		struct Listener
 		{
-			virtual ~Listener();
+			virtual ~Listener() { masterReference.clear(); }
 			virtual void boundsChanged(const Rectangle<int> &newBounds) = 0;
 
 		private:
@@ -134,18 +134,25 @@ public:
 	// ================================================================================================================
 
 	MouseCallbackComponent();;
-	virtual ~MouseCallbackComponent();;
+	virtual ~MouseCallbackComponent() {};
 
 	static StringArray getCallbackLevels(bool getFileCallbacks=false);
 	static StringArray getCallbackPropertyNames();
 
-	void setJSONPopupData(var jsonData, Rectangle<int> popupSize_);
+	void setJSONPopupData(var jsonData, Rectangle<int> popupSize_) 
+	{ 
+		jsonPopupData = jsonData; 
+		popupSize = popupSize_;
+	}
 
 	void setPopupMenuItems(const StringArray &newItemList);
 
 	static PopupMenu parseFromStringArray(const StringArray& itemList, Array<int> activeIndexes, LookAndFeel* laf);
 
-	void setActivePopupItem(int menuId);
+	void setActivePopupItem(int menuId)
+	{
+		activePopupId = menuId;
+	}
 
 	void setUseRightClickForPopup(bool shouldUseRightClickForPopup);
 	void alignPopup(bool shouldBeAligned);
@@ -187,14 +194,26 @@ public:
 	CallbackLevel getCallbackLevel() const;
 
 	/** overwrite this method and update the Component to display the current value of the controlled attribute. */
-	virtual void updateValue(NotificationType /*sendAttributeChange=sendNotification*/);;
+	virtual void updateValue(NotificationType /*sendAttributeChange=sendNotification*/)
+	{
+		repaint();
+	};
 
 	/** overwrite this method and return the range that the parameter can have. */
-	virtual NormalisableRange<double> getRange() const;;
+	virtual NormalisableRange<double> getRange() const
+	{
+		return range;
+	};
 
-	void setRange(NormalisableRange<double> &newRange);
+	void setRange(NormalisableRange<double> &newRange)
+	{
+		range = newRange;
+	}
 
-	void setMidiLearnEnabled(bool shouldBeEnabled);
+	void setMidiLearnEnabled(bool shouldBeEnabled)
+	{
+		midiLearnEnabled = shouldBeEnabled;
+	}
 
 	// ================================================================================================================
 
@@ -249,7 +268,7 @@ struct DrawActions
 	public:
 
 		virtual void perform(PostGraphicsRenderer& r) = 0;
-		virtual bool needsStackData() const;
+		virtual bool needsStackData() const { return false; }
 	};
 
 	class ActionBase: public ReferenceCountedObject
@@ -258,14 +277,14 @@ struct DrawActions
 
 		using Ptr = ReferenceCountedObjectPtr<ActionBase>;
 
-		ActionBase();;
-		virtual ~ActionBase();;
+		ActionBase() {};
+		virtual ~ActionBase() {};
 		virtual void perform(Graphics& g) = 0;
-		virtual bool wantsCachedImage() const;;
-		virtual bool wantsToDrawOnParent() const;
+		virtual bool wantsCachedImage() const { return false; };
+		virtual bool wantsToDrawOnParent() const { return false; }
 
-		virtual void setCachedImage(Image& actionImage_, Image& mainImage_);
-		virtual void setScaleFactor(float sf);
+		virtual void setCachedImage(Image& actionImage_, Image& mainImage_) { actionImage = actionImage_; mainImage = mainImage_; }
+		virtual void setScaleFactor(float sf) { scaleFactor = sf; }
 
 	protected:
 
@@ -282,11 +301,17 @@ struct DrawActions
 
 	struct MarkdownAction: public ActionBase
 	{
-		MarkdownAction();;
+		MarkdownAction() :
+			renderer("")
+		{};
 
 		using Ptr = ReferenceCountedObjectPtr<MarkdownAction>;
 
-		void perform(Graphics& g) override;
+		void perform(Graphics& g) override
+		{
+			ScopedLock sl(lock);
+			renderer.draw(g, area);
+		}
 
 		CriticalSection lock;
 		MarkdownRenderer renderer;
@@ -299,21 +324,76 @@ struct DrawActions
 
 		using Ptr = ReferenceCountedObjectPtr<ActionLayer>;
 
-		ActionLayer(bool drawOnParent_);;
+		ActionLayer(bool drawOnParent_) :
+			ActionBase(),
+			drawOnParent(drawOnParent_)
+		{};
 
-		bool wantsCachedImage() const override;
+		bool wantsCachedImage() const override 
+		{ 
+			if(postActions.size() > 0)
+				return true;
 
-		bool wantsToDrawOnParent() const override;;
+			for (auto a : internalActions)
+			{
+				if (a->wantsCachedImage())
+					return true;
+			}
 
-		void setCachedImage(Image& actionImage_, Image& mainImage_) final override;
+			return false;
+		}
 
-		virtual void setScaleFactor(float sf) final override;
+		bool wantsToDrawOnParent() const override { return drawOnParent; };
 
-		void perform(Graphics& g);
+		void setCachedImage(Image& actionImage_, Image& mainImage_) final override
+		{ 
+			ActionBase::setCachedImage(actionImage_, mainImage_);
 
-		void addDrawAction(ActionBase* a);
+			// do not propagate the main image
+			for (auto a : internalActions)
+				a->setCachedImage(actionImage_, actionImage_);
+		}
 
-		void addPostAction(PostActionBase* a);
+		virtual void setScaleFactor(float sf) final override
+		{ 
+			ActionBase::setScaleFactor(sf);
+
+			for (auto a : internalActions)
+				a->setScaleFactor(sf);
+		}
+
+		void perform(Graphics& g)
+		{
+			for (auto action : internalActions)
+				action->perform(g);
+			
+			if (postActions.size() > 0)
+			{
+				PostGraphicsRenderer r(stack, actionImage, scaleFactor);
+				int numDataRequired = 0;
+
+				for (auto p : postActions)
+				{
+					if (p->needsStackData())
+						numDataRequired++;
+				}
+				
+				r.reserveStackOperations(numDataRequired);
+
+				for (auto p : postActions)
+					p->perform(r);
+			}
+		}
+
+		void addDrawAction(ActionBase* a)
+		{
+			internalActions.add(a);
+		}
+
+		void addPostAction(PostActionBase* a)
+		{
+			postActions.add(a);
+		}
 
 	protected:
 
@@ -328,9 +408,15 @@ struct DrawActions
 	{
 	public:
 
-		BlendingLayer(gin::BlendMode m, float alpha_);
+		BlendingLayer(gin::BlendMode m, float alpha_) :
+			ActionLayer(true),
+			blendMode(m),
+			alpha(alpha_)
+		{
 
-		bool wantsCachedImage() const override;
+		}
+
+		bool wantsCachedImage() const override { return true; }
 
 		void perform(Graphics& g) override;
 
@@ -352,11 +438,42 @@ struct DrawActions
 			const bool monochrom;
 		};
 
-		void drawNoiseMap(Graphics& g, Rectangle<int> area, float alpha, bool monochrom, float scale);
+		void drawNoiseMap(Graphics& g, Rectangle<int> area, float alpha, bool monochrom, float scale)
+		{
+			auto originalArea = area;
+
+			if(scale != 1.0f)
+				area = area.transformed(AffineTransform::scale(scale));
+
+			const auto& m = getNoiseMap(area, monochrom);
+
+			g.setColour(Colours::black.withAlpha(alpha));
+
+			if (scale != 1.0f)
+				g.drawImageWithin(m.img, originalArea.getX(), originalArea.getY(), originalArea.getWidth(), originalArea.getHeight(), RectanglePlacement::stretchToFit);
+			else
+				g.drawImageAt(m.img, area.getX(), area.getY());
+		}
 
 	private:
 
-		NoiseMap& getNoiseMap(Rectangle<int> area, bool monochrom);
+		NoiseMap& getNoiseMap(Rectangle<int> area, bool monochrom)
+		{
+			for (auto m : maps)
+			{
+
+				if (area.getWidth() == m->width &&
+					area.getHeight() == m->height &&
+					monochrom == m->monochrom)
+				{
+					return *m;
+				}
+			}
+
+			maps.add(new NoiseMap(area, monochrom));
+
+			return *maps.getLast();
+		}
 
 		SimpleReadWriteLock lock;
 		OwnedArray<NoiseMap> maps;
@@ -366,13 +483,43 @@ struct DrawActions
 	{
 		struct Iterator
 		{
-			Iterator(Handler* handler_);
+			Iterator(Handler* handler_):
+				handler(handler_)
+			{
+				if (handler != nullptr)
+				{
+					actionsInIterator.ensureStorageAllocated(handler->nextActions.size());
+					SpinLock::ScopedLockType sl(handler->lock);
 
-			ActionBase::Ptr getNextAction();
+					actionsInIterator.addArray(handler->nextActions);
+				}
+			}
 
-			bool wantsCachedImage() const;
+			ActionBase::Ptr getNextAction()
+			{
+				if (index < actionsInIterator.size())
+					return actionsInIterator[index++];
 
-			bool wantsToDrawOnParent() const;
+				return nullptr;
+			}
+
+			bool wantsCachedImage() const
+			{
+				for (auto action : actionsInIterator)
+					if (action != nullptr && action->wantsCachedImage())
+						return true;
+
+				return false;
+			}
+
+			bool wantsToDrawOnParent() const
+			{
+				for (auto action : actionsInIterator)
+					if (action != nullptr && action->wantsToDrawOnParent())
+						return true;
+
+				return false;
+			}
 
 			void render(Graphics& g, Component* c);
 
@@ -383,45 +530,89 @@ struct DrawActions
 
 		struct Listener
 		{
-			virtual ~Listener();;
+			virtual ~Listener() {};
 			virtual void newPaintActionsAvailable() = 0;
 
 			JUCE_DECLARE_WEAK_REFERENCEABLE(Listener);
 		};
 
-        ~Handler();
-
-		void beginDrawing();
+        ~Handler()
+        {
+            cancelPendingUpdate();
+        }
+        
+		void beginDrawing()
+		{
+			currentActions.clear();
+		}
 
 		bool beginBlendLayer(const Identifier& blendMode, float alpha);
 
-		void beginLayer(bool drawOnParent);
+		void beginLayer(bool drawOnParent)
+		{
+			auto newLayer = new ActionLayer(drawOnParent);
 
-		ActionLayer::Ptr getCurrentLayer();
+			addDrawAction(newLayer);
+			layerStack.insert(-1, newLayer);
+		}
 
-		void endLayer();
+		ActionLayer::Ptr getCurrentLayer()
+		{
+			return layerStack.getLast();
+		}
 
-		void addDrawAction(ActionBase* newDrawAction);
+		void endLayer()
+		{
+			layerStack.removeLast();
+		}
 
-		void flush();
+		void addDrawAction(ActionBase* newDrawAction)
+		{
+			if (layerStack.getLast() != nullptr)
+				layerStack.getLast()->addDrawAction(newDrawAction);
+			else
+				currentActions.add(newDrawAction);
+		}
 
-		void logError(const String& message);
+		void flush()
+		{
+			{
+				SpinLock::ScopedLockType sl(lock);
 
-		void addDrawActionListener(Listener* l);
-		void removeDrawActionListener(Listener* l);
+				nextActions.swapWith(currentActions);
+				currentActions.clear();
+				layerStack.clear();
+			}
+
+			triggerAsyncUpdate();
+		}
+
+		void logError(const String& message)
+		{
+			if (errorLogger)
+				errorLogger(message);
+		}
+
+		void addDrawActionListener(Listener* l) { listeners.addIfNotAlreadyThere(l); }
+		void removeDrawActionListener(Listener* l) { listeners.removeAllInstancesOf(l); }
 
 		Rectangle<int> getScreenshotBounds(Rectangle<int> shaderBounds) const;
 
-		void setGlobalBounds(Rectangle<int> gb, Rectangle<int> tb, float sf);
+		void setGlobalBounds(Rectangle<int> gb, Rectangle<int> tb, float sf)
+		{
+			globalBounds = gb;
+			topLevelBounds = tb;
+			scaleFactor = sf;
+		}
 
-		Rectangle<int> getGlobalBounds() const;
-		float getScaleFactor() const;
+		Rectangle<int> getGlobalBounds() const { return globalBounds; }
+		float getScaleFactor() const { return scaleFactor; }
 
 		std::function<void(const String& m)> errorLogger;
 
 		bool recursion = false;
 
-		NoiseMapManager* getNoiseMapManager();
+		NoiseMapManager* getNoiseMapManager() { return &noiseManager.getObject(); }
 
 	private:
 
@@ -431,7 +622,14 @@ struct DrawActions
 		Rectangle<int> topLevelBounds;
 		float scaleFactor = 1.0f;
 
-		void handleAsyncUpdate() override;
+		void handleAsyncUpdate() override
+		{
+			for (auto l : listeners)
+			{
+				if (l != nullptr)
+					l->newPaintActionsAvailable();
+			}
+		}
 
 		Array<WeakReference<Listener>> listeners;
 
@@ -461,27 +659,57 @@ public:
 	BorderPanel(DrawActions::Handler* drawHandler);
 	~BorderPanel();
 
-	void newOpenGLContextCreated() override;
+	void newOpenGLContextCreated() override
+	{
+	}
 
-	void renderOpenGL() override;
+	void renderOpenGL() override
+	{
+		
+	}
 
-	void openGLContextClosing() override;
+	void openGLContextClosing() override
+	{
+	}
 
-	void newPaintActionsAvailable() override;
+	void newPaintActionsAvailable() override { repaint(); }
 
 	void paint(Graphics &g);
 	Colour c1, c2, borderColour;
 
-	void registerToTopLevelComponent();
+	void registerToTopLevelComponent()
+	{
+#if 0
+		if (srs == nullptr)
+		{
+			if (auto tc = findParentComponentOfClass<TopLevelWindowWithOptionalOpenGL>())
+				srs = new TopLevelWindowWithOptionalOpenGL::ScopedRegisterState(*tc, this);
+		}
+#endif
+	}
 
-	void resized() override;
+	void resized() override
+	{
+		registerToTopLevelComponent();
+
+		if (isPopupPanel)
+		{
+			closeButton.setBounds(getWidth() - 24, 0, 24, 24);
+		}
+		else
+			closeButton.setVisible(false);
+		
+	}
 
 	void buttonClicked(Button* b) override;
 
     void changeListenerCallback(SafeChangeBroadcaster* b);
     
 #if HISE_INCLUDE_RLOTTIE
-	void setAnimation(RLottieAnimation::Ptr newAnimation);
+	void setAnimation(RLottieAnimation::Ptr newAnimation)
+	{
+		animation = newAnimation;
+	}
 
 	RLottieAnimation::Ptr animation;
 #endif

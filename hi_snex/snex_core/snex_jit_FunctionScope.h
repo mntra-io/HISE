@@ -35,8 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
-
+using namespace asmjit;
 
 
 struct RegisterScope : public BaseScope

@@ -35,10 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
-
-
-#if SNEX_ASMJIT_BACKEND
+using namespace asmjit;
 
 
 #define FP_REG_W(x) x->getRegisterForWriteOp().as<X86Xmm>()
@@ -78,7 +75,7 @@ USE_ASMJIT_NAMESPACE;
 struct AsmCodeGenerator
 {
 	using RegPtr = AssemblyRegister::Ptr;
-	using Compiler = X86Compiler;
+	using Compiler = asmjit::X86Compiler;
 	using OpType = const char*;
 	using AddressType = uint64_t;
 
@@ -360,20 +357,6 @@ struct DynLoopEmitter : public AsmCodeGenerator::LoopEmitterBase
 	DynType* typePtr = nullptr;
 };
 
-#else
-
-// dummy...
-struct AsmCodeGenerator
-{
-	struct LoopEmitterBase
-	{
-		AsmJitLabel getLoopPoint(bool getContinue) { return {}; }
-	};
-
-	AsmJitX86Compiler& cc;
-};
-
-#endif
 
 }
 }

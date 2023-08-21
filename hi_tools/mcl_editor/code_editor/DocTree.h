@@ -35,8 +35,8 @@ public:
 		String name;
 		Identifier type;
 
-		Item** begin() const;
-		Item** end() const;
+		Item** begin() const { return const_cast<Item**>(children.begin()); }
+		Item** end() const { return const_cast<Item**>(children.end()); }
 
 		/* Removes all children. */
 		void clearChildren();
@@ -72,7 +72,7 @@ public:
 	/** A Listener that will be notified whenever the syntax tree changes. */
 	struct Listener
 	{
-		virtual ~Listener();;
+		virtual ~Listener() {};
 
 		/** Will be called on the message thread as soon as the tree was rebuilt. */
 		virtual void treeWasRebuilt(Ptr newRoot) = 0;
@@ -83,26 +83,38 @@ public:
 	
 
 	/** Creates a doc tree builder. */
-	DocTreeBuilder(TextDocument& t);;
+	DocTreeBuilder(TextDocument& t) :
+		CoallescatedCodeDocumentListener(t.getCodeDocument()),
+		doc(t)
+	{};
 
 	
 
 	/** @internal */
 	void codeChanged(bool , int , int ) override;
 
-	virtual ~DocTreeBuilder();;
+	virtual ~DocTreeBuilder() {};
 
 	/** Override this method and return a Item that contains the structure tree of your code. */
 	virtual Ptr createItems() = 0;
 	
 	/** Add a a listener that will be notified when the items have changed. */
-	void addListener(Listener* l);
+	void addListener(Listener* l)
+	{
+		listeners.addIfNotAlreadyThere(l);
+	}
 
-	void removeListener(Listener* l);
+	void removeListener(Listener* l)
+	{
+		listeners.removeAllInstancesOf(l);
+	}
 
 protected:
 
-	CodeDocument::Iterator createIterator() const;
+	CodeDocument::Iterator createIterator() const
+	{
+		return CodeDocument::Iterator(doc.getCodeDocument());
+	}
 
 	TextDocument& doc;
 
@@ -119,28 +131,80 @@ struct DocTreeView : public Component,
 
 	struct DocTreeViewItem : public TreeViewItem
 	{
-		DocTreeViewItem(DocTreeBuilder::Ptr item_);;
+		DocTreeViewItem(DocTreeBuilder::Ptr item_) :
+			item(item_)
+		{};
 
-		bool mightContainSubItems() override;
+		bool mightContainSubItems() override
+		{
+			return item->begin() != item->end();
+		}
 
-		String getUniqueName() const override;
+		String getUniqueName() const override
+		{
+			return item->getPath();
+		}
 
-		void itemOpennessChanged(bool isNowOpen) override;
+		void itemOpennessChanged(bool isNowOpen) override
+		{
+			if (isNowOpen)
+			{
+				for (auto c : *item)
+					addSubItem(new DocTreeViewItem(c));
+			}
+			else
+				clearSubItems();
+		}
 
-		void paintItem(Graphics& g, int width, int height) override;
+		void paintItem(Graphics& g, int width, int height) override
+		{
+			Font f(Font::getDefaultMonospacedFontName(), 16.0f, Font::plain);
+			g.setFont(f);
+			g.setColour(Colours::white.withAlpha(0.7f));
+			g.drawText(item->name, 0.0f, 0.0f, (float)width, (float)height, Justification::centredLeft);
+		}
 
 		DocTreeBuilder::Ptr item;
 	};
 
-	void treeWasRebuilt(DocTreeBuilder::Ptr newRoot) override;
+	void treeWasRebuilt(DocTreeBuilder::Ptr newRoot) override
+	{
+		tree.setRootItem(nullptr);
 
-	DocTreeView(TextDocument& doc);
+		rootItem = new DocTreeViewItem(newRoot);
+		tree.setRootItem(rootItem);
+		tree.setDefaultOpenness(true);
+		tree.setRootItemVisible(false);
+		resized();
+	}
 
-	void setBuilder(DocTreeBuilder* ownedBuilder);
+	DocTreeView(TextDocument& doc)
+	{
+		addAndMakeVisible(tree);
+	}
 
-	void resized() override;
+	void setBuilder(DocTreeBuilder* ownedBuilder)
+	{
+		builder = ownedBuilder;
+		builder->addListener(this);
+	}
 
-	~DocTreeView();
+	void resized() override
+	{
+		tree.setBounds(getLocalBounds());
+	}
+
+	~DocTreeView()
+	{
+		tree.setRootItem(nullptr);
+		rootItem = nullptr;
+
+		if (builder != nullptr)
+		{
+			builder->removeListener(this);
+			builder = nullptr;
+		}
+	}
 
 	ScopedPointer<DocTreeBuilder> builder;
 	TreeView tree;

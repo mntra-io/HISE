@@ -2,7 +2,7 @@
 
 BEGIN_TEST_DATA
   f: main
-  ret: int
+  ret: block
   args: block
   input: "fastramp.wav"
   output: "filtered_fastramp.wav"
@@ -13,7 +13,7 @@ END_TEST_DATA
 
 
 
-int main(block input)
+block main(block input)
 {
     double a = 0.94;
     double invA = 1.0 - a;
@@ -27,6 +27,6 @@ int main(block input)
         lastValue = s;
     }
 	
-    return 1;
+    return input;
 }
 

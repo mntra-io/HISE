@@ -70,7 +70,7 @@ struct SimpleRingBuffer: public ComplexDataUIBase,
 	/** Just a simple interface class for getting the writer. */
 	struct WriterBase
 	{
-		virtual ~WriterBase();;
+		virtual ~WriterBase() {};
 
 	private:
 
@@ -81,11 +81,16 @@ struct SimpleRingBuffer: public ComplexDataUIBase,
 	{
 		using Ptr = ReferenceCountedObjectPtr<PropertyObject>;
 
-		PropertyObject(WriterBase* b);;
+		PropertyObject(WriterBase* b) :
+			writerBase(b)
+		{
+			// This object must not be created from the DLL space...
+			JUCE_ASSERT_MESSAGE_MANAGER_EXISTS;
+		};
 
-		virtual int getClassIndex() const;
+		virtual int getClassIndex() const { return 0; }
 
-		virtual ~PropertyObject();;
+		virtual ~PropertyObject() {};
 
 		virtual RingBufferComponentBase* createComponent();
 
@@ -93,23 +98,71 @@ struct SimpleRingBuffer: public ComplexDataUIBase,
 			
 			Return true if you changed the number. 
 		*/
-		virtual bool validateInt(const Identifier& id, int& v) const;
+		virtual bool validateInt(const Identifier& id, int& v) const
+		{
+			if (id == RingBufferIds::BufferLength)
+				return withinRange<512, 65536*2>(v);
 
-		virtual bool allowModDragger() const;;
+			if (id == RingBufferIds::NumChannels)
+				return withinRange<1, 2>(v);
 
-		virtual void initialiseRingBuffer(SimpleRingBuffer* b);
+			return false;
+		}
 
-		virtual var getProperty(const Identifier& id) const;
+		virtual bool allowModDragger() const { return false; };
 
-		virtual void setProperty(const Identifier& id, const var& newValue);
+		virtual void initialiseRingBuffer(SimpleRingBuffer* b)
+		{
+			buffer = b;
+		}
+
+		virtual var getProperty(const Identifier& id) const
+		{
+			jassert(properties.contains(id));
+
+			if (buffer != nullptr)
+			{
+				if (id.toString() == "BufferLength")
+					return var(buffer->internalBuffer.getNumSamples());
+
+				if (id.toString() == "NumChannels")
+					return var(buffer->internalBuffer.getNumChannels());
+			}
+
+			return {};
+		}
+
+		virtual void setProperty(const Identifier& id, const var& newValue)
+		{
+			properties.set(id, newValue);
+
+			if (buffer != nullptr)
+			{
+				if ((id.toString() == "BufferLength") && (int)newValue > 0)
+					buffer->setRingBufferSize(buffer->internalBuffer.getNumChannels(), (int)newValue);
+
+				if ((id.toString() == "NumChannels") && (int)newValue > 0)
+					buffer->setRingBufferSize((int)newValue, buffer->internalBuffer.getNumSamples());
+			}
+		}
 
 		NamedValueSet properties;
 
-		virtual void transformReadBuffer(AudioSampleBuffer& b);
+		virtual void transformReadBuffer(AudioSampleBuffer& b)
+		{
+		}
 
 		virtual Path createPath(Range<int> sampleRange, Range<float> valueRange, Rectangle<float> targetBounds, double startValue) const;
 
-		Array<Identifier> getPropertyList() const;
+		Array<Identifier> getPropertyList() const
+		{
+			Array<Identifier> ids;
+
+			for (const auto& nv : properties)
+				ids.add(nv.name);
+
+			return ids;
+		}
 
 		template <typename T> T* getTypedBase() { return dynamic_cast<T*>(writerBase.get()); }
 
@@ -123,13 +176,41 @@ struct SimpleRingBuffer: public ComplexDataUIBase,
 
 	SimpleRingBuffer();
 
-	bool fromBase64String(const String& b64) override;
+	bool fromBase64String(const String& b64) override
+	{
+		return true;
+	}
 
-	void setRingBufferSize(int numChannels, int numSamples, bool acquireLock=true);
+	void setRingBufferSize(int numChannels, int numSamples, bool acquireLock=true)
+	{
+		validateLength(numSamples);
+		validateChannels(numChannels);
+
+		if (numChannels != internalBuffer.getNumChannels() ||
+			numSamples != internalBuffer.getNumSamples())
+		{
+			jassert(!isBeingWritten);
+
+			SimpleReadWriteLock::ScopedWriteLock sl(getDataLock(), acquireLock);
+			internalBuffer.setSize(numChannels, numSamples);
+			internalBuffer.clear();
+			numAvailable = 0;
+			writeIndex = 0;
+			updateCounter = 0;
+
+			setupReadBuffer(externalBuffer);
+
+			if (!currentlyChanged)
+			{
+				ScopedValueSetter<bool> svs(currentlyChanged, true);
+				getUpdater().sendContentRedirectMessage();
+			}
+		}
+	}
 
 	void setupReadBuffer(AudioSampleBuffer& b);
 
-	String toBase64String() const override;
+	String toBase64String() const override { return {}; }
 
 	void clear();
 	int read(AudioSampleBuffer& b);
@@ -141,47 +222,70 @@ struct SimpleRingBuffer: public ComplexDataUIBase,
 
 	void onComplexDataEvent(ComplexDataUIUpdaterBase::EventType t, var n) override;
 
-	void setActive(bool shouldBeActive);
+	void setActive(bool shouldBeActive)
+	{
+		active = shouldBeActive;
+	}
 
-	bool isActive() const noexcept;
+	bool isActive() const noexcept
+	{
+		return active;
+	}
 
-	var getReadBufferAsVar();
+	var getReadBufferAsVar() { return externalBufferData; }
 
-	const AudioSampleBuffer& getReadBuffer() const;
+	const AudioSampleBuffer& getReadBuffer() const { return externalBuffer; }
 
-	AudioSampleBuffer& getWriteBuffer();
+	AudioSampleBuffer& getWriteBuffer() { return internalBuffer; }
 
-	void setSamplerate(double newSampleRate);
+	void setSamplerate(double newSampleRate)
+	{
+		sr = newSampleRate;
+	}
 
-	double getSamplerate() const;
+	double getSamplerate() const { return sr; }
 
 	void setProperty(const Identifier& id, const var& newValue);
 	var getProperty(const Identifier& id) const;
 	Array<Identifier> getIdentifiers() const;
 
-	bool isConnectedToWriter(WriterBase* b) const;
+	bool isConnectedToWriter(WriterBase* b) const { return currentWriter == b; }
 
 	void setPropertyObject(PropertyObject* newObject);
 
-	PropertyObject::Ptr getPropertyObject() const;
+	PropertyObject::Ptr getPropertyObject() const { return properties; }
 
-	WriterBase* getCurrentWriter() const;
+	WriterBase* getCurrentWriter() const { return currentWriter.get(); }
 
-	void setCurrentWriter(WriterBase* newWriter);
+	void setCurrentWriter(WriterBase* newWriter)
+	{
+		currentWriter = newWriter;
+	}
 
 	struct ScopedPropertyCreator
 	{
-		ScopedPropertyCreator(ComplexDataUIBase* obj);
+		ScopedPropertyCreator(ComplexDataUIBase* obj):
+			p(dynamic_cast<SimpleRingBuffer*>(obj))
+		{
+			JUCE_ASSERT_MESSAGE_MANAGER_EXISTS;
 
-		~ScopedPropertyCreator();
+		}
+
+		~ScopedPropertyCreator()
+		{
+			JUCE_ASSERT_MESSAGE_MANAGER_EXISTS;
+			
+			if(p != nullptr)
+				p->refreshPropertyObject();
+		}
 
 	private:
 
 		SimpleRingBuffer* p;
 	};
 
-    CriticalSection& getReadBufferLock();
-
+    CriticalSection& getReadBufferLock() { return readBufferLock; }
+    
 private:
 
     CriticalSection readBufferLock;
@@ -197,7 +301,22 @@ private:
 
 	private:
 
-	void refreshPropertyObject();
+	void refreshPropertyObject()
+	{
+		auto pIndex = properties != nullptr ? properties->getClassIndex() : 0;
+
+		if (currentPropertyIndex != pIndex)
+		{
+			JUCE_ASSERT_MESSAGE_MANAGER_EXISTS;
+
+			auto p = createPropertyObject(currentPropertyIndex, currentWriter.get());
+
+			if (p == nullptr)
+				p = new PropertyObject(currentWriter.get());
+
+			setPropertyObject(p);
+		}
+	}
 
 	int currentPropertyIndex = 0;
 	
@@ -249,7 +368,7 @@ struct RingBufferComponentBase : public ComplexDataUIBase::EditorBase,
 
 	struct LookAndFeelMethods
 	{
-		virtual ~LookAndFeelMethods();;
+		virtual ~LookAndFeelMethods() {};
 		virtual void drawOscilloscopeBackground(Graphics& g, RingBufferComponentBase& ac, Rectangle<float> areaToFill);
 		virtual void drawOscilloscopePath(Graphics& g, RingBufferComponentBase& ac, const Path& p);
 		virtual void drawGonioMeterDots(Graphics& g, RingBufferComponentBase& ac, const RectangleList<float>& dots, int index);
@@ -262,11 +381,24 @@ struct RingBufferComponentBase : public ComplexDataUIBase::EditorBase,
 
 	};
 
-	RingBufferComponentBase();
+	RingBufferComponentBase()
+	{
+		setSpecialLookAndFeel(new DefaultLookAndFeel(), true);
+	}
 
 	virtual void refresh() = 0;
 
-	virtual Colour getColourForAnalyserBase(int colourId);
+	virtual Colour getColourForAnalyserBase(int colourId) 
+	{ 
+		switch (colourId)
+		{
+		case ColourId::bgColour: return Colours::transparentBlack;
+		case ColourId::fillColour: return Colours::white.withAlpha(0.05f);
+		case ColourId::lineColour: return Colours::white.withAlpha(0.9f);
+		}
+		
+		return Colours::transparentBlack;
+	}
 
 protected:
 
@@ -299,17 +431,45 @@ struct ModPlotter : public Component,
 	{
 		static constexpr int PropertyIndex = 1000;
 
-		ModPlotterPropertyObject(SimpleRingBuffer::WriterBase* wb);;
+		ModPlotterPropertyObject(SimpleRingBuffer::WriterBase* wb) :
+			PropertyObject(wb)
+		{
+			setProperty(RingBufferIds::BufferLength, 32768 * 2);
+			setProperty(RingBufferIds::NumChannels, 1);
+		};
 		
-		int getClassIndex() const override;
+		int getClassIndex() const override { return PropertyIndex; }
 
-		bool allowModDragger() const override;;
+		bool allowModDragger() const override { return true; };
 
-		virtual bool validateInt(const Identifier& id, int& v) const;
+		virtual bool validateInt(const Identifier& id, int& v) const
+		{
+			if (id == RingBufferIds::BufferLength)
+			{
+				bool wasPowerOfTwo = isPowerOfTwo(v);
 
-		RingBufferComponentBase* createComponent() override;
+				if (!wasPowerOfTwo)
+					v = nextPowerOfTwo(v);
+				
+				return SimpleRingBuffer::withinRange<4096, 32768 * 4>(v) && wasPowerOfTwo;
+			}
 
-		void transformReadBuffer(AudioSampleBuffer& b) override;
+			if (id == RingBufferIds::NumChannels)
+				return SimpleRingBuffer::toFixSize<1>(v);
+
+			return false;
+		}
+
+		RingBufferComponentBase* createComponent() override
+		{
+			return new ModPlotter();
+		}
+
+		void transformReadBuffer(AudioSampleBuffer& b) override
+		{
+			if (transformFunction)
+				transformFunction(b.getWritePointer(0), b.getNumSamples());
+		}
 
 		std::function<void(float*, int)> transformFunction;
 	};
@@ -318,7 +478,7 @@ struct ModPlotter : public Component,
 
 	void paint(Graphics& g) override;
 	
-	Rectangle<int> getFixedBounds() const override;
+	Rectangle<int> getFixedBounds() const override { return { 0, 0, 256, 80 }; }
 
 	Colour getColourForAnalyserBase(int colourId) override;
 	

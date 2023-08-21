@@ -32,18 +32,6 @@
 
 #pragma once
 
-extern "C" {
-
-
-struct ErrorC
-{
-    int error = 0;
-    int expected = 0;
-    int actual = 0;
-};
-
-}
-
 
 namespace scriptnode
 {
@@ -60,7 +48,17 @@ using namespace juce;
 #endif
 #endif
 
+extern "C" {
 
+
+struct ErrorC
+{
+    int error = 0;
+	int expected = 0;
+	int actual = 0;
+};
+
+}
 
 struct Error: public ErrorC
 {

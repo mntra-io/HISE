@@ -365,8 +365,6 @@ void ConvolutionEffectBase::prepareBase(double sampleRate, int samplesPerBlock)
 
 void ConvolutionEffectBase::processBase(ProcessDataDyn& d)
 {
-    TRACE_DSP();
-    
 	if (auto sp = SimpleReadWriteLock::ScopedTryReadLock(swapLock))
 	{
 		auto channels = d.getRawChannelPointers();

@@ -108,17 +108,12 @@ namespace hise { using namespace juce;
 
 #define SCALE_FACTOR() ((float)Desktop::getInstance().getDisplays().getMainDisplay().scale)
 
-#if RETURN_IF_NO_THROW
+#if JUCE_DEBUG || USE_FRONTEND || JUCE_MAC
 #define RETURN_IF_NO_THROW(x) return x;
 #define RETURN_VOID_IF_NO_THROW() return;
-#endif
-
-#if JUCE_DEBUG
-#define DEBUG_ONLY(x) x
-#define RETURN_DEBUG_ONLY(x) return x
 #else
-#define DEBUG_ONLY(x)
-#define RETURN_DEBUG_ONLY(x)
+#define RETURN_IF_NO_THROW(x)
+#define RETURN_VOID_IF_NO_THROW()
 #endif
 
 #if JUCE_WINDOWS || JUCE_MAC || JUCE_IOS
@@ -537,6 +532,5 @@ private:
 #ifndef HI_RASTER_SIZE
 #define HI_RASTER_SIZE 10
 #endif
-
 
 } // namespace hise

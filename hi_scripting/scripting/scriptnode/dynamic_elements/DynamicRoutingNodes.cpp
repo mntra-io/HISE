@@ -684,8 +684,6 @@ void dynamic::editor::itemDropped(const SourceDetails& dragSourceDetails)
 
 void dynamic::editor::mouseDown(const MouseEvent& e)
 {
-	CHECK_MIDDLE_MOUSE_DOWN(e);
-
 	if (e.mods.isRightButtonDown())
 	{
 		if (auto rn = getAsReceiveNode())
@@ -720,7 +718,6 @@ void dynamic::editor::mouseDown(const MouseEvent& e)
 
 void dynamic::editor::mouseUp(const MouseEvent& e)
 {
-	CHECK_MIDDLE_MOUSE_UP(e);
 	auto root = dynamic_cast<Component*>(getDragAndDropContainer());
 
 	callForEach<editor>(root, [](editor* fc)
@@ -734,7 +731,6 @@ void dynamic::editor::mouseUp(const MouseEvent& e)
 
 void dynamic::editor::mouseDrag(const MouseEvent& event)
 {
-	CHECK_MIDDLE_MOUSE_DRAG(event);
 	findParentComponentOfClass<DspNetworkGraph>()->repaint();
 }
 

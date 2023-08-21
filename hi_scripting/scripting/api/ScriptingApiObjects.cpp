@@ -645,12 +645,7 @@ bool ScriptingObjects::ScriptFile::writeMidiFile(var eventList, var metadataObje
 			t.restoreFromValueTree(v);
 		}
 
-        if(t.numBars == 0)
-        {
-            t.numBars = hmath::ceil((double)events.getLast().getTimeStamp() / (double)HiseMidiSequence::TicksPerQuarter);
-        }
-        
-        newSequence->setLengthFromTimeSignature(t);
+		newSequence->setLengthFromTimeSignature(t);
 		newSequence->setTimeStampEditFormat(HiseMidiSequence::TimestampEditFormat::Ticks);
 		MidiPlayer::EditAction::writeArrayToSequence(newSequence, events, 120, 44100.0);
 
@@ -1130,9 +1125,8 @@ ScriptingObjects::ScriptDownloadObject::ScriptDownloadObject(ProcessorWithScript
 	data = new DynamicObject();
 	addConstant("data", var(data.get()));
 
-	callback.incRefCount();
 	callback.setThisObject(this);
-	
+	callback.incRefCount();
 
 	ADD_API_METHOD_0(resume);
 	ADD_API_METHOD_0(stop);
@@ -2820,7 +2814,7 @@ String ScriptingObjects::ScriptingModulator::exportState()
 {
 	if (checkValidObject())
 	{
-		return ProcessorHelpers::getBase64String(mod, false);
+		return ProcessorHelpers::getBase64String(mod);
 	}
 
 	return String();
@@ -3123,7 +3117,7 @@ String ScriptingObjects::ScriptingEffect::exportState()
 {
 	if (checkValidObject())
 	{
-		return ProcessorHelpers::getBase64String(effect, false);
+		return ProcessorHelpers::getBase64String(effect);
 	}
 
 	return String();
@@ -3864,7 +3858,7 @@ String ScriptingObjects::ScriptingSynth::exportState()
 {
 	if (checkValidObject())
 	{
-		return ProcessorHelpers::getBase64String(synth, false);
+		return ProcessorHelpers::getBase64String(synth);
 	}
 
 	return String();
@@ -6285,7 +6279,6 @@ struct ScriptingObjects::ScriptBackgroundTask::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptBackgroundTask, callOnBackgroundThread);
 	API_METHOD_WRAPPER_1(ScriptBackgroundTask, killVoicesAndCall);
 	API_METHOD_WRAPPER_0(ScriptBackgroundTask, getProgress);
-	API_VOID_METHOD_WRAPPER_3(ScriptBackgroundTask, runProcess);
 	API_VOID_METHOD_WRAPPER_1(ScriptBackgroundTask, setProgress);
 	API_VOID_METHOD_WRAPPER_1(ScriptBackgroundTask, setTimeOut);
 	API_VOID_METHOD_WRAPPER_1(ScriptBackgroundTask, setStatusMessage);
@@ -6305,7 +6298,6 @@ ScriptingObjects::ScriptBackgroundTask::ScriptBackgroundTask(ProcessorWithScript
 	ADD_API_METHOD_0(shouldAbort);
 	ADD_API_METHOD_2(setProperty);
 	ADD_API_METHOD_1(getProperty);
-	ADD_API_METHOD_3(runProcess);
 	ADD_API_METHOD_1(setFinishCallback);
 	ADD_API_METHOD_1(callOnBackgroundThread);
 	ADD_API_METHOD_1(killVoicesAndCall);
@@ -6374,9 +6366,8 @@ void ScriptingObjects::ScriptBackgroundTask::setFinishCallback(var newFinishCall
 	if (HiseJavascriptEngine::isJavascriptFunction(newFinishCallback))
 	{
 		finishCallback = WeakCallbackHolder(getScriptProcessor(), this, newFinishCallback, 2);
-		finishCallback.incRefCount();
 		finishCallback.setThisObject(this);
-		
+		finishCallback.incRefCount();
 		finishCallback.addAsSource(this, "onTaskFinished");
 	}
 }
@@ -6387,9 +6378,6 @@ void ScriptingObjects::ScriptBackgroundTask::callOnBackgroundThread(var backgrou
 	{
 		callFinishCallback(false, false);
 		stopThread(timeOut);
-
-		childProcessData = nullptr;
-
 		currentTask = WeakCallbackHolder(getScriptProcessor(), this, backgroundTaskFunction, 1);
 		currentTask.incRefCount();
 		currentTask.addAsSource(this, "backgroundFunction");
@@ -6427,121 +6415,6 @@ bool ScriptingObjects::ScriptBackgroundTask::killVoicesAndCall(var loadingFuncti
 	return false;
 }
 
-ScriptingObjects::ScriptBackgroundTask::ChildProcessData::ChildProcessData(ScriptBackgroundTask& parent_, const String& command_, const var& args_, const var& pf) :
-	processLogFunction(parent_.getScriptProcessor(), &parent_, pf, 3),
-	parent(parent_)
-{
-	processLogFunction.incRefCount();
-	processLogFunction.setHighPriority();
-
-	args.add(command_);
-
-	if (args_.isArray())
-	{
-		for (const auto& v : *args_.getArray())
-			args.add(v.toString());
-	}
-	else if (args_.isString())
-	{
-		args.addArray(StringArray::fromTokens(args_.toString(), " ", "\"\'"));
-	}
-
-	args.removeEmptyStrings(true);
-	args.trim();
-}
-
-void ScriptingObjects::ScriptBackgroundTask::ChildProcessData::run()
-{
-	if (args.isEmpty())
-	{
-		debugError(dynamic_cast<Processor*>(parent.getScriptProcessor()), "no args");
-		return;
-	}
-
-	childProcess.start(args, ChildProcess::StreamFlags::wantStdErr | ChildProcess::StreamFlags::wantStdOut);
-
-	var a[3];
-
-	a[0] = &parent;
-	a[1] = false;
-	
-	String currentLine;
-
-	while (childProcess.isRunning())
-	{
-		if (parent.shouldAbort())
-		{
-			childProcess.kill();
-			break;
-		}
-		
-		char newChar;
-
-		auto numBytesRead = childProcess.readProcessOutput(&newChar, 1);
-
-		if (numBytesRead == 1)
-		{
-			currentLine << newChar;
-
-			if (newChar == '\n' || newChar == '\r')
-			{
-				if (currentLine.trim().isNotEmpty())
-				{
-					a[2] = var(currentLine);
-					callLog(a);
-				}
-
-				currentLine = {};
-
-				parent.wait(10);
-			}
-		}
-			
-		parent.wait(1);
-	}
-
-	currentLine << childProcess.readAllProcessOutput();
-
-	if (!currentLine.isEmpty())
-	{
-		a[2] = var(currentLine);
-		callLog(a);
-	}
-		
-
-	a[1] = true;
-	a[2] = (int)childProcess.getExitCode();
-
-	callLog(a);
-}
-
-
-
-void ScriptingObjects::ScriptBackgroundTask::ChildProcessData::callLog(var* a)
-{
-	if (processLogFunction)
-	{
-		auto ok = processLogFunction.callSync(a, 3);
-
-		if (!ok.wasOk())
-			debugError(dynamic_cast<Processor*>(parent.getScriptProcessor()), ok.getErrorMessage());
-	}
-}
-
-void ScriptingObjects::ScriptBackgroundTask::runProcess(var command, var args, var logFunction)
-{
-	if (HiseJavascriptEngine::isJavascriptFunction(logFunction))
-	{
-		callFinishCallback(false, false);
-		stopThread(timeOut);
-
-		currentTask.clear();
-		childProcessData = new ChildProcessData(*this, command.toString(), args, logFunction);
-
-		startThread(8);
-	}
-}
-
 void ScriptingObjects::ScriptBackgroundTask::setProgress(double p)
 {
 	progress.store(jlimit(0.0, 1.0, p));
@@ -6568,36 +6441,28 @@ void ScriptingObjects::ScriptBackgroundTask::setStatusMessage(String m)
 
 void ScriptingObjects::ScriptBackgroundTask::run()
 {
-	if (currentTask || childProcessData)
+	if (currentTask)
 	{
 		if (forwardToLoadingThread)
 		{
 			getScriptProcessor()->getMainController_()->getSampleManager().setPreloadFlag();
 		}
 
-		if (childProcessData != nullptr)
-		{
-			childProcessData->run();
-			childProcessData = nullptr;
+		var t(this);
 
-		}
-		else
-		{
-			var t(this);
-
-			auto r = currentTask.callSync(&t, 1);
+		auto r = currentTask.callSync(&t, 1);
 
 #if USE_BACKEND
-			if (!r.wasOk())
-				getScriptProcessor()->getMainController_()->writeToConsole(r.getErrorMessage(), 1, dynamic_cast<Processor*>(getScriptProcessor()));
+		if (!r.wasOk())
+			getScriptProcessor()->getMainController_()->writeToConsole(r.getErrorMessage(), 1, dynamic_cast<Processor*>(getScriptProcessor()));
 #endif
-		}
 
 		if (forwardToLoadingThread)
 		{
 			getScriptProcessor()->getMainController_()->getSampleManager().clearPreloadFlag();
 		}
 	}
+
 
 	callFinishCallback(true, threadShouldExit());
 }
@@ -7329,8 +7194,7 @@ struct ScriptingObjects::GlobalCableReference::DummyTarget : public scriptnode::
 ScriptingObjects::GlobalCableReference::GlobalCableReference(ProcessorWithScriptingContent* ps, var c) :
 	ConstScriptingObject(ps, 0),
 	cable(c),
-	dummyTarget(new DummyTarget(*this)),
-	inputRange(0.0, 1.0)
+	dummyTarget(new DummyTarget(*this))
 {
 	ADD_API_METHOD_0(getValue);
 	ADD_API_METHOD_0(getValueNormalised);
@@ -7343,8 +7207,6 @@ ScriptingObjects::GlobalCableReference::GlobalCableReference(ProcessorWithScript
 	ADD_API_METHOD_3(connectToMacroControl);
     ADD_API_METHOD_2(connectToGlobalModulator);
     ADD_API_METHOD_3(connectToModuleParameter);
-
-	inputRange.checkIfIdentity();
 }
 
 ScriptingObjects::GlobalCableReference::~GlobalCableReference()
@@ -7381,21 +7243,20 @@ void ScriptingObjects::GlobalCableReference::setValue(double inputWithinRange)
 void ScriptingObjects::GlobalCableReference::setRange(double min, double max)
 {
 	inputRange = scriptnode::InvertableParameterRange(min, max);
-	inputRange.checkIfIdentity();
 }
 
 void ScriptingObjects::GlobalCableReference::setRangeWithSkew(double min, double max, double midPoint)
 {
 	inputRange = scriptnode::InvertableParameterRange(min, max);
 	inputRange.setSkewForCentre(midPoint);
-	inputRange.checkIfIdentity();
 }
 
 void ScriptingObjects::GlobalCableReference::setRangeWithStep(double min, double max, double stepSize)
 {
 	inputRange = scriptnode::InvertableParameterRange(min, max, stepSize);
-	inputRange.checkIfIdentity();
 }
+
+
 
 struct ScriptingObjects::GlobalCableReference::Callback: public scriptnode::routing::GlobalRoutingManager::CableTargetBase,
 														 public PooledUIUpdater::SimpleTimer
@@ -7482,8 +7343,6 @@ struct ScriptingObjects::GlobalCableReference::Callback: public scriptnode::rout
 
 	void sendValue(double v) override
 	{
-		v = parent.inputRange.convertFrom0to1(v, false);
-
 		if (sync)
 		{
             var a(v);
@@ -7548,12 +7407,9 @@ struct MacroCableTarget : public scriptnode::routing::GlobalRoutingManager::Cabl
 
 	void sendValue(double v) override
 	{
-		if (macroData == nullptr)
-			macroData = getMainController()->getMainSynthChain()->getMacroControlData(macroIndex);
-
 		auto newValue = 127.0f * jlimit(0.0f, 1.0f, (float)v);
 		
-		if ((!filterRepetitions || lastValue != newValue) && macroData != nullptr)
+		if (!filterRepetitions || lastValue != newValue)
 		{
 			lastValue = newValue;
 			macroData->setValue(newValue);
@@ -7623,14 +7479,12 @@ void ScriptingObjects::GlobalCableReference::connectToGlobalModulator(const Stri
 struct ProcessorParameterTarget : public scriptnode::routing::GlobalRoutingManager::CableTargetBase,
                                   public ControlledObject
 {
-    ProcessorParameterTarget(Processor* p, int index, const scriptnode::InvertableParameterRange& range, double smoothingTimeMs) :
+    ProcessorParameterTarget(Processor* p, int index, const scriptnode::InvertableParameterRange& range) :
         ControlledObject(p->getMainController()),
         targetRange(range),
         parameterIndex(index),
         processor(p)
     {
-		lastValue.prepare(p->getSampleRate() / (double)p->getLargestBlockSize(), smoothingTimeMs);
-
         id << processor->getId();
         id << "::";
         id << processor->parameterNames[index].toString();
@@ -7649,8 +7503,7 @@ struct ProcessorParameterTarget : public scriptnode::routing::GlobalRoutingManag
 
     void sendValue(double v) override
     {
-		lastValue.set(v);
-        auto newValue = jlimit(0.0f, 1.0f, (float)lastValue.advance());
+        auto newValue = jlimit(0.0f, 1.0f, (float)v);
         auto cv = targetRange.convertFrom0to1(newValue, true);
         processor->setAttribute(parameterIndex, cv, sendNotification);
     }
@@ -7666,7 +7519,6 @@ struct ProcessorParameterTarget : public scriptnode::routing::GlobalRoutingManag
     const scriptnode::InvertableParameterRange targetRange;
     WeakReference<Processor> processor;
     String id;
-	sdouble lastValue;
 };
 
 void ScriptingObjects::GlobalCableReference::connectToModuleParameter(const String& processorId, var parameterIndex, var targetRange)
@@ -7726,10 +7578,8 @@ void ScriptingObjects::GlobalCableReference::connectToModuleParameter(const Stri
             
             auto range = scriptnode::RangeHelpers::getDoubleRange(targetRange);
             
-			auto smoothing = (double)targetRange.getProperty("SmoothingTime", 0.0);
-
             if (indexToUse != -1)
-                c->addTarget(new ProcessorParameterTarget(p, indexToUse, range, smoothing));
+                c->addTarget(new ProcessorParameterTarget(p, indexToUse, range));
         }
     }
     else

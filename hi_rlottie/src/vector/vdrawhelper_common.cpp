@@ -65,10 +65,10 @@ static void color_SourceOver(uint32_t *dest, int length, uint32_t color,
   dest = d * sa * ca + d * cia
        = d * (sa * ca + cia)
 */
-static void color_DestinationIn(uint32_t *dest, int length, uint32_t color,
-                                uint32_t alpha)
+static void color_DestinationIn(uint *dest, int length, uint color,
+                                uint alpha)
 {
-    uint32_t a = vAlpha(color);
+    uint a = vAlpha(color);
     if (alpha != 255) {
         a = BYTE_MUL(a, alpha) + 255 - alpha;
     }
@@ -82,10 +82,10 @@ static void color_DestinationIn(uint32_t *dest, int length, uint32_t color,
   dest = d * sia * ca + d * cia
        = d * (sia * ca + cia)
 */
-static void color_DestinationOut(uint32_t *dest, int length, uint32_t color,
-                                 uint32_t alpha)
+static void color_DestinationOut(uint *dest, int length, uint color,
+                                 uint alpha)
 {
-    uint32_t a = vAlpha(~color);
+    uint a = vAlpha(~color);
     if (alpha != 255) a = BYTE_MUL(a, alpha) + 255 - alpha;
     for (int i = 0; i < length; ++i) {
         dest[i] = BYTE_MUL(dest[i], a);
@@ -96,9 +96,9 @@ static void src_Source(uint32_t *dest, int length, const uint32_t *src,
                        uint32_t alpha)
 {
     if (alpha == 255) {
-        memcpy(dest, src, size_t(length) * sizeof(uint32_t));
+        memcpy(dest, src, size_t(length) * sizeof(uint));
     } else {
-        uint32_t ialpha = 255 - alpha;
+        uint ialpha = 255 - alpha;
         for (int i = 0; i < length; ++i) {
             dest[i] =
                 interpolate_pixel(src[i], alpha, dest[i], ialpha);
@@ -112,7 +112,7 @@ static void src_Source(uint32_t *dest, int length, const uint32_t *src,
 static void src_SourceOver(uint32_t *dest, int length, const uint32_t *src,
                            uint32_t alpha)
 {
-    uint32_t s, sia;
+    uint s, sia;
 
     if (alpha == 255) {
         for (int i = 0; i < length; ++i) {
@@ -136,33 +136,33 @@ static void src_SourceOver(uint32_t *dest, int length, const uint32_t *src,
     }
 }
 
-static void src_DestinationIn(uint32_t *dest, int length, const uint32_t *src,
-                              uint32_t alpha)
+static void src_DestinationIn(uint *dest, int length, const uint *src,
+                              uint alpha)
 {
     if (alpha == 255) {
         for (int i = 0; i < length; ++i) {
             dest[i] = BYTE_MUL(dest[i], vAlpha(src[i]));
         }
     } else {
-        uint32_t cia = 255 - alpha;
+        uint cia = 255 - alpha;
         for (int i = 0; i < length; ++i) {
-            uint32_t a = BYTE_MUL(vAlpha(src[i]), alpha) + cia;
+            uint a = BYTE_MUL(vAlpha(src[i]), alpha) + cia;
             dest[i] = BYTE_MUL(dest[i], a);
         }
     }
 }
 
-static void src_DestinationOut(uint32_t *dest, int length, const uint32_t *src,
-                               uint32_t alpha)
+static void src_DestinationOut(uint *dest, int length, const uint *src,
+                               uint alpha)
 {
     if (alpha == 255) {
         for (int i = 0; i < length; ++i) {
             dest[i] = BYTE_MUL(dest[i], vAlpha(~src[i]));
         }
     } else {
-        uint32_t cia = 255 - alpha;
+        uint cia = 255 - alpha;
         for (int i = 0; i < length; ++i) {
-            uint32_t sia = BYTE_MUL(vAlpha(~src[i]), alpha) + cia;
+            uint sia = BYTE_MUL(vAlpha(~src[i]), alpha) + cia;
             dest[i] = BYTE_MUL(dest[i], sia);
         }
     }

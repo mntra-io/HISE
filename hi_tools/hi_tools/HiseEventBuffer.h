@@ -437,18 +437,42 @@ public:
 
 	struct ChannelFilterData
 	{
-		ChannelFilterData();
+		ChannelFilterData():
+			enableAllChannels(true)
+		{
+			for (int i = 0; i < 16; i++) activeChannels[i] = false;
+		}
 
-		void restoreFromData(int data);
+		void restoreFromData(int data)
+		{
+			BigInteger d(data);
 
-		int exportData() const;
+			enableAllChannels = d[0];
+			for (int i = 0; i < 16; i++) activeChannels[i] = d[i + 1];
+		}
+		
+		int exportData() const
+		{
+			BigInteger d;
 
-		void setEnableAllChannels(bool shouldBeEnabled) noexcept;
-		bool areAllChannelsEnabled() const noexcept;
+			d.setBit(0, enableAllChannels);
+			for (int i = 0; i < 16; i++) d.setBit(i + 1, activeChannels[i]);
 
-		void setEnableMidiChannel(int channelIndex, bool shouldBeEnabled) noexcept;
+			return d.toInteger();
+		}
 
-		bool isChannelEnabled(int channelIndex) const noexcept;
+		void setEnableAllChannels(bool shouldBeEnabled) noexcept { enableAllChannels = shouldBeEnabled; }
+		bool areAllChannelsEnabled() const noexcept { return enableAllChannels; }
+
+		void setEnableMidiChannel(int channelIndex, bool shouldBeEnabled) noexcept
+		{
+			activeChannels[channelIndex] = shouldBeEnabled;
+		}
+
+		bool isChannelEnabled(int channelIndex) const noexcept
+		{
+			return activeChannels[channelIndex];
+		}
 
 		bool activeChannels[16];
 		bool enableAllChannels;
@@ -486,25 +510,97 @@ public:
 	{
 	public:
 
-		EventStack();
+		EventStack()
+		{
+			clear();
+		}
 
 		/** Inserts an event. */
-		void push(const HiseEvent &newEvent);
+		void push(const HiseEvent &newEvent)
+		{
+			size = jmin<int>(16, size + 1);
+
+			data[size-1] = HiseEvent(newEvent);
+
+		}
 
 		/** Removes and returns an event. */
-		HiseEvent pop();
+		HiseEvent pop()
+		{
+			if (size == 0) return HiseEvent();
 
-		bool peekNoteOnForEventId(uint16 eventId, HiseEvent& eventToFill);
+			HiseEvent returnEvent = data[size - 1];
+			data[size - 1] = HiseEvent();
 
-		bool popNoteOnForEventId(uint16 eventId, HiseEvent& eventToFill);
+			size = jmax<int>(0, size-1);
 
-		void clear();
+			return returnEvent;
+		}
 
-		const HiseEvent* peek() const;
+		bool peekNoteOnForEventId(uint16 eventId, HiseEvent& eventToFill)
+		{
+			for (int i = 0; i < size; i++)
+			{
+				if (data[i].getEventId() == eventId)
+				{
+					eventToFill = data[i];
+					return true;
+				}
+			}
 
-		HiseEvent* peek();
+			return false;
+		}
 
-		int getNumUsed();;
+		bool popNoteOnForEventId(uint16 eventId, HiseEvent& eventToFill)
+		{
+			int thisIndex = -1;
+
+			for (int i = 0; i < size; i++)
+			{
+				if (data[i].getEventId() == eventId)
+				{
+					thisIndex = i;
+					break;
+				}
+			}
+
+			if (thisIndex == -1) return false;
+			
+			eventToFill = data[thisIndex];
+
+			for (int i = thisIndex; i < size-1; i++)
+			{
+				data[i] = data[i + 1];
+			}
+
+			data[size-1] = HiseEvent();
+			size--;
+
+			return true;
+		}
+
+		void clear()
+		{
+			for (int i = 0; i < 16; i++)
+				data[i] = HiseEvent();
+			size = 0;
+		}
+
+		const HiseEvent* peek() const
+		{
+			if (size == 0) return nullptr;
+
+			return &data[size - 1];
+		}
+
+		HiseEvent* peek()
+		{ 
+			if (size == 0) return nullptr;
+
+			return &data[size - 1];
+		}
+
+		int getNumUsed() { return size; };
 
 	private:
 
@@ -514,7 +610,29 @@ public:
 
 	HiseEventBuffer();
 
-	bool operator==(const HiseEventBuffer& other);
+	bool operator==(const HiseEventBuffer& other)
+	{
+		if (other.getNumUsed() != numUsed) return false;
+
+		const HiseEventBuffer::Iterator iter(other);
+
+		for (int i = 0; i < numUsed; i++)
+		{
+			const HiseEvent* e = iter.getNextConstEventPointer();
+
+			if (e == nullptr)
+			{
+				jassertfalse;
+				return false;
+			}
+
+			if (!(*e == buffer[i])) 
+				return false;
+			
+		}
+
+		return true;
+	}
 
 	/** Clears the buffer. */
 	void clear();
@@ -644,17 +762,20 @@ public:
 
 	struct ChokeListener
 	{
-		virtual ~ChokeListener();;
+		virtual ~ChokeListener() {};
 
 		virtual void chokeMessageSent() = 0;
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ChokeListener);
 
-		int getChokeGroup() const;;
+		int getChokeGroup() const { return chokeGroup; };
 
 	protected:
 
-		void setChokeGroup(int newChokeGroup);
+		void setChokeGroup(int newChokeGroup)
+		{
+			chokeGroup = newChokeGroup;
+		}
 
 	private:
 
@@ -681,14 +802,23 @@ public:
 	HiseEvent popNoteOnFromEventId(uint16 eventId);
 
 	/** Checks whether the event ID points to an active artificial event. */
-	bool isArtificialEventId(uint16 eventId) const;
+	bool isArtificialEventId(uint16 eventId) const
+	{
+		return !artificialEvents[eventId % HISE_EVENT_ID_ARRAY_SIZE].isEmpty();
+	}
 
 	/** Sends a choke message to all registered listeners for the given event. */
 	void sendChokeMessage(ChokeListener* source, const HiseEvent& e);
 
-	void addChokeListener(ChokeListener* l);
+	void addChokeListener(ChokeListener* l)
+	{
+		chokeListeners.addIfNotAlreadyThere(l);
+	}
 
-	void removeChokeListener(ChokeListener* l);
+	void removeChokeListener(ChokeListener* l)
+	{
+		chokeListeners.removeAllInstancesOf(l);
+	}
 
 	// ===========================================================================================================
 

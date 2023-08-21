@@ -140,8 +140,6 @@ void SearchableListComponent::refreshDisplayedItems()
 	}
 
 	internalContainer->setSize(getWidth(), height);
-
-	repaintAllItems();
 }
 
 
@@ -337,19 +335,7 @@ void SearchableListComponent::Item::matchAgainstSearch(const String &stringToMat
 	}
 	else
 	{
-        if(searchKeywords.contains(";"))
-        {
-            auto list = StringArray::fromTokens(searchKeywords, ";", "");
-            
-            includedInSearch = false;
-            
-            for(auto sa: list)
-                includedInSearch |= FuzzySearcher::fitsSearch(stringToMatch, sa, fuzzyness);
-        }
-		else
-        {
-            includedInSearch = FuzzySearcher::fitsSearch(stringToMatch, searchKeywords, fuzzyness);
-        }
+		includedInSearch = FuzzySearcher::fitsSearch(stringToMatch, searchKeywords, fuzzyness);
 	}
 }
 

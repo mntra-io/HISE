@@ -293,39 +293,195 @@ class GlContextHolder
 {
 public:
 
-	GlContextHolder(juce::Component& topLevelComponent);
+	GlContextHolder(juce::Component& topLevelComponent)
+		: parent(topLevelComponent)
+	{
+		context.setRenderer(this);
+		context.setContinuousRepainting(true);
+		context.setComponentPaintingEnabled(true);
+		context.attachTo(parent);
+	}
 
 	//==============================================================================
 	// The context holder MUST explicitely call detach in their destructor
-	void detach();
+	void detach()
+	{
+		jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+		const int n = clients.size();
+		for (int i = 0; i < n; ++i)
+			if (juce::Component* comp = clients.getReference(i).c)
+				comp->removeComponentListener(this);
+
+		context.detach();
+		context.setRenderer(nullptr);
+	}
 
 	//==============================================================================
 	// Clients MUST call unregisterOpenGlRenderer manually in their destructors!!
-	void registerOpenGlRenderer(juce::Component* child);
+	void registerOpenGlRenderer(juce::Component* child)
+	{
+		jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
 
-	void unregisterOpenGlRenderer(juce::Component* child);
+		if (dynamic_cast<juce::OpenGLRenderer*> (child) != nullptr)
+		{
+			if (findClientIndexForComponent(child) < 0)
+			{
+				clients.add(Client(child, (parent.isParentOf(child) ? Client::State::running : Client::State::suspended)));
+				child->addComponentListener(this);
+			}
+		}
+		else
+			jassertfalse;
+	}
 
-	void setBackgroundColour(const juce::Colour c);
+	void unregisterOpenGlRenderer(juce::Component* child)
+	{
+		jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+		const int index = findClientIndexForComponent(child);
+
+		if (index >= 0)
+		{
+			Client& client = clients.getReference(index);
+			{
+				juce::ScopedLock stateChangeLock(stateChangeCriticalSection);
+				client.nextState = Client::State::suspended;
+			}
+
+			child->removeComponentListener(this);
+			context.executeOnGLThread([this](juce::OpenGLContext&)
+				{
+					checkComponents(false, false);
+				}, true);
+			client.c = nullptr;
+
+			clients.remove(index);
+		}
+	}
+
+	void setBackgroundColour(const juce::Colour c)
+	{
+		backgroundColour = c;
+	}
 
 	juce::OpenGLContext context;
 
 private:
 	//==============================================================================
-	void checkComponents(bool isClosing, bool isDrawing);
+	void checkComponents(bool isClosing, bool isDrawing)
+	{
+		juce::Array<juce::Component*> initClients, runningClients;
+
+		{
+			juce::ScopedLock arrayLock(clients.getLock());
+			juce::ScopedLock stateLock(stateChangeCriticalSection);
+
+			const int n = clients.size();
+
+			for (int i = 0; i < n; ++i)
+			{
+				Client& client = clients.getReference(i);
+				if (client.c != nullptr)
+				{
+					Client::State nextState = (isClosing ? Client::State::suspended : client.nextState);
+
+					if (client.currentState == Client::State::running   && nextState == Client::State::running)   runningClients.add(client.c);
+					else if (client.currentState == Client::State::suspended && nextState == Client::State::running)   initClients.add(client.c);
+					else if (client.currentState == Client::State::running   && nextState == Client::State::suspended)
+					{
+						dynamic_cast<juce::OpenGLRenderer*> (client.c)->openGLContextClosing();
+					}
+
+					client.currentState = nextState;
+				}
+			}
+		}
+
+		for (int i = 0; i < initClients.size(); ++i)
+			dynamic_cast<juce::OpenGLRenderer*> (initClients.getReference(i))->newOpenGLContextCreated();
+
+		if (runningClients.size() > 0 && isDrawing)
+		{
+			const float displayScale = static_cast<float> (context.getRenderingScale());
+			const juce::Rectangle<int> parentBounds = (parent.getLocalBounds().toFloat() * displayScale).getSmallestIntegerContainer();
+
+			for (int i = 0; i < runningClients.size(); ++i)
+			{
+				juce::Component* comp = runningClients.getReference(i);
+				
+				juce::Rectangle<int> r = (parent.getLocalArea(comp, comp->getLocalBounds()).toFloat() * displayScale).getSmallestIntegerContainer();
+				juce::gl::glViewport((GLint)r.getX(),
+					(GLint)parentBounds.getHeight() - (GLint)r.getBottom(),
+					(GLsizei)r.getWidth(), (GLsizei)r.getHeight());
+				juce::OpenGLHelpers::clear(backgroundColour);
+
+				dynamic_cast<juce::OpenGLRenderer*> (comp)->renderOpenGL();
+			}
+		}
+	}
 
 	//==============================================================================
-	void componentParentHierarchyChanged(juce::Component& component) override;
+	void componentParentHierarchyChanged(juce::Component& component) override
+	{
+		if (Client* client = findClientForComponent(&component))
+		{
+			juce::ScopedLock stateChangeLock(stateChangeCriticalSection);
 
-	void componentVisibilityChanged(juce::Component& component) override;
+			client->nextState = (parent.isParentOf(&component) && component.isVisible() ? Client::State::running : Client::State::suspended);
+		}
+	}
 
-	void componentBeingDeleted(juce::Component& component) override;
+	void componentVisibilityChanged(juce::Component& component) override
+	{
+		if (Client* client = findClientForComponent(&component))
+		{
+			juce::ScopedLock stateChangeLock(stateChangeCriticalSection);
+
+			client->nextState = (parent.isParentOf(&component) && component.isVisible() ? Client::State::running : Client::State::suspended);
+		}
+	}
+
+	void componentBeingDeleted(juce::Component& component) override
+	{
+		const int index = findClientIndexForComponent(&component);
+
+		if (index >= 0)
+		{
+			Client& client = clients.getReference(index);
+
+			// You didn't call unregister before deleting this component
+			jassert(client.nextState == Client::State::suspended);
+			client.nextState = Client::State::suspended;
+
+			component.removeComponentListener(this);
+			context.executeOnGLThread([this](juce::OpenGLContext&)
+				{
+					checkComponents(false, false);
+				}, true);
+
+			client.c = nullptr;
+
+			clients.remove(index);
+		}
+	}
 
 	//==============================================================================
-	void newOpenGLContextCreated() override;
+	void newOpenGLContextCreated() override
+	{
+		checkComponents(false, false);
+	}
 
-	void renderOpenGL() override;
+	void renderOpenGL() override
+	{
+		juce::OpenGLHelpers::clear(backgroundColour);
+		checkComponents(false, true);
+	}
 
-	void openGLContextClosing() override;
+	void openGLContextClosing() override
+	{
+		checkComponents(true, false);
+	}
 
 	//==============================================================================
 	juce::Component& parent;
@@ -338,7 +494,8 @@ private:
 			running
 		};
 
-		Client(juce::Component* comp, State nextStateToUse = State::suspended);
+		Client(juce::Component* comp, State nextStateToUse = State::suspended)
+			: c(comp), currentState(State::suspended), nextState(nextStateToUse) {}
 
 
 		juce::Component* c = nullptr;
@@ -349,9 +506,24 @@ private:
 	juce::Array<Client, juce::CriticalSection> clients;
 
 	//==============================================================================
-	int findClientIndexForComponent(juce::Component* comp);
+	int findClientIndexForComponent(juce::Component* comp)
+	{
+		const int n = clients.size();
+		for (int i = 0; i < n; ++i)
+			if (comp == clients.getReference(i).c)
+				return i;
 
-	Client* findClientForComponent(juce::Component* comp);
+		return -1;
+	}
+
+	Client* findClientForComponent(juce::Component* comp)
+	{
+		const int index = findClientIndexForComponent(comp);
+		if (index >= 0)
+			return &clients.getReference(index);
+
+		return nullptr;
+	}
 
 	//==============================================================================
 	juce::Colour backgroundColour{ juce::Colours::black };
@@ -360,13 +532,61 @@ private:
 
 struct TopLevelWindowWithKeyMappings
 {
-	static KeyPress getKeyPressFromString(Component* c, const String& s);
+	static KeyPress getKeyPressFromString(Component* c, const String& s)
+	{
+		if (s.isEmpty())
+			return {};
 
-	static void addShortcut(Component* c, const String& category, const Identifier& id, const String& description, const KeyPress& k);
+		if (s.startsWith("$"))
+		{
+			auto id = Identifier(s.removeCharacters("$"));
+			return getFirstKeyPress(c, id);
+		}
+		else
+			return KeyPress::createFromDescription(s);
+	}
 
-	static KeyPress getFirstKeyPress(Component* c, const Identifier& id);
+	static void addShortcut(Component* c, const String& category, const Identifier& id, const String& description, const KeyPress& k)
+	{
+		if (auto t = getFromComponent(c))
+		{
+			if (t->shortcutIds.contains(id))
+				return;
 
-	static bool matches(Component* c, const KeyPress& k, const Identifier& id);
+			auto info = ApplicationCommandInfo(t->shortcutIds.size() + 1);
+			t->shortcutIds.add(id);
+
+			info.categoryName = category;
+			info.shortName << description << " ($" << id.toString() << ")";
+			info.defaultKeypresses.add(k);
+			t->m.registerCommand(info);
+			t->keyMap.resetToDefaultMapping(info.commandID);
+		}
+	}
+
+	static KeyPress getFirstKeyPress(Component* c, const Identifier& id)
+	{
+		if (auto t = getFromComponent(c))
+		{
+			if (auto idx = t->shortcutIds.indexOf(id) + 1)
+				return t->keyMap.getKeyPressesAssignedToCommand(idx).getFirst();
+		}
+
+		return KeyPress();
+	}
+
+	static bool matches(Component* c, const KeyPress& k, const Identifier& id)
+	{
+		if (auto t = getFromComponent(c))
+		{
+			if (auto idx = t->shortcutIds.indexOf(id) + 1)
+			{
+				return t->keyMap.getKeyPressesAssignedToCommand(idx).contains(k);
+			}
+		}
+
+		return false;
+	}
 
 	/*
 	static KeyPress getKeyPress(Component* c, const Identifier& id)
@@ -381,20 +601,47 @@ struct TopLevelWindowWithKeyMappings
 	}
 	*/
 
-	KeyPressMappingSet& getKeyPressMappingSet();;
+	KeyPressMappingSet& getKeyPressMappingSet() { return keyMap; };
 
 protected:
 
-	TopLevelWindowWithKeyMappings();;
+	TopLevelWindowWithKeyMappings() :
+		keyMap(m)
+	{};
 
-	virtual ~TopLevelWindowWithKeyMappings();;
+	virtual ~TopLevelWindowWithKeyMappings()
+	{
+		jassert(loaded);
+		// If you hit this assertion, you need to store the data in your
+		// sub class constructor
+		jassert(saved);
+	};
 
 	/** Call this function and initialise all key presses that you want to define. */
-	virtual void initialiseAllKeyPresses();
+	virtual void initialiseAllKeyPresses()
+	{
+		initialised = true;
+	}
 
-	void saveKeyPressMap();
+	void saveKeyPressMap()
+	{
+		auto f = getKeyPressSettingFile();
+		auto xml = keyMap.createXml(true);
+		f.replaceWithText(xml->createDocument(""));
+		saved = true;
+	}
 
-	void loadKeyPressMap();
+	void loadKeyPressMap()
+	{
+		initialiseAllKeyPresses();
+
+		auto f = getKeyPressSettingFile();
+
+		if (auto xml = XmlDocument::parse(f))
+			keyMap.restoreFromXml(*xml);
+
+		loaded = true;
+	}
 
 	virtual File getKeyPressSettingFile() const = 0;
 
@@ -406,7 +653,13 @@ private:
 	
 	bool loaded = false;
 
-	static TopLevelWindowWithKeyMappings* getFromComponent(Component* c);
+	static TopLevelWindowWithKeyMappings* getFromComponent(Component* c)
+	{
+		if (auto same = dynamic_cast<TopLevelWindowWithKeyMappings*>(c))
+			return same;
+
+		return c->findParentComponentOfClass<TopLevelWindowWithKeyMappings>();
+	}
 
 	Array<Identifier> shortcutIds;
 	juce::ApplicationCommandManager m;
@@ -419,32 +672,66 @@ private:
 	This */
 struct TopLevelWindowWithOptionalOpenGL
 {
-	virtual ~TopLevelWindowWithOptionalOpenGL();
+	virtual ~TopLevelWindowWithOptionalOpenGL()
+	{
+		// Must call detachOpenGL() in derived destructor!
+		
+	}
 
 	/** Use this method instead of getTopLevelComponent() to find the topmost component that might have an OpenGL context attached. */
-	static Component* findRoot(Component* c);
+	static Component* findRoot(Component* c)
+	{
+		return dynamic_cast<Component*>(c->findParentComponentOfClass<TopLevelWindowWithOptionalOpenGL>());
+	}
 
 	struct ScopedRegisterState
 	{
-		ScopedRegisterState(TopLevelWindowWithOptionalOpenGL& t_, Component* c_);
+		ScopedRegisterState(TopLevelWindowWithOptionalOpenGL& t_, Component* c_) :
+			t(t_),
+			c(c_)
+		{
+			if (t.contextHolder != nullptr)
+				t.contextHolder->registerOpenGlRenderer(c);
+		}
 
-		~ScopedRegisterState();;
+		~ScopedRegisterState()
+		{
+			if (t.contextHolder != nullptr)
+				t.contextHolder->unregisterOpenGlRenderer(c);
+		};
 
 		TopLevelWindowWithOptionalOpenGL& t;
 		Component* c;
 	};
 
-    bool isOpenGLEnabled() const;
-
+    bool isOpenGLEnabled() const { return contextHolder != nullptr; }
+    
 protected:
 
-	void detachOpenGl();
+	void detachOpenGl()
+	{
+		if (contextHolder != nullptr)
+			contextHolder->detach();
+	}
 
-	void setEnableOpenGL(Component* c);
+	void setEnableOpenGL(Component* c)
+	{
+		contextHolder = new GlContextHolder(*c);
+	}
 
-	void addChildComponentWithOpenGLRenderer(Component* c);
+	void addChildComponentWithOpenGLRenderer(Component* c)
+	{
+		if (contextHolder != nullptr)
+		{
+			contextHolder->registerOpenGlRenderer(c);
+		}
+	}
 
-	void removeChildComponentWithOpenGLRenderer(Component* c);
+	void removeChildComponentWithOpenGLRenderer(Component* c)
+	{
+		if (contextHolder != nullptr)
+			contextHolder->unregisterOpenGlRenderer(c);
+	}
 
 public:
 
@@ -459,32 +746,73 @@ public:
 
 	struct Manager
 	{
-        virtual ~Manager();;
+        virtual ~Manager() {};
         
 		virtual void suspendStateChanged(bool shouldBeSuspended) = 0;
 	};
 
-	SuspendableTimer();;
+	SuspendableTimer() :
+		internalTimer(*this)
+	{};
 
-	virtual ~SuspendableTimer();;
+	virtual ~SuspendableTimer() { internalTimer.stopTimer(); };
 
-	void startTimer(int milliseconds);
+	void startTimer(int milliseconds)
+	{
+		lastTimerInterval = milliseconds;
 
-	void stopTimer();
+#if !HISE_HEADLESS
+		if (!suspended)
+			internalTimer.startTimer(milliseconds);
+#endif
+	}
 
-	void suspendTimer(bool shouldBeSuspended);
+	void stopTimer()
+	{
+		lastTimerInterval = -1;
+
+		if (!suspended)
+		{
+			internalTimer.stopTimer();
+		}
+		else
+		{
+			// Must be stopped by suspendTimer
+			jassert(!internalTimer.isTimerRunning());
+		}
+	}
+
+	void suspendTimer(bool shouldBeSuspended)
+	{
+		if (shouldBeSuspended != suspended)
+		{
+			suspended = shouldBeSuspended;
+
+#if !HISE_HEADLESS
+			if (suspended)
+				internalTimer.stopTimer();
+			else if (lastTimerInterval != -1)
+				internalTimer.startTimer(lastTimerInterval);
+#endif
+		}
+	}
 
 	virtual void timerCallback() = 0;
 
-    bool isSuspended();
-
+    bool isSuspended()
+    {
+        return suspended;
+    }
+    
 private:
 
 	struct Internal : public Timer
 	{
-		Internal(SuspendableTimer& parent_);;
+		Internal(SuspendableTimer& parent_) :
+			parent(parent_)
+		{};
 
-		void timerCallback() override;;
+		void timerCallback() override { parent.timerCallback(); };
 
 		SuspendableTimer& parent;
 	};
@@ -504,7 +832,12 @@ class PooledUIUpdater : public SuspendableTimer
 {
 public:
 
-	PooledUIUpdater();
+	PooledUIUpdater() :
+		pendingHandlers(8192)
+	{
+        suspendTimer(false);
+		startTimer(30);
+	}
 
 	class Broadcaster;
 
@@ -512,7 +845,7 @@ public:
 	{
 	public:
 
-		virtual ~Listener();;
+		virtual ~Listener() {};
 
 		virtual void handlePooledMessage(Broadcaster* b) = 0;
 
@@ -524,21 +857,56 @@ public:
 	class SimpleTimer
 	{
 	public:
-		SimpleTimer(PooledUIUpdater* h, bool shouldStart=true);
+		SimpleTimer(PooledUIUpdater* h, bool shouldStart=true):
+			updater(h)
+		{
+			if(shouldStart)
+				start();
+		}
 
-		virtual ~SimpleTimer();
+		virtual ~SimpleTimer()
+		{
+			stop();
+		}
 
-		void start();
+		void start()
+		{
+			startOrStop(true);
+		}
 
-		void stop();
+		void stop()
+		{
+			startOrStop(false);
+		}
 
-		bool isTimerRunning() const;;
+		bool isTimerRunning() const { return isRunning; };
 
 		virtual void timerCallback() = 0;
 
 	private:
 
-		void startOrStop(bool shouldStart);
+		void startOrStop(bool shouldStart)
+		{
+			WeakReference<SimpleTimer> safeThis(this);
+
+			auto f = [safeThis, shouldStart]()
+			{
+				if (safeThis.get() != nullptr)
+				{
+					safeThis->isRunning = shouldStart;
+
+					if(shouldStart)
+						safeThis.get()->updater->simpleTimers.addIfNotAlreadyThere(safeThis);
+					else
+						safeThis.get()->updater->simpleTimers.removeAllInstancesOf(safeThis);
+				}
+			};
+
+			if (MessageManager::getInstance()->currentThreadHasLockedMessageManager())
+				f();
+			else
+				MessageManager::callAsync(f);
+		}
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(SimpleTimer);
 
@@ -549,17 +917,20 @@ public:
 	class Broadcaster
 	{
 	public:
-		Broadcaster();;
-		virtual ~Broadcaster();;
+		Broadcaster() {};
+		virtual ~Broadcaster() {};
 
-		void setHandler(PooledUIUpdater* handler_);
+		void setHandler(PooledUIUpdater* handler_)
+		{
+			handler = handler_;
+		}
 
 		void sendPooledChangeMessage();
 
-		void addPooledChangeListener(Listener* l);;
-		void removePooledChangeListener(Listener* l);;
+		void addPooledChangeListener(Listener* l) { pooledListeners.addIfNotAlreadyThere(l); };
+		void removePooledChangeListener(Listener* l) { pooledListeners.removeAllInstancesOf(l); };
 
-		bool isHandlerInitialised() const;;
+		bool isHandlerInitialised() const { return handler != nullptr; };
 
 		bool pending = false;
 
@@ -575,7 +946,41 @@ public:
 		JUCE_DECLARE_WEAK_REFERENCEABLE(Broadcaster);
 	};
 
-	void timerCallback() override;
+	void timerCallback() override
+	{
+		{
+			ScopedLock sl(simpleTimers.getLock());
+
+			int x = 0;
+
+			for (int i = 0; i < simpleTimers.size(); i++)
+			{
+				auto st = simpleTimers[i];
+
+				x++;
+				if (st.get() != nullptr)
+					st->timerCallback();
+				else
+					simpleTimers.remove(i--);
+			}
+		}
+
+		WeakReference<Broadcaster> b;
+
+		while (pendingHandlers.pop(b))
+		{
+			if (b.get() != nullptr)
+			{
+				b->pending = false;
+
+				for (auto l : b->pooledListeners)
+				{
+					if (l != nullptr)
+						l->handlePooledMessage(b);
+				}
+			}
+		}
+	}
 
 private:
 
@@ -613,44 +1018,99 @@ public:
 
 	struct EventListener
 	{
-		virtual ~EventListener();;
+		virtual ~EventListener() {};
 
 		virtual void onComplexDataEvent(EventType t, var data) = 0;
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(EventListener);
 	};
 
-	virtual ~ComplexDataUIUpdaterBase();;
+	virtual ~ComplexDataUIUpdaterBase() 
+	{
+		ScopedLock sl(updateLock);
+		listeners.clear();
+	};
 
-	void addEventListener(EventListener* l);
+	void addEventListener(EventListener* l)
+	{
+		ScopedLock sl(updateLock);
+		listeners.addIfNotAlreadyThere(l);
+		updateUpdater();
+	}
 
-	void removeEventListener(EventListener* l);
+	void removeEventListener(EventListener* l)
+	{
+		ScopedLock sl(updateLock);
+		listeners.removeAllInstancesOf(l);
+		updateUpdater();
+	}
 
-	void setUpdater(PooledUIUpdater* updater);
+	void setUpdater(PooledUIUpdater* updater)
+	{
+		if (globalUpdater == nullptr)
+		{
+			ScopedLock sl(updateLock);
+			globalUpdater = updater;
+			updateUpdater();
+		}
+	}
 
-	void sendDisplayChangeMessage(float newIndexValue, NotificationType notify, bool forceUpdate=false) const;
+	void sendDisplayChangeMessage(float newIndexValue, NotificationType notify, bool forceUpdate=false) const
+	{
+		sendMessageToListeners(EventType::DisplayIndex, var(newIndexValue), notify, forceUpdate);
+	}
 
-	void sendContentChangeMessage(NotificationType notify, int indexThatChanged);
+	void sendContentChangeMessage(NotificationType notify, int indexThatChanged)
+	{
+		sendMessageToListeners(EventType::ContentChange, var(indexThatChanged), notify, true);
+	}
 
-	void sendContentRedirectMessage();
+	void sendContentRedirectMessage()
+	{
+		sendMessageToListeners(EventType::ContentRedirected, {}, sendNotificationSync, true);
+	}
 
-	PooledUIUpdater* getGlobalUIUpdater();
+	PooledUIUpdater* getGlobalUIUpdater()
+	{
+		return globalUpdater;
+	}
 
-	float getLastDisplayValue() const;
+	float getLastDisplayValue() const 
+	{
+		return lastDisplayValue;
+	}
 
 private:
 
 	
 
-	void updateUpdater();
+	void updateUpdater()
+	{
+		if (globalUpdater != nullptr && currentUpdater == nullptr && listeners.size() > 0)
+			currentUpdater = new Updater(*this);
+
+		if (listeners.size() == 0 || globalUpdater == nullptr)
+			currentUpdater = nullptr;
+	}
 
 	PooledUIUpdater* globalUpdater = nullptr;
 
 	struct Updater : public PooledUIUpdater::SimpleTimer
 	{
-		void timerCallback() override;
+		void timerCallback() override
+		{
+			if (parent.lastChange != EventType::Idle)
+			{
+				parent.sendMessageToListeners(parent.lastChange, parent.lastValue, sendNotificationSync, true);
+			}
+		}
 
-		Updater(ComplexDataUIUpdaterBase& parent_);;
+		Updater(ComplexDataUIUpdaterBase& parent_) :
+			SimpleTimer(parent_.globalUpdater),
+			parent(parent_)
+		{
+			start();
+		};
 
 		ComplexDataUIUpdaterBase& parent;
 	};
@@ -658,7 +1118,48 @@ private:
 	CriticalSection updateLock;
 	ScopedPointer<Updater> currentUpdater;
 
-	void sendMessageToListeners(EventType t, var v, NotificationType n, bool forceUpdate = false) const;
+	void sendMessageToListeners(EventType t, var v, NotificationType n, bool forceUpdate = false) const
+	{
+		if (n == dontSendNotification)
+			return;
+
+		if (t == EventType::DisplayIndex)
+			lastDisplayValue = (float)v;
+
+		if (n == sendNotificationSync)
+		{
+			bool isMoreImportantChange = t >= lastChange;
+			bool valueHasChanged = lastValue != v;
+
+			if (forceUpdate || (isMoreImportantChange && valueHasChanged))
+			{
+				ScopedLock sl(updateLock);
+
+				lastChange = jmax(t, lastChange);
+
+				for (auto l : listeners)
+				{
+					if (l.get() != nullptr)
+					{
+						l->onComplexDataEvent(t, v);
+
+						if (lastChange != EventType::DisplayIndex)
+							l->onComplexDataEvent(ComplexDataUIUpdaterBase::EventType::DisplayIndex, lastDisplayValue);
+					}
+				}
+			}
+
+			lastChange = EventType::Idle;
+		}
+		else
+		{
+			if (t >= lastChange)
+			{
+				lastChange = jmax(lastChange, t);
+				lastValue = v;
+			}
+		}
+	}
 
 	mutable float lastDisplayValue = 1.0f;
 	mutable EventType lastChange = EventType::Idle;
@@ -818,14 +1319,21 @@ public:
 	{
 		using Func = std::function<CopyPasteTargetHandler*(Component*)>;
 
-		CopyPasteTargetHandler* getHandler(Component* c);
+		CopyPasteTargetHandler* getHandler(Component* c)
+		{
+			return f(c);
+		}
 
 		Func f;
 	};
+
 	
 
-	CopyPasteTarget();;
-	virtual ~CopyPasteTarget();;
+	CopyPasteTarget() : isSelected(false) {};
+	virtual ~CopyPasteTarget()
+	{
+		masterReference.clear();
+	};
 
 	virtual String getObjectTypeName() = 0;
 	virtual void copyAction() = 0;
@@ -835,7 +1343,7 @@ public:
 
 	void dismissCopyAndPasteFocus();
 
-	bool isSelectedForCopyAndPaste();;
+	bool isSelectedForCopyAndPaste() { return isSelected; };
 
 	void paintOutlineIfSelected(Graphics &g);
 
@@ -844,7 +1352,7 @@ public:
 	/* Use this method to supply a lambda that returns the specific CopyPasteTargetHandler for the given application. */
 	static void setHandlerFunction(HandlerFunction* f);
 
-	static CopyPasteTargetHandler * getNothing(Component*);
+	static CopyPasteTargetHandler * getNothing(Component*) { return nullptr; }
 
 	static HandlerFunction* handlerFunction;
 
@@ -964,6 +1472,67 @@ private:
     std::atomic<int> numAccessors { 0 };
     std::atomic<bool> currentlyWriting { false };
 };
+
+#if 0
+/** A simple lock with read-write access. The read lock is non-reentrant (however it will not lock itself out, but the write access is reentrant but expected to be single writer.
+*/
+struct SimpleReadWriteLock
+{
+	struct ScopedReadLock
+	{
+		ScopedReadLock(SimpleReadWriteLock &lock_, bool busyWait = false);
+		~ScopedReadLock();
+		SimpleReadWriteLock& lock;
+
+		bool anotherThreadHasWriteLock() const;
+	};
+
+	struct ScopedWriteLock
+	{
+		ScopedWriteLock(SimpleReadWriteLock &lock_, bool busyWait = false);
+		~ScopedWriteLock();
+		SimpleReadWriteLock& lock;
+
+	private:
+
+		bool holdsLock = false;
+	};
+
+	struct ScopedTryReadLock
+	{
+		ScopedTryReadLock(SimpleReadWriteLock &lock_);
+		~ScopedTryReadLock();
+
+		bool hasLock() const { return is_locked; }
+
+	private:
+		bool is_locked;
+		SimpleReadWriteLock& lock;
+	};
+
+	bool tryRead()
+	{
+		if (writerThread == nullptr || writerThread == Thread::getCurrentThreadId())
+		{
+			numReadLocks++;
+			return true;
+		}
+		
+		return false;
+	}
+
+	void exitRead()
+	{
+		numReadLocks--;
+	}
+
+	std::atomic<int> numReadLocks{ 0 };
+    std::atomic<void*> writerThread{ nullptr };
+};
+#endif
+
+
+
 
 struct SimpleReadWriteLock
 {
@@ -1148,15 +1717,37 @@ private:
 
 	struct TimerPimpl : public SuspendableTimer
 	{
-		explicit TimerPimpl(LockfreeAsyncUpdater* p_);
+		explicit TimerPimpl(LockfreeAsyncUpdater* p_) :
+			parent(*p_)
+		{
+			dirty = false;
+			startTimer(30);
+		}
 
-		~TimerPimpl();
+		~TimerPimpl()
+		{
+			dirty = false;
+			stopTimer();
+		}
 
-		void timerCallback() override;
+		void timerCallback() override
+		{
+			bool v = true;
+			if (dirty.compare_exchange_strong(v, false))
+			{
+				parent.handleAsyncUpdate();
+			}
+		}
 
-		void triggerAsyncUpdate();;
+		void triggerAsyncUpdate()
+		{
+			dirty.store(true);
+		};
 
-		void cancelPendingUpdate();;
+		void cancelPendingUpdate()
+		{
+			dirty.store(false);
+		};
 
 	private:
 
@@ -1175,7 +1766,10 @@ public:
 	void triggerAsyncUpdate();
 	void cancelPendingUpdate();
 
-	void suspend(bool shouldBeSuspended);
+	void suspend(bool shouldBeSuspended)
+	{
+		pimpl.suspendTimer(shouldBeSuspended);
+	}
 
 protected:
 
@@ -1504,7 +2098,7 @@ struct ComplexDataUIBase : public ReferenceCountedObject
 	/** A listener that will be notified about changes of the complex data source. */
 	struct SourceListener
 	{
-		virtual ~SourceListener();;
+		virtual ~SourceListener() {};
 
 		virtual void sourceHasChanged(ComplexDataUIBase* oldSource, ComplexDataUIBase* newSource) = 0;
 
@@ -1513,16 +2107,25 @@ struct ComplexDataUIBase : public ReferenceCountedObject
 
 	struct EditorBase
 	{
-		virtual ~EditorBase();;
+		virtual ~EditorBase() {};
 
 		virtual void setComplexDataUIBase(ComplexDataUIBase* newData) = 0;
 
-		virtual void setSpecialLookAndFeel(LookAndFeel* l, bool shouldOwn = false);
+		virtual void setSpecialLookAndFeel(LookAndFeel* l, bool shouldOwn = false)
+		{
+			laf = l;
+
+			if (shouldOwn)
+				ownedLaf = l;
+
+			if (auto asComponent = dynamic_cast<Component*>(this))
+				asComponent->setLookAndFeel(l);
+		}
 
 		template <typename T> T* getSpecialLookAndFeel()
-        {
-            return dynamic_cast<T*>(laf);
-        }
+		{
+			return dynamic_cast<T*>(laf);
+		}
 
 	private:
 
@@ -1533,11 +2136,29 @@ struct ComplexDataUIBase : public ReferenceCountedObject
 	/** A SourceWatcher notifies its registered listeners about changes to a source. */
 	struct SourceWatcher
 	{
-		void setNewSource(ComplexDataUIBase* newSource);
+		void setNewSource(ComplexDataUIBase* newSource)
+		{
+			if (newSource != currentSource)
+			{
+				for (auto l : listeners)
+				{
+					if (l != nullptr)
+						l->sourceHasChanged(currentSource, newSource);
+				}
 
-		void addSourceListener(SourceListener* l);
+				currentSource = newSource;
+			}
+		}
 
-		void removeSourceListener(SourceListener* l);
+		void addSourceListener(SourceListener* l)
+		{
+			listeners.addIfNotAlreadyThere(l);
+		}
+
+		void removeSourceListener(SourceListener* l)
+		{
+			listeners.removeAllInstancesOf(l);
+		}
 
 	private:
 
@@ -1546,23 +2167,32 @@ struct ComplexDataUIBase : public ReferenceCountedObject
 		WeakReference<ComplexDataUIBase> currentSource;
 	};
 
-	virtual ~ComplexDataUIBase();;
+	virtual ~ComplexDataUIBase() {};
 
-	void setGlobalUIUpdater(PooledUIUpdater* updater);
+	void setGlobalUIUpdater(PooledUIUpdater* updater)
+	{
+		internalUpdater.setUpdater(updater);
+	}
 
-    void sendDisplayIndexMessage(float n);
+	void sendDisplayIndexMessage(float n)
+	{
+		internalUpdater.sendDisplayChangeMessage(n, sendNotificationAsync);
+	}
 
-    virtual bool fromBase64String(const String& b64) = 0;
+	virtual bool fromBase64String(const String& b64) = 0;
 	virtual String toBase64String() const = 0;
 
-	ComplexDataUIUpdaterBase& getUpdater();;
-	const ComplexDataUIUpdaterBase& getUpdater() const;;
+	ComplexDataUIUpdaterBase& getUpdater() { return internalUpdater; };
+	const ComplexDataUIUpdaterBase& getUpdater() const { return internalUpdater; };
 
-	void setUndoManager(UndoManager* managerToUse);
+	void setUndoManager(UndoManager* managerToUse)
+	{
+		undoManager = managerToUse;
+	}
 
-    UndoManager* getUndoManager(bool useUndoManager = true);;
+	UndoManager* getUndoManager(bool useUndoManager = true) { return useUndoManager ? undoManager : nullptr; };
 
-	hise::SimpleReadWriteLock& getDataLock() const;
+	hise::SimpleReadWriteLock& getDataLock() const { return dataLock; }
 
 protected:
 
@@ -1609,8 +2239,6 @@ public:
 
 	static Array<StringArray> findSubstringsThatMatchWildcard(const String &regexWildCard, const String &stringToTest);
 
-    static Array<Range<int>> findRangesThatMatchWildcard(const String& regexWildcard, const String& stringToTest);
-    
 	/** Searches a string and returns a StringArray with all matches.
 	*	You can specify and index of a capture group (if not, the entire match will be used). */
 	static StringArray search(const String& wildcard, const String &stringToTest, int indexInMatch = 0);
@@ -1728,17 +2356,43 @@ private:
 struct ScrollbarFader : public Timer,
                         public ScrollBar::Listener
 {
-    ScrollbarFader();
+    ScrollbarFader() = default;
 
-    ~ScrollbarFader();
-
+    ~ScrollbarFader()
+    {
+        for(auto sb: scrollbars)
+        {
+            if(sb != nullptr)
+            {
+                sb->removeListener(this);
+                sb->setLookAndFeel(nullptr);
+            }
+        }
+    }
+    
     struct Laf : public LookAndFeel_V4
     {
         void drawScrollbar(Graphics& g, ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical, int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown);
 
         void drawStretchableLayoutResizerBar (Graphics& g, int w, int h, bool /*isVerticalBar*/,
-                                                              bool isMouseOver, bool isMouseDragging);
-
+                                                              bool isMouseOver, bool isMouseDragging)
+        {
+            float alpha = 0.0f;
+            
+            if(isMouseOver)
+                alpha += 0.3f;
+            
+            if(isMouseDragging)
+                alpha += 0.3f;
+            
+            g.setColour(Colour(SIGNAL_COLOUR).withAlpha(alpha));
+            
+            Rectangle<float> area(0.0f, 0.0f, (float)w, (float)h);
+            
+            area = area.reduced(1.0f);
+            g.fillRoundedRectangle(area, jmin(area.getWidth() / 2.0f, area.getHeight() / 2.0f));
+        }
+        
         Colour bg = Colours::transparentBlack;
     } slaf;
     
@@ -1746,12 +2400,21 @@ struct ScrollbarFader : public Timer,
 
     void startFadeOut();
 
-    void scrollBarMoved(ScrollBar* sb, double ) override;
-
+    void scrollBarMoved(ScrollBar* sb, double ) override
+    {
+        sb->setAlpha(1.0f);
+        startFadeOut();
+    }
+    
     bool fadeOut = false;
 
-    void addScrollBarToAnimate(ScrollBar& b);
-
+    void addScrollBarToAnimate(ScrollBar& b)
+    {
+        b.addListener(this);
+        b.setLookAndFeel(&slaf);
+        scrollbars.add({&b});
+    }
+    
     Array<Component::SafePointer<ScrollBar>> scrollbars;
 };
 
@@ -1922,11 +2585,64 @@ struct MasterClock
 		numSyncModes
 	};
 
-	void setNextGridIsFirst();
+	void setNextGridIsFirst()
+	{
+		waitForFirstGrid = true;
+	}
 
-	void setSyncMode(SyncModes newSyncMode);
+	void setSyncMode(SyncModes newSyncMode)
+	{
+		currentSyncMode = newSyncMode;
+	}
 
-	void changeState(int timestamp, bool internalClock, bool startPlayback);
+	void changeState(int timestamp, bool internalClock, bool startPlayback)
+	{
+		if (currentSyncMode == SyncModes::Inactive)
+			return;
+
+		if (internalClock)
+			internalClockIsRunning = startPlayback;
+
+		// Already stopped / not running, just return
+		if (!startPlayback && currentState == State::Idle)
+			return;
+
+		// Nothing to do
+		if (internalClock && startPlayback && currentState == State::InternalClockPlay)
+			return;
+
+		// Nothing to do
+		if (!internalClock && startPlayback && currentState == State::ExternalClockPlay)
+			return;
+
+		// Ignore any internal clock events when the external is running and should be preferred
+		if(!shouldPreferInternal() && (currentState == State::ExternalClockPlay && internalClock))
+			return;
+
+		// Ignore any external clock events when the external is running and should be preferred
+		if (shouldPreferInternal() && (currentState == State::InternalClockPlay && !internalClock))
+			return;
+		
+		// Ignore the stop command from the external clock
+		if (currentSyncMode == SyncModes::SyncInternal && !startPlayback && !internalClock)
+			return;
+
+		nextTimestamp = timestamp;
+
+		if (startPlayback)
+			nextState = internalClock ? State::InternalClockPlay : State::ExternalClockPlay;
+		else
+			nextState = State::Idle;
+
+		// Restart the internal clock when the external is stopped
+		if (!internalClock && !startPlayback && internalClockIsRunning)
+		{
+            if(stopInternalOnExternalStop)
+                nextState = State::Idle;
+            else
+                nextState = State::InternalClockPlay;
+		}
+	}
 
 	struct GridInfo
 	{
@@ -1937,47 +2653,314 @@ struct MasterClock
 		int gridIndex;
 	};
 
-	GridInfo processAndCheckGrid(int numSamples, const AudioPlayHead::CurrentPositionInfo& externalInfo);
+	GridInfo processAndCheckGrid(int numSamples, const AudioPlayHead::CurrentPositionInfo& externalInfo)
+	{
+		// check whether we want to process the external bpm
+		auto shouldUseExternalBpm = !linkBpmToSync || !shouldPreferInternal();
 
-	bool isPlaying() const;
+		if (bpm != externalInfo.bpm && shouldUseExternalBpm)
+			setBpm(externalInfo.bpm);
 
-	SyncModes getSyncMode() const;
+		GridInfo gi;
 
-	GridInfo updateFromExternalPlayHead(const AudioPlayHead::CurrentPositionInfo& info, int numSamples);
+		if (currentSyncMode == SyncModes::Inactive)
+			return gi;
 
-	AudioPlayHead::CurrentPositionInfo createInternalPlayHead();
+		if (currentSyncMode == SyncModes::SyncInternal && externalInfo.isPlaying)
+		{
+			uptime = externalInfo.timeInSamples;
+			samplesToNextGrid = gridDelta - (uptime % gridDelta);
+		}
 
-	void checkInternalClockForExternalStop(AudioPlayHead::CurrentPositionInfo& infoToUse, const AudioPlayHead::CurrentPositionInfo& externalInfo);
+		if (currentState != nextState)
+		{
+			currentState = nextState;
+			uptime = numSamples - nextTimestamp;
+			currentGridIndex = 0;
+
+			if (currentState != State::Idle && gridEnabled)
+			{
+
+				gi.change = true;
+				gi.timestamp = nextTimestamp;
+				gi.gridIndex = currentGridIndex;
+				gi.firstGridInPlayback = true;
+
+				samplesToNextGrid = gridDelta - nextTimestamp;
+			}
+
+			nextTimestamp = 0;
+		}
+		else
+		{
+			if (currentState == State::Idle)
+				uptime = 0;
+			else
+			{
+				jassert(nextTimestamp == 0);
+				uptime += numSamples;
+
+				samplesToNextGrid -= numSamples;
+
+				if (samplesToNextGrid < 0 && gridEnabled)
+				{
+					currentGridIndex++;
+
+					gi.change = true;
+					gi.firstGridInPlayback = waitForFirstGrid;
+					waitForFirstGrid = false;
+					gi.gridIndex = currentGridIndex;
+					gi.timestamp = numSamples + samplesToNextGrid;
+
+					samplesToNextGrid += gridDelta;
+				}
+			}
+		}
+
+		return gi;
+	}
+
+	bool isPlaying() const
+	{
+		return currentState == State::ExternalClockPlay || currentState == State::InternalClockPlay;
+	}
+
+	SyncModes getSyncMode() const
+	{
+		return currentSyncMode;
+	}
+
+	GridInfo updateFromExternalPlayHead(const AudioPlayHead::CurrentPositionInfo& info, int numSamples)
+	{
+		GridInfo gi;
+
+		if (currentSyncMode == SyncModes::Inactive)
+			return gi;
+
+		auto isPlayingExternally = currentState == State::ExternalClockPlay;
+		auto shouldPlayExternally = (currentSyncMode == SyncModes::ExternalOnly || currentSyncMode == SyncModes::PreferExternal) &&
+								    info.isPlaying;
+		
+ 		if (isPlayingExternally != shouldPlayExternally)
+		{
+			changeState(0, false, shouldPlayExternally);
+
+			if (currentSyncMode == SyncModes::PreferExternal &&
+				currentState == State::InternalClockPlay &&
+				nextState == State::ExternalClockPlay)
+			{
+				gi.change = true;
+				gi.gridIndex = 0;
+				gi.firstGridInPlayback = true;
+			}
+
+			currentState = nextState;
+
+			if (currentState == State::ExternalClockPlay && gridEnabled)
+			{
+				auto multiplier = (double)TempoSyncer::getTempoFactor(clockGrid);
+
+				auto gridPos = std::fmod(info.ppqPosition, multiplier);
+
+				if (gridPos == 0.0)
+				{
+					gi.change = true;
+					gi.gridIndex = info.ppqPosition / multiplier;
+					gi.firstGridInPlayback = true;
+					gi.timestamp = 0;
+					waitForFirstGrid = false;
+				}
+				else
+				{
+					waitForFirstGrid = true;
+				}
+			}
+		}
+		
+        Range<int> estimatedRange(uptime, uptime + currentBlockSize * 3);
+        
+		uptime = info.timeInSamples;
+
+        if(!estimatedRange.contains(uptime))
+        {
+            if(info.isPlaying)
+            {
+                gi.resync = true;
+            }
+        }
+        
+		if (info.isPlaying && gridEnabled)
+		{
+			auto quarterInSamples = (double)TempoSyncer::getTempoInSamples(info.bpm, sampleRate, 1.0f);
+			auto numSamplesInPPQ = (double)numSamples / quarterInSamples;
+			auto ppqBefore = info.ppqPosition;
+			auto ppqAfter = ppqBefore + numSamplesInPPQ;
+			auto multiplier = (double)TempoSyncer::getTempoFactor(clockGrid);
+
+			auto i1 = (int)(ppqBefore / multiplier);
+			auto i2 = (int)(ppqAfter / multiplier);
+
+			if (i1 != i2)
+			{
+				auto gridPosPPQ = (double)i2 * multiplier;
+				auto deltaPPQ = gridPosPPQ - ppqBefore;
+
+				gi.change = true;
+				gi.gridIndex = i2;
+				gi.timestamp = TempoSyncer::getTempoInSamples(bpm, sampleRate, (float)deltaPPQ);
+
+				if (waitForFirstGrid)
+				{
+					gi.firstGridInPlayback = true;
+					waitForFirstGrid = false;
+				}
+			}
+		}
+
+		return gi;
+	}
+
+	AudioPlayHead::CurrentPositionInfo createInternalPlayHead()
+	{
+		AudioPlayHead::CurrentPositionInfo info;
+		
+		int ms = 1000.0 * uptime / sampleRate;
+		auto quarterMs = TempoSyncer::getTempoInMilliSeconds(bpm, TempoSyncer::Quarter);
+		float quarterPos = ms / quarterMs;
+
+		info.bpm = bpm;
+		info.isPlaying = currentState != State::Idle;
+
+		info.timeInSamples = uptime;
+		info.ppqPosition = quarterPos;
+
+		return info;
+	}
+
+	void checkInternalClockForExternalStop(AudioPlayHead::CurrentPositionInfo& infoToUse, const AudioPlayHead::CurrentPositionInfo& externalInfo)
+	{
+		if (externalClockWasPlayingLastTime && !externalInfo.isPlaying)
+		{
+			nextState = State::Idle;
+			infoToUse.isPlaying = false;
+		}
+		
+		externalClockWasPlayingLastTime = externalInfo.isPlaying;
+	}
 
 	double getBpmToUse(double hostBpm, double internalBpm) const;
 
-	void prepareToPlay(double newSampleRate, int blockSize);
+	void prepareToPlay(double newSampleRate, int blockSize)
+	{
+		sampleRate = newSampleRate;
+        currentBlockSize = blockSize;
+		updateGridDelta();
+	}
 
-	void setBpm(double newBPM);
+	void setBpm(double newBPM)
+	{
+		bpm = newBPM;
+		updateGridDelta();
+	}
 
-	void setLinkBpmToSyncMode(bool should);
+	void setLinkBpmToSyncMode(bool should)
+	{
+		linkBpmToSync = should;
+	}
 
-	TempoSyncer::Tempo getCurrentClockGrid() const;
+	TempoSyncer::Tempo getCurrentClockGrid() const { return clockGrid; }
 
-	bool allowExternalSync() const;
+	bool allowExternalSync() const 
+	{
+		return currentSyncMode != SyncModes::InternalOnly;
+	}
 
-	void setStopInternalClockOnExternalStop(bool shouldStop);
+    void setStopInternalClockOnExternalStop(bool shouldStop)
+    {
+        stopInternalOnExternalStop = shouldStop;
+    }
+    
+	bool shouldCreateInternalInfo(const AudioPlayHead::CurrentPositionInfo& externalInfo) const
+	{
+		if (currentSyncMode == SyncModes::Inactive)
+			return false;
 
-	bool shouldCreateInternalInfo(const AudioPlayHead::CurrentPositionInfo& externalInfo) const;
+		if (currentSyncMode == SyncModes::ExternalOnly)
+			return false;
 
-	void setClockGrid(bool enableGrid, TempoSyncer::Tempo t);
+		if (currentSyncMode == SyncModes::InternalOnly)
+			return true;
 
-	bool isGridEnabled() const;
+		if (currentSyncMode == SyncModes::PreferExternal && (externalInfo.isPlaying || currentState == State::ExternalClockPlay))
+			return false;
 
-	double getPPQPos(int timestampFromNow) const;
+		if (currentSyncMode == SyncModes::SyncInternal)
+			return true;
 
-	void reset();
+		return true;
+	}
 
+	void setClockGrid(bool enableGrid, TempoSyncer::Tempo t)
+	{
+		gridEnabled = enableGrid;
+		clockGrid = t;
+		updateGridDelta();
+	}
+
+	bool isGridEnabled() const { return gridEnabled; }
+
+	double getPPQPos(int timestampFromNow) const
+	{
+		if (currentSyncMode == SyncModes::Inactive)
+			return 0.0;
+
+		auto quarterSamples = (double)TempoSyncer::getTempoInSamples(bpm, sampleRate, 1.0f);
+		auto uptimeToUse = uptime - timestampFromNow;
+		return uptimeToUse / quarterSamples;
+	}
+
+    void reset()
+    {
+        gridEnabled = false;
+        clockGrid = TempoSyncer::numTempos;
+        currentSyncMode = SyncModes::Inactive;
+        
+        uptime = 0;
+        samplesToNextGrid = 0;
+        
+        currentGridIndex = 0;
+
+        internalClockIsRunning = false;
+
+		externalClockWasPlayingLastTime = false;
+
+        // they don't need to be resetted...
+        //sampleRate = 44100.0;
+        //bpm = 120.0;
+
+        nextTimestamp = 0;
+        currentState = State::Idle;
+        nextState = State::Idle;
+
+        waitForFirstGrid = false;
+        
+        updateGridDelta();
+    }
+    
 private:
 
-	void updateGridDelta();
+	void updateGridDelta()
+	{
+		if (gridEnabled)
+		{
+			gridDelta = TempoSyncer::getTempoInSamples(bpm, sampleRate, clockGrid);
+		}
+	}
 
-	bool shouldPreferInternal() const;
+	bool shouldPreferInternal() const
+	{
+		return currentSyncMode == SyncModes::PreferInternal || currentSyncMode == SyncModes::InternalOnly || currentSyncMode == SyncModes::SyncInternal;
+	}
 
 	bool gridEnabled = false;
 	TempoSyncer::Tempo clockGrid = TempoSyncer::numTempos;
@@ -2067,7 +3050,39 @@ private:
 };
 
 
+/** A utility class for linear interpolation between samples.
+*	@ingroup utility
+*
+*/
+class Interpolator
+{
+public:
 
+	/** A simple linear interpolation.
+	*
+	*	@param lowValue the value of the lower index.
+	*	@param highValue the value of the higher index.
+	*	@param delta the sub-integer part between the two indexes (must be between 0.0f and 1.0f)
+	*	@returns the interpolated value.
+	*/
+
+	static float interpolateLinear(const float lowValue, const float highValue, const float delta)
+	{
+		jassert(isPositiveAndNotGreaterThan(delta, 1.0f));
+
+		const float invDelta = 1.0f - delta;
+		return invDelta * lowValue + delta * highValue;
+	}
+
+	static double interpolateLinear(const double lowValue, const double highValue, const double delta)
+	{
+		jassert(isPositiveAndNotGreaterThan(delta, 1.0));
+
+		const double invDelta = 1.0 - delta;
+		return invDelta * lowValue + delta * highValue;
+	}
+
+};
 
 /** A interface class for getting notified when the realtime mode changed (eg. at DAW export). */
 class NonRealtimeProcessor
@@ -2093,9 +3108,25 @@ struct FFTHelpers
         numWindowType
     };
     
-    static Array<WindowType> getAvailableWindowTypes();
+    static Array<WindowType> getAvailableWindowTypes()
+    {
+        return { Rectangle, Triangle, Hamming, Hann, BlackmanHarris, Kaiser, FlatTop };
+    }
 
-    static String getWindowType(WindowType w);
+    static String getWindowType(WindowType w)
+    {
+        switch (w)
+        {
+        case Rectangle: return "Rectangle";
+        case Hamming: return "Hamming";
+        case Hann: return "Hann";
+        case BlackmanHarris: return "Blackman Harris";
+        case Triangle: return "Triangle";
+        case FlatTop: return "FlatTop";
+		case Kaiser: return "Kaiser";
+        default: return {};
+        }
+    }
 
     static void applyWindow(WindowType t, AudioSampleBuffer& b, bool normalise=true);
     
@@ -2105,13 +3136,92 @@ struct FFTHelpers
 
 	static float getPixelValueForLogXAxis(float freq, float width);
 
-	static void toComplexArray(const AudioSampleBuffer& phaseBuffer, const AudioSampleBuffer& magBuffer, AudioSampleBuffer& out);
+	static void toComplexArray(const AudioSampleBuffer& phaseBuffer, const AudioSampleBuffer& magBuffer, AudioSampleBuffer& out)
+	{
+		auto phase = phaseBuffer.getReadPointer(0);
+		auto mag = magBuffer.getReadPointer(0);
 
-    static void toPhaseSpectrum(const AudioSampleBuffer& inp, AudioSampleBuffer& out);
+		auto output = out.getWritePointer(0);
+		
+		jassert(phaseBuffer.getNumSamples() == magBuffer.getNumSamples());
+		jassert(phaseBuffer.getNumSamples() * 2 == out.getNumSamples());
 
-    static void toFreqSpectrum(const AudioSampleBuffer& inp, AudioSampleBuffer& out);
+		int size = phaseBuffer.getNumSamples();
 
-    static void scaleFrequencyOutput(AudioSampleBuffer& b, bool convertToDb, bool invert=false);
+		for (int i = 0; i < size; i++)
+		{
+			auto re = mag[i] * std::cos(phase[i]);
+			auto im = mag[i] * std::sin(phase[i]);
+
+			output[i * 2] = re;
+			output[i * 2 + 1] = im;
+		}
+	}
+
+	static void toPhaseSpectrum(const AudioSampleBuffer& inp, AudioSampleBuffer& out)
+	{
+		auto input = inp.getReadPointer(0);
+		auto output = out.getWritePointer(0);
+
+		jassert(inp.getNumSamples() == out.getNumSamples() * 2);
+
+		auto numOriginalSamples = out.getNumSamples();
+
+		for (int i = 0; i < numOriginalSamples; i++)
+		{
+			auto re = input[i * 2];
+			auto im = input[i * 2 + 1];
+			output[i] = std::atan2(im, re);
+		}
+	}
+
+    static void toFreqSpectrum(const AudioSampleBuffer& inp, AudioSampleBuffer& out)
+    {
+        auto input = inp.getReadPointer(0);
+        auto output = out.getWritePointer(0);
+        
+        jassert(inp.getNumSamples() == out.getNumSamples() * 2);
+
+        auto numOriginalSamples = out.getNumSamples();
+
+        for (int i = 0; i < numOriginalSamples; i++)
+        {
+			auto re = input[i * 2];
+			auto im = input[i * 2 + 1];
+            output[i] = sqrt(re * re + im * im);
+        }
+    }
+
+    static void scaleFrequencyOutput(AudioSampleBuffer& b, bool convertToDb, bool invert=false)
+    {
+		auto data = b.getWritePointer(0);
+        auto numOriginalSamples = b.getNumSamples();
+
+        if (numOriginalSamples == 0)
+            return;
+
+        auto factor = 2.f / (float)numOriginalSamples;
+
+		if (invert)
+		{
+			factor = 1.0f / factor;
+			factor *= 0.5f;
+
+			if (convertToDb)
+			{
+				for (int i = 0; i < numOriginalSamples; i++)
+					data[i] = Decibels::decibelsToGain(data[i]);
+			}
+		}
+
+        FloatVectorOperations::multiply(data, factor, numOriginalSamples);
+
+        if (!invert && convertToDb)
+        {
+			for (int i = 0; i < numOriginalSamples; i++)
+                data[i] = Decibels::gainToDecibels(data[i]);
+        }
+    }
 };
 
 struct Spectrum2D
@@ -2127,7 +3237,7 @@ struct Spectrum2D
 			numColourSchemes
 		};
 
-		static StringArray getColourSchemes();
+		static StringArray getColourSchemes() { return { "BlackWhite", "Rainbow", "VioletOrange", "HiseColours" }; }
 
 		void setColourScheme(ColourScheme cs);
 
@@ -2146,10 +3256,20 @@ struct Spectrum2D
 	{
 		using Ptr = ReferenceCountedObjectPtr<Parameters>;
 
-		void setFromBuffer(const AudioSampleBuffer& originalSource);
+		void setFromBuffer(const AudioSampleBuffer& originalSource)
+		{
+			auto numSamplesToCheck = (double)originalSource.getNumSamples();
+			numSamplesToCheck = std::pow(numSamplesToCheck, JUCE_LIVE_CONSTANT_OFF(0.54));
+
+            auto bestOrder = 11;
+
+			set("FFTSize", bestOrder, dontSendNotification);
+
+			notifier.sendMessage(sendNotificationSync, "All", -1);
+		}
 
 		struct Editor : public Component,
-		                public ComboBox::Listener
+					    public ComboBox::Listener
 		{
 			static constexpr int RowHeight = 32;
 
@@ -2195,20 +3315,35 @@ struct Spectrum2D
 
     struct Holder
     {
-        virtual ~Holder();;
+        virtual ~Holder() {};
 
 		virtual Parameters::Ptr getParameters() const = 0;
 
-		virtual float getXPosition(float input) const;
+		virtual float getXPosition(float input) const
+		{
+			auto db = (float)getParameters()->minDb;
+			auto l = Decibels::gainToDecibels(input, -1.0f * db);
+			l = (l + db) / db;
+			return l * l;
+		}
 
-        virtual float getYPosition(float input) const;
+		virtual float getYPosition(float input) const
+		{
+			return 1.0f - std::exp(std::log(input) * 0.2f);
+		}
 
     private:
         
         JUCE_DECLARE_WEAK_REFERENCEABLE(Holder);
     };
     
-    Spectrum2D(Holder* h, const AudioSampleBuffer& s);;
+    Spectrum2D(Holder* h, const AudioSampleBuffer& s):
+      holder(h),
+      originalSource(s),
+	  parameters(new Parameters())
+    {
+		parameters->setFromBuffer(s);
+    };
     
 	Parameters::Ptr parameters;
     WeakReference<Holder> holder;
@@ -2247,96 +3382,23 @@ struct ComponentWithAdditionalMouseProperties
     }
 };
 
-/** A minimal POD that can be used to check the thread state across DLL boundaries. */
-class ThreadController: public ReferenceCountedObject
-{
-	struct Scaler
-	{
-		Scaler(bool isStep_=false);
-
-		double getScaledProgress(double input) const;
-
-		bool isStep = false;
-		double v1 = 0.0;
-		double v2 = 0.0;
-	};
-
-	template <bool IsStep> struct ScopedScaler
-	{
-		template <typename T> ScopedScaler(ThreadController* parent_, T v1, T v2) : parent(parent_) 
-		{
-			Scaler s(IsStep);
-			s.v1 = (double)v1;
-			s.v2 = (double)v2;
-
-			if(parent != nullptr)
-				parent->pushProgressScaler(s);
-		};
-
-		~ScopedScaler()
-		{
-			if (parent != nullptr)
-				parent->popProgressScaler();
-		}
-
-		operator bool() const
-		{
-			return parent;
-		}
-		
-		ThreadController* parent;
-	};
-
-public:
-
-	using Ptr = ReferenceCountedObjectPtr<ThreadController>;
-	using ScopedRangeScaler = ScopedScaler<false>;
-	using ScopedStepScaler = ScopedScaler<true>;
-
-	ThreadController(Thread* t, double* p, int timeoutMs, uint32& lastTime_);;
-
-	ThreadController();;
-
-	operator bool() const;
-
-	/** Allow a bigger time between calls. */
-	void extendTimeout(uint32 milliSeconds);
-
-
-	/** Set a progress. If you want to add a scaler to the progress (for indicating a subprocess, use either ScopedStepScaler or ScopedRangeScalers). */
-	bool setProgress(double p);
-
-private:
-
-	static constexpr int NumProgressScalers = 32;
-
-	void pushProgressScaler(const Scaler& f);
-
-	void popProgressScaler();
-
-	void* juceThreadPointer = nullptr;
-	double* progress = nullptr;
-	mutable uint32* lastTime = nullptr;
-	uint32 timeout = 0;
-	int progressScalerIndex = 0;
-	Scaler progressScalers[NumProgressScalers];
-
-	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ThreadController);
-};
-
 class SemanticVersionChecker
 {
 public:
 
-    SemanticVersionChecker(const String& oldVersion_, const String& newVersion_);;
+    SemanticVersionChecker(const String& oldVersion_, const String& newVersion_)
+    {
+        parseVersion(oldVersion, oldVersion_);
+        parseVersion(newVersion, newVersion_);
+    };
 
     bool isUpdate() const;
 
-    bool isMajorVersionUpdate() const;;
-    bool isMinorVersionUpdate() const;;
-    bool isPatchVersionUpdate() const;;
-    bool oldVersionNumberIsValid() const;
-    bool newVersionNumberIsValid() const;
+    bool isMajorVersionUpdate() const { return newVersion.majorVersion > oldVersion.majorVersion; };
+    bool isMinorVersionUpdate() const { return newVersion.minorVersion > oldVersion.minorVersion; };
+    bool isPatchVersionUpdate() const { return newVersion.patchVersion > oldVersion.patchVersion; };
+    bool oldVersionNumberIsValid() const { return oldVersion.validVersion; }
+    bool newVersionNumberIsValid() const { return newVersion.validVersion; }
 
 private:
 
@@ -2348,7 +3410,24 @@ private:
         int patchVersion = 0;
     };
 
-    static void parseVersion(VersionInfo& info, const String& v);;
+    static void parseVersion(VersionInfo& info, const String& v)
+    {
+        const String sanitized = v.replace("v", "", true);
+        StringArray a = StringArray::fromTokens(sanitized, ".", "");
+
+        if (a.size() != 3)
+        {
+            info.validVersion = false;
+            return;
+        }
+        else
+        {
+            info.majorVersion = a[0].getIntValue();
+            info.minorVersion = a[1].getIntValue();
+            info.patchVersion = a[2].getIntValue();
+            info.validVersion = true;
+        }
+    };
 
     VersionInfo oldVersion;
     VersionInfo newVersion;

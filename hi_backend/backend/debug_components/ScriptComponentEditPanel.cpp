@@ -73,11 +73,6 @@ ML("- Click on the **Paste** button and all selected properties will be pasted f
 END_MARKDOWN()
 END_MARKDOWN_CHAPTER()
 
-struct PropertyPanelWithoutText: public PropertyPanel
-{
-    void paint(Graphics& g) override {};
-};
-
 ScriptComponentEditPanel::ScriptComponentEditPanel(MainController* mc_, Processor* p) :
 	ScriptComponentEditListener(p),
 	mc(mc_),
@@ -113,7 +108,7 @@ ScriptComponentEditPanel::ScriptComponentEditPanel(MainController* mc_, Processo
 	helpButton->setPopupWidth(600);
 	helpButton->setHelpText<PathProvider<Factory>>(PropertyPanelHelp::Help());
 
-	addAndMakeVisible(panel = new PropertyPanelWithoutText());
+	addAndMakeVisible(panel = new PropertyPanel());
 
     auto& sb = panel->getViewport().getVerticalScrollBar();
     

@@ -56,6 +56,7 @@ private:
 	RLottieComponent animationComponent;
 
 	CodeDocument doc;
+	JavascriptTokeniser tok;
 	CodeEditorComponent editor;
 	TextButton loadButton;
 	TextButton compileButton;

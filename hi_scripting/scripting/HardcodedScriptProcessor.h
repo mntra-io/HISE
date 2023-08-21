@@ -79,13 +79,40 @@ public:
 
 	virtual void onAllNotesOff() {};
 
-    void restoreFromValueTree(const ValueTree &v) override;
+    void restoreFromValueTree(const ValueTree &v) override
+    {
+        jassert(content.get() != nullptr);
+        
+        MidiProcessor::restoreFromValueTree(v);
+        
+		onInit();
+
+		ScriptBaseMidiProcessor::restoreContent(v);
+
+        if(content.get() != nullptr)
+        {
+            for(int i = 0; i < content->getNumComponents(); i++)
+            {
+                controlCallback(content->getComponent(i), content->getComponent(i)->getValue());
+            }
+        }
+    }
 
 protected:
 
-	void controlCallback(ScriptingApi::Content::ScriptComponent *component, var controllerValue) override;
+	void controlCallback(ScriptingApi::Content::ScriptComponent *component, var controllerValue) override
+	{
+		try
+		{
+			onControl(component, controllerValue);
+		}
+		catch (String& s)
+		{
+			debugToConsole(this, s);
+		}
+	}
 
-
+	
 	ReferenceCountedObjectPtr<ScriptingApi::Content> refCountedContent;
 
 	ScriptingApi::Message Message;
@@ -375,6 +402,7 @@ public:
 
 		messageHolders[number]->setMessage(*getCurrentHiseEvent());
 
+		//velocityValues[Message.getNoteNumber()] = Message.getVelocity();
 		lengthValues[number] = Engine.getUptime();
 	};
 
@@ -388,11 +416,10 @@ public:
 		{
 			double time = Engine.getUptime() - lengthValues[noteNumber];
 		
-			timeIndex = (double)(time / (double)timeKnob->getValue());
-			timeIndex = jlimit<double>(0, 1, timeIndex);
-			
+			timeIndex = (int)(time / (double)(timeKnob->getValue()) * 127.0);
+			timeIndex = jlimit<int>(0, 127, timeIndex);
+
 			attenuationLevel = table->getTableValue(timeIndex);
-			
 		}
 		else
 		{
@@ -405,6 +432,8 @@ public:
 
 		const int v = (int)((float)velocityToUse * attenuationLevel);
 
+		//const int v = (int)(velocityValues[noteNumber] * attenuationLevel);
+
 		if (v > 0)
 		{
 			onEvent.setVelocity((uint8)v);
@@ -415,6 +444,11 @@ public:
 			currentMessageHolder->setMessage(onEvent);
 
 			Synth.addMessageFromHolder(currentMessageVar);
+			
+			
+
+			//Synth.playNote(Message.getNoteNumber(), v);
+
 		}
 			
 	}
@@ -442,7 +476,7 @@ private:
 	ScriptingApi::Content::ScriptSlider *timeKnob;
 	ScriptingApi::Content::ScriptTable *table;
 	float attenuationLevel;
-	double timeIndex;
+	int timeIndex;
 	double lengthValues[128];
 
 	JUCE_DECLARE_WEAK_REFERENCEABLE(ReleaseTriggerScriptProcessor);
@@ -855,7 +889,50 @@ private:
 
 class Processor;
 
+class HardcodedScriptFactoryType: public FactoryType
+{
+	// private enum for handling
+	enum
+	{
+        legatoWithRetrigger = MidiProcessorFactoryType::numMidiProcessors,
+		ccSwapper,
+		releaseTrigger,
+		cc2Note,
+		channelFilter,
+		channelSetter,
+		muteAll,
+		arpeggiator,
+	};
 
+public:
+
+	HardcodedScriptFactoryType(Processor *p):
+		FactoryType(p)
+	{
+		fillTypeNameList();
+	};
+
+	void fillTypeNameList();
+
+	~HardcodedScriptFactoryType()
+	{
+		typeNames.clear();
+	};
+
+	Processor *createProcessor(int typeIndex, const String &id) override;
+	
+	const Array<ProcessorEntry> & getTypeNames() const override
+	{
+		return typeNames;
+	};
+	
+private:
+
+	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HardcodedScriptFactoryType)
+
+	Array<ProcessorEntry> typeNames;
+
+};
 
 
 } // namespace hise

@@ -129,19 +129,13 @@ std::shared_ptr<model::Composition> model::loadFromFile(const std::string &path,
         return {};
     } else {
         std::string content;
-        f.seekg(0, std::ios::end);
-        auto fsize = f.tellg();
 
-        //read the given file
-        content.reserve(fsize);
-        f.seekg(0, std::ios::beg);
-        content.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-
+        std::getline(f, content, '\0');
         f.close();
 
-        if (fsize == 0) return {};
+        if (content.empty()) return {};
 
-        auto obj = internal::model::parse(const_cast<char *>(content.c_str()), fsize,
+        auto obj = internal::model::parse(const_cast<char *>(content.c_str()),
                                           dirname(path));
 
         if (obj && cachePolicy) ModelCache::instance().add(path, obj);
@@ -159,7 +153,7 @@ std::shared_ptr<model::Composition> model::loadFromData(
         if (obj) return obj;
     }
 
-    auto obj = internal::model::parse(const_cast<char *>(jsonData.c_str()), jsonData.size(),
+    auto obj = internal::model::parse(const_cast<char *>(jsonData.c_str()),
                                       std::move(resourcePath));
 
     if (obj && cachePolicy) ModelCache::instance().add(key, obj);
@@ -170,6 +164,6 @@ std::shared_ptr<model::Composition> model::loadFromData(
 std::shared_ptr<model::Composition> model::loadFromData(
     std::string jsonData, std::string resourcePath, model::ColorFilter filter)
 {
-    return internal::model::parse(const_cast<char *>(jsonData.c_str()), jsonData.size(),
+    return internal::model::parse(const_cast<char *>(jsonData.c_str()),
                                   std::move(resourcePath), std::move(filter));
 }

@@ -178,29 +178,20 @@ class RenderTaskScheduler {
         for (unsigned n = 0; n != _count; ++n) {
             _threads.emplace_back([&, n] { run(n); });
         }
-
-        IsRunning = true;
     }
 
 public:
-    static bool IsRunning;
-
     static RenderTaskScheduler &instance()
     {
         static RenderTaskScheduler singleton;
         return singleton;
     }
 
-    ~RenderTaskScheduler() { stop(); }
-
-    void stop()
+    ~RenderTaskScheduler()
     {
-        if (IsRunning) {
-            IsRunning = false;
+        for (auto &e : _q) e.done();
 
-            for (auto &e : _q) e.done();
-            for (auto &e : _threads) e.join();
-        }
+        for (auto &e : _threads) e.join();
     }
 
     std::future<Surface> process(SharedRenderTask task)
@@ -223,15 +214,11 @@ public:
 #else
 class RenderTaskScheduler {
 public:
-    static bool IsRunning;
-
     static RenderTaskScheduler &instance()
     {
         static RenderTaskScheduler singleton;
         return singleton;
     }
-
-    void stop() {}
 
     std::future<Surface> process(SharedRenderTask task)
     {
@@ -241,10 +228,7 @@ public:
         return std::move(task->receiver);
     }
 };
-
 #endif
-
-bool RenderTaskScheduler::IsRunning{false};
 
 std::future<Surface> AnimationImpl::renderAsync(size_t    frameNo,
                                                 Surface &&surface,
@@ -455,29 +439,6 @@ void Surface::setDrawRegion(size_t x, size_t y, size_t width, size_t height)
     mDrawArea.y = y;
     mDrawArea.w = width;
     mDrawArea.h = height;
-}
-
-namespace {
-void lottieShutdownRenderTaskScheduler()
-{
-    if (RenderTaskScheduler::IsRunning) {
-        RenderTaskScheduler::instance().stop();
-    }
-}
-}  // namespace
-
-// private apis exposed to c interface
-void lottie_init_impl()
-{
-    // do nothing for now.
-}
-
-extern void lottieShutdownRasterTaskScheduler();
-
-void lottie_shutdown_impl()
-{
-    lottieShutdownRenderTaskScheduler();
-    lottieShutdownRasterTaskScheduler();
 }
 
 #ifdef LOTTIE_LOGGING_SUPPORT

@@ -35,7 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 struct Operations::ClassStatement : public Statement,
@@ -78,36 +78,8 @@ struct Operations::ClassStatement : public Statement,
 			}
 
 			t.setProperty("MemberInfo", memberInfo, nullptr);
-            
-            if(!st->getTemplateInstanceParameters().isEmpty())
-            {
-                // fix missing template arguments in function call ObjectType property etc..
-                // simply replace ClassId:: with ClassId<ARGS...>::
-                auto classIdWithoutT = st->id.toString() + "::";
-                auto classId = classType->toString() + "::";
-                
-                Operations::callRecursive(t, [classIdWithoutT, classId](ValueTree& v)
-                {
-                    if(v.getType() == Identifier("FunctionCall") && v.hasProperty("ObjectType"))
-                    {
-                        auto objectId = v["ObjectType"].toString();
-                        
-                        if(objectId.startsWith(classIdWithoutT))
-                        {
-                            objectId = objectId.replace(classIdWithoutT, classId);
-                            v.setProperty("ObjectType", objectId, nullptr);
-                            DBG("Replace ObjectType property with " + objectId);
-                        }
-                    }
-                    
-                    return false;
-                });
-            }
 		}
 
-        
-        
-        
 		return t;
 	}
 

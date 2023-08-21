@@ -86,9 +86,7 @@ private:
 
 		throwErrorAndQuit("`" + s + "` is not a valid path");
 
-#if JUCE_DEBUG
 		return File();
-#endif
 	}
 
 public:
@@ -540,11 +538,6 @@ REGISTER_STATIC_DSP_LIBRARIES()
 #if ENABLE_JUCE_DSP
     REGISTER_STATIC_DSP_FACTORY(JuceDspModuleFactory);
 #endif
-}
-
-String hise::PresetHandler::getVersionString()
-{
-	return ProjectInfo::versionString;
 }
 
 AudioProcessor* hise::StandaloneProcessor::createProcessor()

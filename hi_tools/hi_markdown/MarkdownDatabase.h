@@ -80,13 +80,68 @@ public:
 			numTypes
 		};
 
-		bool callForEach(const IteratorFunction& f);
+		bool callForEach(const IteratorFunction& f)
+		{
+			if (f(*this))
+				return true;
 
-		bool swapChildWithName(Item& itemToSwap, const String& name);
+			for (auto& child : children)
+			{
+				if (child.callForEach(f))
+					return true;
+			}
 
-		var toJSONObject() const;
+			return false;
+		}
 
-		Item getChildWithName(const String& name) const;
+		bool swapChildWithName(Item& itemToSwap, const String& name)
+		{
+			for (auto& i : children)
+			{
+				if (i.url.toString(MarkdownLink::UrlSubPath) == name)
+				{
+					std::swap(i, itemToSwap);
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		var toJSONObject() const
+		{
+			jassert(url.getType() == MarkdownLink::Folder || url.getType() == MarkdownLink::MarkdownFile);
+
+			DynamicObject::Ptr newObject = new DynamicObject();
+			newObject->setProperty("URL", url.toString(MarkdownLink::FormattedLinkHtml));
+			newObject->setProperty("Title", tocString);
+			newObject->setProperty("Colour", "#" + c.toDisplayString(false));
+
+			Array<var> childrenArray;
+
+			for (const auto& child : children)
+				childrenArray.add(child.toJSONObject());
+
+			newObject->setProperty("Children", childrenArray);
+
+			return var(newObject.get());
+		}
+		
+		Item getChildWithName(const String& name) const
+		{
+			if (url.toString(MarkdownLink::UrlSubPath) == name)
+				return *this;
+
+			for (const auto& child : children)
+			{
+				auto i = child.getChildWithName(name);
+
+				if (i.url.isValid())
+					return i;
+			}
+
+			return {};
+		}
 
 		explicit operator bool() const
 		{
@@ -113,7 +168,14 @@ public:
 		ValueTree createValueTree() const;
 		void loadFromValueTree(ValueTree& v);
 
-		void setDefaultColour(Colour newColour);
+		void setDefaultColour(Colour newColour)
+		{
+			if (c.isTransparent())
+				c = newColour;
+
+			for (auto& child : children)
+				child.setDefaultColour(c);
+		}
 
 		void fillMetadataFromURL();
 
@@ -126,13 +188,35 @@ public:
 		Colour c;
 		String icon;
 
-		void addChild(Item&& item);
+		void addChild(Item&& item)
+		{
+			item.parent = this;
+			item.setAutoweight(getWeight() - 10);
 
-		void sortChildren();
+			if (item.url.getType() == MarkdownLink::Type::MarkdownFileOrFolder)
+			{
+				jassert(item.url.hasAnchor());
+				item.url.setType(url.getType());
+			}
 
-		void removeChild(int childIndex);
+			children.add(item);
+		}
 
-		void swapChildren(Array<Item>& other);
+		void sortChildren()
+		{
+			MarkdownDataBase::Item::Sorter sorter;
+			children.sort(sorter);
+		}
+
+		void removeChild(int childIndex)
+		{
+			children.remove(childIndex);
+		}
+
+		void swapChildren(Array<Item>& other)
+		{
+			children.swapWith(other);
+		}
 
 		int getNumChildren() const { return children.size(); }
 
@@ -154,13 +238,37 @@ public:
 
 		int index = -1;
 		
-		int getWeight() const;
+		int getWeight() const
+		{
+			if (absoluteWeight != -1)
+				return absoluteWeight + deltaWeight;
+			else
+				return autoWeight + deltaWeight;
+		}
 
-		void setAutoweight(int newAutoWeight);
+		void setAutoweight(int newAutoWeight)
+		{
+			autoWeight = newAutoWeight;
 
-		void applyWeightFromHeader(const MarkdownHeader& h);
+			for (auto& child : children)
+				child.setAutoweight(getWeight() - 10);
+		}
 
-		void setIndexFromHeader(const MarkdownHeader& h);
+		void applyWeightFromHeader(const MarkdownHeader& h)
+		{
+			auto weightString = h.getKeyValue("weight");
+
+			if (weightString.isNotEmpty())
+				applyWeightString(weightString);
+		}
+
+		void setIndexFromHeader(const MarkdownHeader& h)
+		{
+			auto indexString = h.getKeyValue("index");
+
+			if (indexString.isNotEmpty())
+				index = indexString.getIntValue();
+		}
 
 	private:
 
@@ -245,11 +353,23 @@ public:
 		MarkdownLink forumLink;
 	};
 
-	void addForumDiscussion(const ForumDiscussionLink& link);
+	void addForumDiscussion(const ForumDiscussionLink& link)
+	{
+		discussions.add(link);
+	}
 
 
-	MarkdownLink getForumDiscussion(const MarkdownLink& contentLink) const;
+	MarkdownLink getForumDiscussion(const MarkdownLink& contentLink) const
+	{
+		for (auto d : discussions)
+		{
+			if (d.contentLink == contentLink)
+				return d.forumLink;
+		}
 
+		return {};
+	}
+	
 	void setProgressCounter(double* newProgressCounter)
 	{
 		progressCounter = newProgressCounter;
@@ -334,8 +454,20 @@ public:
 
 	virtual bool shouldUseCachedData() const;
 
-	void setForceCachedDataUse(bool shouldUseCachedData, bool rebuild=true);
+	void setForceCachedDataUse(bool shouldUseCachedData, bool rebuild=true)
+	{
+		if (forceUseCachedData != shouldUseCachedData)
+		{
+			forceUseCachedData = shouldUseCachedData;
 
+			if (rebuild)
+			{
+				rebuildDatabase();
+			}
+		}
+	}
+
+	
 
 	File rootFile;
 	MarkdownDataBase db;
@@ -349,15 +481,30 @@ public:
 	}
 
 
-	bool shouldAbort() const;
+	bool shouldAbort() const
+	{
+		if (!MessageManager::getInstance()->isThisTheMessageThread() &&
+			Thread::getCurrentThread()->threadShouldExit())
+		{
+			return true;
+		}
+
+		return false;
+	}
 
 	void rebuildDatabase();
 
 	void addContentProcessor(MarkdownContentProcessor* contentProcessor);
 
-	void removeContentProcessor(MarkdownContentProcessor* contentToRemove);
+	void removeContentProcessor(MarkdownContentProcessor* contentToRemove)
+	{
+		contentProcessors.removeAllInstancesOf(contentToRemove);
+	}
 
-	void addItemGenerator(MarkdownDataBase::ItemGeneratorBase* newItemGenerator);
+	void addItemGenerator(MarkdownDataBase::ItemGeneratorBase* newItemGenerator)
+	{
+		db.addItemGenerator(newItemGenerator);
+	}
 
 	void setProgressCounter(double* p)
 	{
@@ -367,11 +514,29 @@ public:
 
 	bool nothingInHere() const { return nothingToShow; }
 
-	void addServerUpdateListener(ServerUpdateListener* l);
+	void addServerUpdateListener(ServerUpdateListener* l)
+	{
+		serverUpdateListeners.addIfNotAlreadyThere(l);
+	}
 
-	void removeServerUpdateListener(ServerUpdateListener* l);
+	void removeServerUpdateListener(ServerUpdateListener* l)
+	{
+		serverUpdateListeners.removeAllInstancesOf(l);
+	}
+	
+	void sendServerUpdateMessage(bool started, bool successful)
+	{
+		for (auto l : serverUpdateListeners)
+		{
+			if (l == nullptr)
+				continue;
 
-	void sendServerUpdateMessage(bool started, bool successful);
+			if (started)
+				l->serverUpdateStateStarted();
+			else
+				l->serverUpdateFinished(successful);
+		}
+	}
 
 private:
 

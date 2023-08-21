@@ -58,9 +58,12 @@ namespace hise { using namespace juce;
 #define CHECK_KEY(mainController) {mainController;}
 #endif
 
-#ifndef RETURN_IF_NO_THROW
+#if JUCE_DEBUG || USE_FRONTEND || JUCE_MAC
 #define RETURN_IF_NO_THROW(x) return x;
 #define RETURN_VOID_IF_NO_THROW() return;
+#else
+#define RETURN_IF_NO_THROW(x)
+#define RETURN_VOID_IF_NO_THROW()
 #endif
 
 

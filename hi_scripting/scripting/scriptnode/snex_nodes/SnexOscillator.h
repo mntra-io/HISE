@@ -130,7 +130,7 @@ struct SnexOscillator : public SnexSource
 struct NewSnexOscillatorDisplay : public ScriptnodeExtraComponent<SnexOscillator>,
 								  public SnexSource::SnexSourceListener
 {
-	struct SnexDisplay : public ComponentWithMiddleMouseDrag,
+	struct SnexDisplay : public Component,
 						 public RingBufferComponentBase
 	{
 		SnexDisplay() = default;

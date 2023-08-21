@@ -277,7 +277,7 @@ template <int C> struct ProcessData: public InternalData
 
 		constexpr int sseSize = SSEFloat::SIMDRegisterSize / sizeof(float);
 
-		while (numAligned >= sseSize)
+		while (numAligned > sseSize)
 		{
 			auto l_ = SSEFloat::fromRawArray(alignedL);
 			auto r_ = SSEFloat::fromRawArray(alignedR);
@@ -350,24 +350,15 @@ struct ProcessDataDyn: public InternalData
 	{
 		bool silent = true;
 
-		if (getNumChannels() == 1)
+		for (int i = 0; i < getNumChannels() - 1; i += 2)
 		{
-			return reinterpret_cast<ProcessData<1>*>(this)->isSilent();
+			ProcessData<2> c(data + i, numSamples);
+
+			silent &= c.isSilent();
+
+			if (!silent)
+				return false;
 		}
-		else
-		{
-			for (int i = 0; i < getNumChannels() - 1; i += 2)
-			{
-				ProcessData<2> c(data + i, numSamples);
-
-				silent &= c.isSilent();
-
-				if (!silent)
-					return false;
-			}
-		}
-
-		
 
 		return silent;
 	}

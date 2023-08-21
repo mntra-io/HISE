@@ -35,12 +35,11 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 struct Operations::Function : public Statement,
-	public AsmJitErrorHandler,
+	public asmjit::ErrorHandler,
 	public Operations::FunctionDefinitionBase
 {
 	static constexpr int InlineScoreThreshhold = 70;
@@ -95,12 +94,10 @@ struct Operations::Function : public Statement,
 		return t;
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	void handleError(asmjit::Error, const char* message, asmjit::BaseEmitter* emitter) override
 	{
 		throwError(juce::String(message));
 	}
-#endif
 
 	TypeInfo getTypeInfo() const override { return TypeInfo(data.returnType); }
 
@@ -124,9 +121,9 @@ struct Operations::Function : public Statement,
 		FunctionData& data;
 		BaseCompiler* compiler;
 		BaseScope* scope;
-		ScopedPointer<AsmJitX86Compiler> cc;
-		ScopedPointer<AsmJitStringLogger> assemblyLogger;
-		AsmJitErrorHandler* errorHandler = nullptr;
+		ScopedPointer<asmjit::X86Compiler> cc;
+		ScopedPointer<asmjit::StringLogger> assemblyLogger;
+		asmjit::ErrorHandler* errorHandler = nullptr;
 		Statement::Ptr statementToCompile = nullptr;
 	};
 

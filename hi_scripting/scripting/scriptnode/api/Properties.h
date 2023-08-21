@@ -41,9 +41,42 @@ using namespace hise;
 
 struct PropertyHelpers
 {
-	static Colour getColour(ValueTree data);
+	static Colour getColour(ValueTree data)
+	{
+		while (data.getParent().isValid())
+		{
+			if (data.hasProperty(PropertyIds::NodeColour))
+			{
+				auto c = getColourFromVar(data[PropertyIds::NodeColour]);
 
-	static Colour getColourFromVar(const var& value);;
+				if (!c.isTransparent())
+					return c;
+			}
+
+			data = data.getParent();
+		}
+
+		return Colour();
+	}
+
+	static Colour getColourFromVar(const var& value)
+	{
+		int64 colourValue = 0;
+
+		if (value.isInt64() || value.isInt())
+			colourValue = (int64)value;
+		else if (value.isString())
+		{
+			auto string = value.toString();
+
+			if (string.startsWith("0x"))
+				colourValue = string.getHexValue64();
+			else
+				colourValue = string.getLargeIntValue();
+		}
+
+		return Colour((uint32)colourValue);
+	};
 
 	static PropertyComponent* createPropertyComponent(ProcessorWithScriptingContent* p, ValueTree& d, const Identifier& id, UndoManager* um);
 };

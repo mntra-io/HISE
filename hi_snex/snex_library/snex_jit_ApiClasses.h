@@ -35,7 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 #define HNODE_JIT_ADD_C_FUNCTION_0(rt, ptr, name) addFunction(new FunctionData(FunctionData:: template createWithoutParameters<rt>(name, reinterpret_cast<void*>(ptr))))
@@ -77,11 +77,6 @@ class ConsoleFunctions : public JitCallableObject
 	{
 		JIT_MEMBER_WRAPPER_0(void, ConsoleFunctions, dump);
 	};
-
-	struct WrapperClear
-	{
-		JIT_MEMBER_WRAPPER_0(void, ConsoleFunctions, clear);
-	};
 	
 	int print(int value, int lineNumber)
 	{
@@ -119,14 +114,6 @@ class ConsoleFunctions : public JitCallableObject
 			logAsyncIfNecessary(s);
 		}
 		return value;
-	}
-
-	void clear()
-	{
-		if (gs.get() != nullptr && gs->isDebugModeEnabled())
-		{
-			gs->clearDebugMessages();
-		}
 	}
 
 	static void dumpObject(void* consoleObject, int dumpedObjectIndex, void* dataPtr)
@@ -169,10 +156,18 @@ class ConsoleFunctions : public JitCallableObject
 		jassert(gs != nullptr);
 		jassert(gs->isDebugModeEnabled());
 
-		if (gs != nullptr)
-			gs->logMessage(s + "\n");
+		auto f = [this, s]()
+		{
+			if (gs != nullptr)
+				gs->logMessage(s + "\n");
+		};
 
-		
+		if (MessageManager::getInstance()->isThisTheMessageThread())
+		{
+			f();
+		}
+		else
+			MessageManager::callAsync(f);
 	}
 
 	static void blink(void* obj, int lineNumber)
@@ -252,7 +247,6 @@ class MathFunctions : public FunctionClass
 {
 public:
 
-#if SNEX_ASMJIT_BACKEND
 	struct Intrinsics
 	{
 		static void range(x86::Compiler& cc, x86::Gp rv, x86::Gp v, x86::Gp l, x86::Gp u)
@@ -279,8 +273,9 @@ public:
 		static Result norm(InlineData* b);
 		static Result sig2mod(InlineData* b);
 		static Result mod2sig(InlineData* b);
+
+		
 	};
-#endif
 
 	MathFunctions(bool addInlinedFunctions, ComplexType::Ptr blockType);;
 };

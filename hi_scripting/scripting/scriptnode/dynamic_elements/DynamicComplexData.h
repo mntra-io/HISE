@@ -241,8 +241,6 @@ struct editor_base : public ScriptnodeExtraComponent<data::pimpl::dynamic_base>,
 
 	static void showProperties(SimpleRingBuffer* obj, Component* c);
 
-	static Colour getColourFromNodeComponent(NodeComponent* nc);
-
 };
 
 struct RingBufferPropertyEditor: public Component
@@ -430,8 +428,7 @@ template <class DynamicDataType, class DataType, class ComponentType, bool AddDr
 	{
 		if (auto pc = findParentComponentOfClass<NodeComponent>())
 		{
-			auto nColour = getColourFromNodeComponent(pc);
-			
+			auto nColour = pc->header.colour;
 			getEditorAsComponent()->setColour(HiseColourScheme::ColourIds::ComponentBackgroundColour, nColour);
 			
 			if (dragger != nullptr)

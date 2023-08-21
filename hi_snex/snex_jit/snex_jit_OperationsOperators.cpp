@@ -34,7 +34,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 
@@ -196,7 +196,6 @@ void Operations::Assignment::process(BaseCompiler* compiler, BaseScope* scope)
 		}
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		getSubExpr(0)->process(compiler, scope);
@@ -245,6 +244,28 @@ void Operations::Assignment::process(BaseCompiler* compiler, BaseScope* scope)
 		else if (getTargetType() == TargetType::Reference && isFirstAssignment)
 		{
             tReg->setReferToReg(value);
+#if 0
+			if (value->getTypeInfo().isNativePointer())
+			{
+				auto ptr = x86::ptr(PTR_REG_R(value));
+				tReg->setCustomMemoryLocation(ptr, value->isGlobalMemory());
+				return;
+			}
+			else if (!(value->hasCustomMemoryLocation() || value->isMemoryLocation()))
+			{
+				if (value->getType() == Types::ID::Pointer)
+				{
+					auto ptr = x86::ptr(PTR_REG_R(value));
+					tReg->setCustomMemoryLocation(ptr, value->isGlobalMemory());
+					return;
+
+				}
+				else
+					location.throwError("Can't create reference to rvalue");
+			}
+
+			tReg->setCustomMemoryLocation(value->getMemoryLocationForReference(), value->isGlobalMemory());
+#endif
 		}
 		else
 		{
@@ -269,7 +290,6 @@ void Operations::Assignment::process(BaseCompiler* compiler, BaseScope* scope)
 				acg.emitBinaryOp(assignmentType, tReg, value);
 		}
 	}
-#endif
 }
 
 void Operations::Assignment::initClassMembers(BaseCompiler* compiler, BaseScope* scope)
@@ -358,6 +378,34 @@ void Operations::Cast::process(BaseCompiler* compiler, BaseScope* scope)
 		if (sourceType.isComplexType())
 			location.throwError("Can't cast " + sourceType.toString() + " to " + targetType.toString());
 
+#if 0
+		if (sourceType.isComplexType())
+		{
+			FunctionClass::Ptr fc = sourceType.getComplexType()->getFunctionClass();
+			complexCastFunction = fc->getSpecialFunction(FunctionClass::NativeTypeCast, targetType, {});
+
+			if (!complexCastFunction.isResolved())
+				location.throwError("Can't cast " + sourceType.toString() + " to " + targetType.toString());
+
+			if (complexCastFunction.canBeInlined(true))
+			{
+				auto path = findParentStatementOfType<ScopeStatementBase>(this)->getPath();
+
+				SyntaxTreeInlineData d(this, path, complexCastFunction);
+				d.object = getSubExpr(0);
+				d.expression = this;
+
+				auto r = complexCastFunction.inlineFunction(&d);
+
+				if (!r.wasOk())
+					location.throwError(r.getErrorMessage());
+
+				d.replaceIfSuccess();
+				return;
+			}
+		}
+#endif
+
 		if (sourceType == targetType)
 		{
 			replaceInParent(getSubExpr(0));
@@ -366,7 +414,6 @@ void Operations::Cast::process(BaseCompiler* compiler, BaseScope* scope)
 
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		auto sourceType = getSubExpr(0)->getTypeInfo();
@@ -407,7 +454,6 @@ void Operations::Cast::process(BaseCompiler* compiler, BaseScope* scope)
 			asg.emitCast(reg, getSubRegister(0), sourceType);
 		}
 	}
-#endif
 }
 
 void Operations::BinaryOp::process(BaseCompiler* compiler, BaseScope* scope)
@@ -453,7 +499,6 @@ void Operations::BinaryOp::process(BaseCompiler* compiler, BaseScope* scope)
 		checkAndSetType(0, {});
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		auto asg = CREATE_ASM_COMPILER(getType());
@@ -466,6 +511,34 @@ void Operations::BinaryOp::process(BaseCompiler* compiler, BaseScope* scope)
 		{
 			auto l = getSubRegister(0);
 
+#if REMOVE_REUSABLE_REG
+			if (auto childOp = dynamic_cast<BinaryOp*>(getSubExpr(0).get()))
+			{
+				if (childOp->usesTempRegister)
+					l->flagForReuse();
+			}
+
+			usesTempRegister = false;
+
+			if (l->canBeReused())
+			{
+				reg = l;
+				reg->removeReuseFlag();
+				jassert(!reg->isMemoryLocation());
+			}
+			else
+			{
+				if (reg == nullptr)
+				{
+					asg.emitComment("temp register for binary op");
+					reg = compiler->getRegFromPool(scope, getTypeInfo());
+					usesTempRegister = true;
+				}
+
+				asg.emitStore(reg, getSubRegister(0));
+			}
+#else
+
 			if (reg == nullptr)
 			{
 				reg = compiler->getRegFromPool(scope, getTypeInfo());
@@ -473,6 +546,9 @@ void Operations::BinaryOp::process(BaseCompiler* compiler, BaseScope* scope)
 			}
 
 			asg.emitStore(reg, getSubRegister(0));
+
+
+#endif
 
 			auto le = getSubExpr(0);
 			auto re = getSubExpr(1);
@@ -488,10 +564,9 @@ void Operations::BinaryOp::process(BaseCompiler* compiler, BaseScope* scope)
 			VariableReference::reuseAllLastReferences(getChildStatement(1));
 		}
 	}
-#endif
 }
 
-#if SNEX_ASMJIT_BACKEND
+
 struct Operations::VectorOp::SerialisedVectorOp : public ReferenceCountedObject
 {
 	enum class Type
@@ -876,7 +951,7 @@ private:
 
 	List childOps;
 };
-#endif
+
 
 void Operations::VectorOp::initChildOps()
 {
@@ -910,7 +985,6 @@ void Operations::VectorOp::process(BaseCompiler* compiler, BaseScope* scope)
 			setTypeForChild(0, TypeInfo(Types::ID::Float));
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		// Forward the registers for all sub vector ops...
@@ -933,12 +1007,10 @@ void Operations::VectorOp::process(BaseCompiler* compiler, BaseScope* scope)
 		if (!isChildOp)
 			emitVectorOp(compiler, scope);
 	}
-#endif
 }
 
 void Operations::VectorOp::emitVectorOp(BaseCompiler* compiler, BaseScope* scope)
 {
-#if SNEX_ASMJIT_BACKEND
 	auto& cc = getFunctionCompiler(compiler);
 
 	if (isSimd4)
@@ -1021,12 +1093,10 @@ void Operations::VectorOp::emitVectorOp(BaseCompiler* compiler, BaseScope* scope
 		cc.jmp(leftOverLoop);
 		cc.bind(loopEnd);
 	}
-#endif
 }
 
 juce::uint32 Operations::VectorOp::getFunctionSignatureId(const String& functionName, bool isSimd)
 {
-#if SNEX_ASMJIT_BACKEND
 	HashMap<String, std::array<uint32, 2>> opMap;
 
 	using namespace asmjit::x86;
@@ -1040,10 +1110,6 @@ juce::uint32 Operations::VectorOp::getFunctionSignatureId(const String& function
 	opMap.set("abs", { Inst::kIdAndps,  Inst::kIdAndps });
 
 	return opMap[functionName][(int)isSimd];
-#else
-	jassertfalse;
-	return 0;
-#endif
 }
 
 void Operations::Increment::process(BaseCompiler* compiler, BaseScope* scope)
@@ -1066,7 +1132,6 @@ void Operations::Increment::process(BaseCompiler* compiler, BaseScope* scope)
 			throwError("Can't increment non integer variables.");
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		auto asg = CREATE_ASM_COMPILER(getType());
@@ -1107,7 +1172,6 @@ void Operations::Increment::process(BaseCompiler* compiler, BaseScope* scope)
 
 		jassert(reg != nullptr);
 	}
-#endif
 }
 
 void Operations::Increment::getOrSetIncProperties(Array<TemplateParameter>& tp, bool& isPre, bool& isDec)
@@ -1280,11 +1344,6 @@ void Operations::Subscript::process(BaseCompiler* compiler, BaseScope* scope)
 		
 		auto indexType = getSubExpr(1)->getTypeInfo();
 
-		if (indexType.getType() == Types::ID::Float || indexType.getType() == Types::ID::Double)
-		{
-			getSubExpr(1)->throwError("subscript index must be integer type");
-		}
-
 		if (subscriptType != ArrayStatementBase::CustomObject && dynType == nullptr && !getSubExpr(1)->isConstExpr() && !compiler->allowUnsafeIndexes())
 		{
 			auto idx = getSubExpr(1);
@@ -1330,7 +1389,7 @@ void Operations::Subscript::process(BaseCompiler* compiler, BaseScope* scope)
 		}
 	}
 
-#if SNEX_ASMJIT_BACKEND
+
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		if (subscriptType == Span && compiler->fitsIntoNativeRegister(getSubExpr(0)->getTypeInfo().getComplexType().get()))
@@ -1384,7 +1443,6 @@ void Operations::Subscript::process(BaseCompiler* compiler, BaseScope* scope)
 
 		replaceMemoryWithExistingReference(compiler);
 	}
-#endif
 }
 
 void Operations::Compare::process(BaseCompiler* compiler, BaseScope* scope)
@@ -1404,7 +1462,6 @@ void Operations::Compare::process(BaseCompiler* compiler, BaseScope* scope)
 		}
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		{
@@ -1422,9 +1479,12 @@ void Operations::Compare::process(BaseCompiler* compiler, BaseScope* scope)
 
 			VariableReference::reuseAllLastReferences(this);
 
+#if REMOVE_REUSABLE_REG
+			l->reg->flagForReuseIfAnonymous();
+			r->reg->flagForReuseIfAnonymous();
+#endif
 		}
 	}
-#endif
 }
 
 void Operations::LogicalNot::process(BaseCompiler* compiler, BaseScope* scope)
@@ -1437,13 +1497,12 @@ void Operations::LogicalNot::process(BaseCompiler* compiler, BaseScope* scope)
 			throwError("Wrong type for logic operation");
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		auto asg = CREATE_ASM_COMPILER(getType());
+
 		reg = asg.emitLogicalNot(getSubRegister(0));
 	}
-#endif
 }
 
 void Operations::PointerAccess::process(BaseCompiler* compiler, BaseScope* s)
@@ -1458,7 +1517,6 @@ void Operations::PointerAccess::process(BaseCompiler* compiler, BaseScope* s)
 			throwError("Can't dereference non-complex type");
 	}
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		reg = compiler->registerPool.getNextFreeRegister(s, getTypeInfo());
@@ -1488,14 +1546,12 @@ void Operations::PointerAccess::process(BaseCompiler* compiler, BaseScope* s)
 
 		reg->setCustomMemoryLocation(x86::ptr(ptrReg), obj->isGlobalMemory());
 	}
-#endif
 }
 
 void Operations::Negation::process(BaseCompiler* compiler, BaseScope* scope)
 {
 	processBaseWithChildren(compiler, scope);
 
-#if SNEX_ASMJIT_BACKEND
 	COMPILER_PASS(BaseCompiler::CodeGeneration)
 	{
 		if (!isConstExpr())
@@ -1513,7 +1569,6 @@ void Operations::Negation::process(BaseCompiler* compiler, BaseScope* scope)
 			jassertfalse;
 		}
 	}
-#endif
 }
 
 }

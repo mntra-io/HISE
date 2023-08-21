@@ -35,7 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 /** An OptimizationPass is a class that performs optimization on a given
     Statement.
@@ -329,7 +329,6 @@ public:
 };
 
 
-#if SNEX_ASMJIT_BACKEND
 
 /** This pass tries to optimize on the lowest level just before the actual machine code is being generated.
 
@@ -510,8 +509,6 @@ private:
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AsmCleanupPass);
 };
 
-#endif
-
 struct OptimizationFactory
 {
 	using CreateFunction = std::function<BaseCompiler::OptimizationPassBase*(void)>;
@@ -557,8 +554,6 @@ struct OptimizationFactory
 
 	Array<Entry> entries;
 };
-
-
 
 }
 }

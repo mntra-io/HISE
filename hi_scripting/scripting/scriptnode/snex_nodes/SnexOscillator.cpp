@@ -60,17 +60,11 @@ juce::Result core::SnexOscillator::OscillatorCallbacks::recompiledOk(snex::jit::
 
 	//r = newTickFunction.validateWithArgs(Types::ID::Float, { Types::ID::Double });
 
-	Array<Types::ID> argTypes = { Types::ID::Pointer };
-
-#if SNEX_MIR_BACKEND
-	argTypes.add(Types::ID::Pointer);
-#endif
-
 	if (r.wasOk())
-		r = newProcessFunction.validateWithArgs(Types::ID::Void, argTypes);
+		r = newProcessFunction.validateWithArgs(Types::ID::Void, { Types::ID::Pointer, Types::ID::Pointer });
 
 	if (r.wasOk() && newPrepareFunction.isResolved())
-		r = newPrepareFunction.validateWithArgs(Types::ID::Void, argTypes);
+		r = newPrepareFunction.validateWithArgs(Types::ID::Void, { Types::ID::Pointer, Types::ID::Pointer });
 
 	{
 		SimpleReadWriteLock::ScopedWriteLock l(getAccessLock());

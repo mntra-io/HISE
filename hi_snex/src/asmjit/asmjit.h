@@ -24,8 +24,6 @@
 #ifndef ASMJIT_ASMJIT_H_INCLUDED
 #define ASMJIT_ASMJIT_H_INCLUDED
 
-#error "TUT"
-
 #include "./core.h"
 
 #ifndef ASMJIT_NO_X86

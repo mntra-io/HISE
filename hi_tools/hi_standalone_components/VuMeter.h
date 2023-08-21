@@ -70,7 +70,7 @@ public:
 
 	struct LookAndFeelMethods
 	{
-		virtual ~LookAndFeelMethods();;
+		virtual ~LookAndFeelMethods() {};
 
 		virtual void drawMonoMeter2(Graphics& g, VuMeter& v, VuMeter::Type type, float value);
 
@@ -81,10 +81,10 @@ public:
 	/** Creates a new VuMeter. */
 	VuMeter(float leftPeak=0.0f, float rightPeak=0.0f, Type t = MonoHorizontal);
 
-	~VuMeter();;
+	~VuMeter() {};
 
 	/** Change the colour of the VuMeter. */
-	void setColour(ColourId id, Colour newColour);;
+	void setColour(ColourId id, Colour newColour) {	colours[id] = newColour; };
 
 	void paint(Graphics &g) override;;
 
@@ -99,13 +99,26 @@ public:
 
 	void setPeakMultiChannel(float *numbers, int numChannels);
 
-	void setInvertMode(bool shouldInvertRange);
+	void setInvertMode(bool shouldInvertRange)
+	{
+		invertMode = shouldInvertRange;
+		repaint();
+	}
 
-	void setForceLinear(bool shouldForceLinear);
+	void setForceLinear(bool shouldForceLinear)
+	{
+		forceLinear = shouldForceLinear;
+	}
 
 private:
 
-	LookAndFeelMethods* getLaf();
+	LookAndFeelMethods* getLaf()
+	{
+		if (auto other = dynamic_cast<LookAndFeelMethods*>(&getLookAndFeel()))
+			return other;
+
+		return &defaultLaf;
+	}
 
 	LookAndFeelMethods defaultLaf;
 

@@ -223,10 +223,6 @@ struct ParameterSlider : public Slider,
 
 	void mouseDown(const MouseEvent& e) override;
 
-	void mouseUp(const MouseEvent& e) override;
-
-	void mouseDrag(const MouseEvent& e) override;
-
 	void mouseEnter(const MouseEvent& e) override;
 
 	void mouseMove(const MouseEvent& e) override;
@@ -286,13 +282,7 @@ struct MacroParameterSlider : public Component,
     
 	void resized() override;
 
-    void mouseDown(const MouseEvent& event) override
-    {
-		CHECK_MIDDLE_MOUSE_DOWN(event);
-	    Component::mouseDown(event);
-    }
-
-    void mouseDrag(const MouseEvent& event) override;
+	void mouseDrag(const MouseEvent& event) override;
 
 	void mouseUp(const MouseEvent& e) override;
 

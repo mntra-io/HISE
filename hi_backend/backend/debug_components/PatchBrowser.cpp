@@ -245,7 +245,7 @@ void PatchBrowser::showProcessorInPopup(Component* c, const MouseEvent& e, Proce
 		b = bp->getLocalArea(c, b);
 		auto pe = dynamic_cast<ProcessorEditorContainer*>(DebugableObject::Helpers::showProcessorEditorPopup(e, c, p));
 		
-		Component::SafePointer<FloatingTilePopup> safePopup = ft->showComponentAsDetachedPopup(pe, bp, { b.getRight() + 50 + (CONTAINER_WIDTH)/2, b.getY() -10 }, true);
+		Component::SafePointer<FloatingTilePopup> safePopup = ft->showComponentAsDetachedPopup(pe, bp, { b.getRight() + 50 + (CONTAINER_WIDTH)/2, b.getY() + 30 }, true);
 
 		pe->rootBroadcaster.addListener(*bp, PatchBrowser::processorChanged);
 
@@ -566,16 +566,13 @@ void PatchBrowser::paint(Graphics &g)
 
 	int numCollections = getNumCollections();
 
-	for (int i = 0; i < numCollections; i++)
+	for (int i = 1; i < numCollections; i++) // skip the Master Chain
 	{
 		PatchCollection *c = dynamic_cast<PatchCollection*>(getCollection(i));
 
-        if(i == 0) // skip the Master Chain
-            continue;
-        
 		if (!c->hasVisibleItems()) continue;
 
-        Processor *p = c->getProcessor();
+		Processor *p = c->getProcessor();
 
 		if (p == nullptr) return;
 
@@ -594,25 +591,10 @@ void PatchBrowser::paint(Graphics &g)
 			}
 		}
 
-		auto endPoint = c->getPointForTreeGraph(false).toFloat();
-		auto endPointInParent = getLocalPoint(c, endPoint);
+		Point<int> endPoint = c->getPointForTreeGraph(false);
+		Point<int> endPointInParent = getLocalPoint(c, endPoint);
 
-        bool paintUniform = false;
-        
-        if(auto ms = dynamic_cast<ModulatorSynth*>(c->getProcessor()))
-        {
-            if(ms->isUsingUniformVoiceHandler())
-                paintUniform = true;
-            
-            if(auto msc = dynamic_cast<ModulatorSynthChain*>(ms))
-            {
-                if(msc->isUniformVoiceHandlerRoot())
-                    paintUniform = false;
-            }
-        }
-        
-		g.setColour(paintUniform ? Colour(0xFF888888) :
-            Colour(0xFF222222));
+		g.setColour(Colour(0xFF222222));
 
 		g.drawLine((float)startPointInParent.getX(), (float)startPointInParent.getY(), (float)startPointInParent.getX(), (float)endPointInParent.getY(), 2.0f);
 		g.drawLine((float)startPointInParent.getX(), (float)endPointInParent.getY(), (float)endPointInParent.getX(), (float)endPointInParent.getY(), 2.0f);
@@ -645,77 +627,6 @@ void PatchBrowser::paint(Graphics &g)
                 ug.draw1PxHorizontalLine(y, 0.0f, (float)getWidth());
             }
         }
-    }
-    
-    struct GlobalModCablePin
-    {
-        Processor* p = nullptr;
-        Point<float> point;
-        Colour c;
-    };
-    
-    Array<GlobalModCablePin> sources;
-    Array<std::tuple<GlobalModCablePin, GlobalModCablePin>> connections;
-    
-    Component::callRecursive<PatchItem>(this, [&](PatchItem* pi)
-    {
-        
-        if(!pi->isVisible() || pi->getProcessor() == nullptr)
-            return false;
-        
-        if(dynamic_cast<GlobalModulatorContainer*>(pi->getProcessor()->getParentProcessor(true)))
-        {
-            GlobalModCablePin nd;
-            nd.p = pi->getProcessor();
-            nd.c = pi->getProcessor()->getColour();
-            nd.point = getLocalPoint(pi, pi->bypassArea.getCentre()).toFloat();
-            
-            sources.add(nd);
-        }
-        
-        if(auto gm = dynamic_cast<GlobalModulator*>(pi->getProcessor()))
-        {
-            if(auto om = gm->getOriginalModulator())
-            {
-                for(const auto& s: sources)
-                {
-                    if(s.p == om)
-                    {
-                        GlobalModCablePin nd;;
-                        nd.p = pi->getProcessor();
-                        nd.c = nd.p->getColour();
-                        
-                        
-                        
-                        nd.point = getLocalPoint(pi, pi->bypassArea.getCentre()).toFloat();
-                        
-                        connections.add({s, nd});
-                        break;
-                    }
-                }
-            }
-        }
-        
-        return false;
-    });
-    
-    auto x = 2.0f;
-    
-    for(const auto& c: connections)
-    {
-        auto startPoint = std::get<0>(c).point;
-        auto endPoint = std::get<1>(c).point;
-        
-        Path gc;
-        gc.startNewSubPath(startPoint);
-        gc.lineTo(x, startPoint.getY() + x);
-        gc.lineTo(x, endPoint.getY());
-        gc.lineTo(endPoint);
-        
-        g.setColour(std::get<1>(c).c.withAlpha(JUCE_LIVE_CONSTANT_OFF(0.7f)));
-        g.strokePath(gc, PathStrokeType(1.0f));
-        
-        x += 2.0f;
     }
 }
 
@@ -890,7 +801,7 @@ isOver(false)
 
 	static Path soloPath;
 
-	soloPath.loadPathFromData(BackendBinaryData::PopupSymbols::soloShape, SIZE_OF_PATH(BackendBinaryData::PopupSymbols::soloShape));
+	soloPath.loadPathFromData(BackendBinaryData::PopupSymbols::soloShape, sizeof(BackendBinaryData::PopupSymbols::soloShape));
 	soloButton->setShape(soloPath, false, true, false);
 	soloButton->addListener(this);
 
@@ -898,7 +809,7 @@ isOver(false)
 
 	static Path hidePath;
 
-	hidePath.loadPathFromData(BackendBinaryData::ToolbarIcons::viewPanel, SIZE_OF_PATH(BackendBinaryData::ToolbarIcons::viewPanel));
+	hidePath.loadPathFromData(BackendBinaryData::ToolbarIcons::viewPanel, sizeof(BackendBinaryData::ToolbarIcons::viewPanel));
 	hideButton->setShape(hidePath, false, true, false);
 	hideButton->addListener(this);
  
@@ -915,7 +826,7 @@ isOver(false)
 	idLabel.setText(getProcessor()->getId(), dontSendNotification);
 	idLabel.addListener(this);
     
-	bypassed = getProcessor()->isBypassed();
+    
 }
 
 void PatchBrowser::ModuleDragTarget::buttonClicked(Button *b)
@@ -925,6 +836,7 @@ void PatchBrowser::ModuleDragTarget::buttonClicked(Button *b)
 	if (b == soloButton)
 	{
 		const bool isSolo = getProcessor()->getEditorState(Processor::EditorState::Solo);
+
 		refreshButtonState(soloButton, !isSolo);
 	}
 
@@ -950,9 +862,13 @@ void PatchBrowser::ModuleDragTarget::refreshAllButtonStates()
 void PatchBrowser::ModuleDragTarget::refreshButtonState(ShapeButton *button, bool on)
 {
 	if (on)
+	{
 		button->setColours(Colours::white.withAlpha(0.7f), Colours::white, Colours::white);
+	}
 	else
+	{
 		button->setColours(Colours::black.withAlpha(0.2f), Colours::white.withAlpha(0.5f), Colours::white);
+	}
 }
 
 void PatchBrowser::ModuleDragTarget::setDraggingOver(bool shouldBeOver)
@@ -1036,8 +952,6 @@ hierarchy(hierarchy_)
 	addAndMakeVisible(idLabel);
 	addAndMakeVisible(foldButton = new ShapeButton("Fold Overview", Colour(0xFF222222), Colours::white.withAlpha(0.4f), Colour(0xFF222222)));
 
-	foldButton->setVisible(false);
-
     setTooltip("Show " + synth->getId() + " editor");
     
 	idLabel.setFont(GLOBAL_BOLD_FONT().withHeight(JUCE_LIVE_CONSTANT_OFF(16.0f)));
@@ -1095,12 +1009,12 @@ hierarchy(hierarchy_)
 
 		if (p != nullptr)
 		{
-			searchTerm << p->getId() << ";" << p->getType();
+			searchTerm << p->getId() << " " << p->getType();
 		}
 
 		if (parentSynth != nullptr)
 		{
-			searchTerm << ";" << parentSynth->getId() << ";" << parentSynth->getType();
+			searchTerm << parentSynth->getId() << " " << parentSynth->getType();
 		}
 
 		items.add(new PatchItem(p, parentSynth, iter.getHierarchyForCurrentProcessor(), searchTerm));
@@ -1225,33 +1139,13 @@ void PatchBrowser::PatchCollection::paint(Graphics &g)
 	}
 
 	idLabel.setColour(Label::ColourIds::textColourId, Colours::white.withAlpha(bypassed ? 0.2f : 0.8f));
-    
-    if(auto ms = dynamic_cast<ModulatorSynthChain*>(getProcessor()))
-    {
-        if(ms->isUniformVoiceHandlerRoot())
-        {
-            
-            g.setFont(GLOBAL_BOLD_FONT().withHeight(10.0f));
-            
-            
-            
-            auto b = iconSpace2.removeFromRight(30.0f);
-            
-            g.setColour(JUCE_LIVE_CONSTANT_OFF(Colour(0x14FFFFFF)));
-            g.fillRoundedRectangle(b.reduced(3.0f), 2.0f);
-            
-            g.setColour(Colour(0xFF888888));
-            g.drawText("UVH", b, Justification::centred);
-        }
-        
-    }
 }
 
 
 void PatchBrowser::PatchCollection::refreshFoldButton()
 {
 	Path foldShape;
-	foldShape.loadPathFromData(HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon, SIZE_OF_PATH(HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon));
+	foldShape.loadPathFromData(HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon, sizeof(HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon));
 
 	setFolded(getProcessor()->getEditorState(getProcessor()->getEditorStateForIndex(ModulatorSynth::OverviewFolded)));
 
@@ -1595,9 +1489,7 @@ void PatchBrowser::PatchItem::applyLayout()
     auto canBeDeleted = dynamic_cast<Chain*>(getProcessor()) == nullptr;
     canBeDeleted |= dynamic_cast<ModulatorSynth*>(getProcessor()) != nullptr;
     canBeDeleted &= getProcessor() != getProcessor()->getMainController()->getMainSynthChain();
-    canBeDeleted &= dynamic_cast<SlotFX*>(getProcessor()->getParentProcessor(false, true)) == nullptr;
-    
-    
+
     closeButton.setVisible(canBeDeleted && findParentComponentOfClass<PatchBrowser>()->showChains);
     
     if (closeButton.isVisible())
@@ -1914,7 +1806,7 @@ void PatchBrowser::MiniPeak::paint(Graphics& g)
 	case ProcessorType::Midi:
 	{
 		Path mp;
-		mp.loadPathFromData(HiBinaryData::SpecialSymbols::midiData, SIZE_OF_PATH(HiBinaryData::SpecialSymbols::midiData));
+		mp.loadPathFromData(HiBinaryData::SpecialSymbols::midiData, sizeof(HiBinaryData::SpecialSymbols::midiData));
 		PathFactory::scalePath(mp, getLocalBounds().toFloat().reduced(1.0f));
 		g.setColour(Colours::white.withAlpha(0.2f));
 		g.fillPath(mp);
@@ -2066,12 +1958,14 @@ void PatchBrowser::MiniPeak::timerCallback()
 juce::Path PatchBrowser::Factory::createPath(const String& url) const
 {
 	Path p;
-	LOAD_EPATH_IF_URL("add", EditorIcons::penShape);
+	LOAD_PATH_IF_URL("add", EditorIcons::penShape);
 	LOAD_PATH_IF_URL("workspace", ColumnIcons::openWorkspaceIcon);
-	LOAD_EPATH_IF_URL("close", SampleMapIcons::deleteSamples);
-	LOAD_EPATH_IF_URL("create", HiBinaryData::ProcessorEditorHeaderIcons::addIcon);
-	LOAD_EPATH_IF_URL("folded", HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon);
-	LOAD_EPATH_IF_URL("unfolded", HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon);
+	LOAD_PATH_IF_URL("close", SampleMapIcons::deleteSamples);
+	LOAD_PATH_IF_URL("create", HiBinaryData::ProcessorEditorHeaderIcons::addIcon);
+
+	LOAD_PATH_IF_URL("folded", HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon);
+
+	LOAD_PATH_IF_URL("unfolded", HiBinaryData::ProcessorEditorHeaderIcons::foldedIcon);
 
 	if (url == "unfolded")
 		p.applyTransform(AffineTransform::rotation(float_Pi * 0.5f));
@@ -2337,8 +2231,8 @@ juce::Path AutomationDataBrowser::Factory::createPath(const String& url) const
 {
 	Path p;
 
-	LOAD_EPATH_IF_URL("component", HiBinaryData::SpecialSymbols::macros);
-	LOAD_EPATH_IF_URL("midi", HiBinaryData::SpecialSymbols::midiData);
+	LOAD_PATH_IF_URL("component", HiBinaryData::SpecialSymbols::macros);
+	LOAD_PATH_IF_URL("midi", HiBinaryData::SpecialSymbols::midiData);
 
 	return p;
 }

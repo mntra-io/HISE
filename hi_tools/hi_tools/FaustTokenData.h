@@ -7,7 +7,6 @@ struct FaustLibraryToken
 
 juce::Array<FaustLibraryToken> createFaustLibraryTokens()
 {
-    
     juce::Array<FaustLibraryToken> tokens;
     tokens.add({"aa.clip", "", "https://faustlibraries.grame.fr/libs/aanl/#aaclip"});
     tokens.add({"aa.Rsqrt", "", "https://faustlibraries.grame.fr/libs/aanl/#aarsqrt"});

@@ -35,7 +35,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 struct Operations::StatementBlock : public Expression,
@@ -121,7 +121,7 @@ struct Operations::StatementBlock : public Expression,
 
 	BaseScope* createOrGetBlockScope(BaseScope* parent);
 
-	void addInlinedReturnJump(AsmJitX86Compiler& cc);
+	void addInlinedReturnJump(X86Compiler& cc);
 
 	void process(BaseCompiler* compiler, BaseScope* scope);
 
@@ -132,7 +132,7 @@ struct Operations::StatementBlock : public Expression,
 
 private:
 
-	AsmJitLabel endLabel;
+	asmjit::Label endLabel;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StatementBlock);
 };
@@ -383,14 +383,14 @@ struct Operations::WhileLoop : public Statement,
 
 	Ptr getLoopChildStatement(ChildStatementType t);
 
-	AsmJitLabel getJumpTargetForEnd(bool getContinue) override
+	asmjit::Label getJumpTargetForEnd(bool getContinue) override
 	{
 		return getContinue ? continueTarget : breakTarget;
 	}
 
 
-	AsmJitLabel continueTarget;
-	AsmJitLabel breakTarget;
+	asmjit::Label continueTarget;
+	asmjit::Label breakTarget;
 
 	ScopedPointer<RegisterScope> forScope;
 };
@@ -459,7 +459,7 @@ struct Operations::Loop : public Expression,
 
 	bool evaluateIteratorLoad();
 
-	AsmJitLabel getJumpTargetForEnd(bool getContinue) override
+	asmjit::Label getJumpTargetForEnd(bool getContinue) override
 	{
 		return loopEmitter->getLoopPoint(getContinue);
 	}
@@ -474,8 +474,8 @@ struct Operations::Loop : public Expression,
 
 	ArrayType loopTargetType;
 
-	AsmJitLabel loopStart;
-	AsmJitLabel loopEnd;
+	asmjit::Label loopStart;
+	asmjit::Label loopEnd;
 
 	FunctionData customBegin;
 	FunctionData customSizeFunction;
@@ -563,11 +563,10 @@ struct Operations::IfStatement : public Statement,
 		return new IfStatement(l, dynamic_cast<Expression*>(c1.get()), c2, c3);
 	}
 
-	AsmJitLabel getJumpTargetForEnd(bool getContinue) override
+	asmjit::Label getJumpTargetForEnd(bool getContinue) override
 	{
 		location.throwError("Can't jump to end of if");
-
-		RETURN_DEBUG_ONLY({});
+		return {};
 	}
 
 	TypeInfo getTypeInfo() const override { return {}; }

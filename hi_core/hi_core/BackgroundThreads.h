@@ -87,18 +87,35 @@ public:
 	struct GlobalHandler
 	{
 
-		virtual ~GlobalHandler();;
+		virtual ~GlobalHandler() {};
 
-		bool isHelpEnabled() const;
+		bool isHelpEnabled() const { return helpEnabled; }
 
 		virtual void showHelp(ComponentWithHelp* h) = 0;
 		
 
-		void toggleHelp();
+		void toggleHelp()
+		{
+			helpEnabled = !helpEnabled;
 
-		void registerHelper(ComponentWithHelp* c);
+			for (auto c : registeredHelpers)
+			{
+				if (auto asComponent = dynamic_cast<Component*>(c.get()))
+				{
+					asComponent->repaint();
+				}
+			}
+		}
 
-		void removeHelper(ComponentWithHelp* c);
+		void registerHelper(ComponentWithHelp* c)
+		{
+			registeredHelpers.addIfNotAlreadyThere(c);
+		}
+
+		void removeHelper(ComponentWithHelp* c)
+		{
+			registeredHelpers.removeAllInstancesOf(c);
+		}
 
 	private:
 
@@ -110,9 +127,20 @@ public:
 		JUCE_DECLARE_WEAK_REFERENCEABLE(GlobalHandler);
 	};
 
-	ComponentWithHelp(GlobalHandler* handler_);
+	ComponentWithHelp(GlobalHandler* handler_):
+		handler(handler_)
+	{
+		p.loadPathFromData(MainToolbarIcons::help, sizeof(MainToolbarIcons::help));
 
-	virtual ~ComponentWithHelp();
+		if (handler != nullptr)
+			handler->registerHelper(this);
+	}
+
+	virtual ~ComponentWithHelp()
+	{
+		if (handler != nullptr)
+			handler->removeHelper(this);
+	}
 
 	virtual String getMarkdownHelpUrl() const = 0;
 
@@ -181,11 +209,21 @@ public:
 	public:
 
 		
-		AdditionalRow(DialogWindowWithBackgroundThread* parent_);
+		AdditionalRow(DialogWindowWithBackgroundThread* parent_):
+			parent(parent_)
+		{
 
-		~AdditionalRow();
+		}
 
-		void buttonClicked(Button* b) override;
+		~AdditionalRow()
+		{
+			columns.clear();
+		}
+
+		void buttonClicked(Button* b) override
+		{
+			parent->buttonClicked(b);
+		}
 
 		void addComboBox(const String& name, const StringArray& items, const String& label, int width=0);
 
@@ -223,12 +261,30 @@ public:
 
 			Column(Component* t, const String& name_, int width_);
 
-			void buttonClicked(Button* /*b*/) override;
+			void buttonClicked(Button* /*b*/) override
+			{
+				
+			}
 
-			~Column();
+			~Column()
+			{
+				component = nullptr;
+				infoButton = nullptr;
+			}
 
-			void paint(Graphics& g) override;
+			void paint(Graphics& g) override
+			{
+				if (name.isNotEmpty())
+				{
+					auto area = getLocalBounds().removeFromTop(16);
+					area.removeFromRight(18);
+					g.setFont(GLOBAL_BOLD_FONT());
+					g.setColour(Colours::white);
+					g.drawText(name, area, Justification::centredLeft);
+				}
+			}
 
+			
 
 			void resized() override;
 
@@ -263,9 +319,9 @@ public:
 	void showStatusMessage(const String &message) const;
 	
 	/** Sets the progressbar during job execution. */
-	void setProgress(double progressValue);;
+	void setProgress(double progressValue) { logData.progress = progressValue; };
 
-	double& getProgressCounter();
+	double& getProgressCounter() { return logData.progress; }
 
 	void buttonClicked(Button* b) override;
 
@@ -273,25 +329,40 @@ public:
 	*
 	*	The name is the same String that you specified with 'addButton()'
 	*/
-	virtual void resultButtonClicked(const String &/*name*/);;
+	virtual void resultButtonClicked(const String &/*name*/) {};
 
 	/** If you want to check something (on the message thread) before launching the actual task, overwrite this method.
 	*
 	*	This will be called when the user presses OK. If you return false, it won't launch the process.
 	*/
-	virtual bool checkConditionsBeforeStartingThread();
+	virtual bool checkConditionsBeforeStartingThread() { return true; }
 
-	void wait(int milliSeconds);
-
+	void wait(int milliSeconds)
+	{
+		if (thread != nullptr)
+		{
+			thread->wait(milliSeconds);
+		}
+	}
+	
 	void stopThread();
 
-	void setAdditionalLogFunction(const LogFunction& additionalLogFunction);
+	void setAdditionalLogFunction(const LogFunction& additionalLogFunction)
+	{
+		logData.logFunction = additionalLogFunction;
+	}
 
 	/** You can add a lambda that will be executed on the message thread after the task
 	    has been completed. */
-	void setAdditionalFinishCallback(const std::function<void()>& f);
+	void setAdditionalFinishCallback(const std::function<void()>& f)
+	{
+		additionalFinishCallback = f;
+	}
 
-	void setDestroyWhenFinished(bool shouldBeDestroyed);
+	void setDestroyWhenFinished(bool shouldBeDestroyed)
+	{
+		destroyWhenFinished = shouldBeDestroyed;
+	}
 
 protected:
 
@@ -308,11 +379,29 @@ protected:
 	/** Call this method in your constructor after you created all custom methods. */
 	void addBasicComponents(bool addOkButton = true);
 	
-	Button* getButton(const String& name);
+	Button* getButton(const String& name)
+	{
+		for (int i = 0; i < getNumChildComponents(); i++)
+		{
+			if (auto b = dynamic_cast<Button*>(getChildComponent(i)))
+			{
+				if(b->getName() == name)
+					return b;
+			}
+		}
 
-	void setTimeoutMs(int newTimeout);
+		return nullptr;
+	}
 
-	Thread* getCurrentThread();
+	void setTimeoutMs(int newTimeout)
+	{
+		timeoutMs = newTimeout;
+	}
+
+	Thread* getCurrentThread()
+	{
+		return thread;
+	}
 
 private:
 
@@ -333,11 +422,21 @@ private:
 	{
 	public:
 
-		LoadingThread(DialogWindowWithBackgroundThread *parent_);;
+		LoadingThread(DialogWindowWithBackgroundThread *parent_) :
+			Thread(parent_->getName(), HISE_DEFAULT_STACK_SIZE),
+			parent(parent_)
+		{};
 
-		~LoadingThread();
+		~LoadingThread()
+		{
+			
+		}
 
-		void run() override;;
+		void run() override
+		{
+			parent->run();
+			parent->triggerAsyncUpdate();
+		};
 
 	private:
 
@@ -424,7 +523,6 @@ public:
 
 private:
 
-	Array<File> collectWavetableMonoliths();
 
 	Array<File> collectMonoliths();
 

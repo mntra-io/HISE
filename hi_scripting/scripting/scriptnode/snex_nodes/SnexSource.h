@@ -231,7 +231,7 @@ public:
 		Result recompiledOk(snex::jit::ComplexType::Ptr objectClass) override
 		{
 			auto newFunction = getFunctionAsObjectCallback("setExternalData");
-			auto r = newFunction.validateWithArgs(Types::ID::Void, { Types::ID::Pointer, Types::ID::Pointer, Types::ID::Integer });
+			auto r = newFunction.validateWithArgs(Types::ID::Void, { Types::ID::Pointer, Types::ID::Integer });
 
 			if (r.wasOk())
 			{
@@ -878,7 +878,7 @@ struct SnexComplexDataDisplay : public Component,
 	WeakReference<SnexSource> source;
 };
 
-struct SnexMenuBar : public ComponentWithMiddleMouseDrag,
+struct SnexMenuBar : public Component,
 	public ButtonListener,
 	public ComboBox::Listener,
 	public SnexSource::SnexSourceListener,

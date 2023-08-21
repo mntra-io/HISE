@@ -2,7 +2,7 @@
 
 BEGIN_TEST_DATA
   f: main
-  ret: int
+  ret: block
   args: block
   input: "dirac.wav"
   output: "filtered_dirac"
@@ -11,7 +11,7 @@ BEGIN_TEST_DATA
 END_TEST_DATA
 */
 
-int main(block input)
+block main(block input)
 {
     double a = 0.7;
     double invA = 1.0 - a;
@@ -26,6 +26,6 @@ int main(block input)
 		lastValue = s;
     }
 	
-    return 1;
+    return input;
 }
 

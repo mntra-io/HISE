@@ -519,8 +519,6 @@ void MainController::UserPresetHandler::saveUserPresetInternal(const String& nam
 
 void MainController::UserPresetHandler::loadUserPresetInternal()
 {
-	ScopedValueSetter<void*> svs(currentThreadThatIsLoadingPreset, LockHelpers::getCurrentThreadHandleOrMessageManager());
-
 	{
 		LockHelpers::freeToGo(mc);
         
@@ -554,11 +552,11 @@ void MainController::UserPresetHandler::loadUserPresetInternal()
 			{
 				if (!sp->isFront()) continue;
 
-				restoreStateManager(userPresetToLoad, UserPresetIds::Modules);
+				UserPresetHelpers::restoreModuleStates(mc->getMainSynthChain(), userPresetToLoad);
 
 				if (mc->getUserPresetHandler().isUsingCustomDataModel())
 				{
-					restoreStateManager(userPresetToLoad, UserPresetIds::CustomJSON);
+					mc->getUserPresetHandler().loadCustomValueTree(userPresetToLoad);
 				}
 				else
 				{
@@ -587,32 +585,30 @@ void MainController::UserPresetHandler::loadUserPresetInternal()
 
 #endif
 
-		restoreStateManager(userPresetToLoad, UserPresetIds::MidiAutomation);
-		restoreStateManager(userPresetToLoad, UserPresetIds::MPEData);
+		ValueTree autoData = userPresetToLoad.getChildWithName("MidiAutomation");
+
+		if (autoData.isValid())
+			mc->getMacroManager().getMidiControlAutomationHandler()->restoreFromValueTree(autoData);
+
+		auto mpeData = userPresetToLoad.getChildWithName("MPEData");
+
+		if (mpeData.isValid())
+		{
+			mc->getMacroManager().getMidiControlAutomationHandler()->getMPEData().restoreFromValueTree(mpeData);
+		}
+		else
+		{
+			mc->getMacroManager().getMidiControlAutomationHandler()->getMPEData().reset();
+		}
 
 		// Now we can restore the values of the macro controls
 		if (mc->getMacroManager().isMacroEnabledOnFrontend())
 			mc->getMacroManager().getMacroChain()->loadMacroValuesFromValueTree(userPresetToLoad);
 
-		// restore the remaining state managers...
-		restoreStateManager(userPresetToLoad, UserPresetIds::AdditionalStates);
-
 		postPresetLoad();
 	}
 
 	mc->getSampleManager().preloadEverything();
-}
-
-void MainController::UserPresetHandler::postPresetSave()
-{
-	// Already on the message thread
-	jassert(MessageManager::getInstance()->isThisTheMessageThread());
-
-	for (auto l : listeners)
-	{
-		if (l != nullptr)
-			l->presetSaved(currentlyLoadedFile);
-	}
 }
 
 void MainController::UserPresetHandler::postPresetLoad()
@@ -721,6 +717,27 @@ bool MainController::UserPresetHandler::isReadOnly(const File& f)
 #endif
 }
 
+void MainController::UserPresetHandler::loadCustomValueTree(const ValueTree& presetData)
+{
+	auto v = presetData.getChildWithName("CustomJSON");
+	if (v.isValid())
+	{
+		auto obj = ValueTreeConverters::convertValueTreeToDynamicObject(v);
+
+		//auto obj = JSON::parse(v["Data"].toString());
+
+		
+
+		if (obj.isObject() || obj.isArray())
+		{
+			for (auto l : listeners)
+			{
+				l->loadCustomUserPreset(obj);
+			}
+		}
+	}
+}
+
 juce::StringArray MainController::UserPresetHandler::getCustomAutomationIds() const
 {
 	StringArray sa;
@@ -747,9 +764,24 @@ int MainController::UserPresetHandler::getCustomAutomationIndex(const Identifier
     return -1;
 }
 
+juce::ValueTree MainController::UserPresetHandler::createCustomValueTree(const String& presetName)
+{
+	jassert(isUsingCustomData);
+
+	for (auto l : listeners)
+	{
+		auto obj = l->saveCustomUserPreset(presetName);
+
+		if (obj.isObject())
+			return ValueTreeConverters::convertDynamicObjectToValueTree(obj, "CustomJSON");
+	}
+
+	return {};
+}
+
 bool MainController::UserPresetHandler::setCustomAutomationData(CustomAutomationData::List newList)
 {
-	if (isUsingCustomDataModel())
+	if (isUsingCustomData)
 	{
 		customAutomationData.swapWith(newList);
 
@@ -775,17 +807,7 @@ MainController::UserPresetHandler::CustomAutomationData::Ptr MainController::Use
 
 void MainController::UserPresetHandler::setUseCustomDataModel(bool shouldUseCustomModel, bool shouldUsePersistentObject)
 {
-	if (shouldUseCustomModel != isUsingCustomDataModel())
-	{
-		if (shouldUseCustomModel)
-			customStateManager = new CustomStateManager(*this);
-		else
-		{
-			removeStateManager(customStateManager);
-			customStateManager = nullptr;
-		}
-	}
-
+	isUsingCustomData = shouldUseCustomModel;
 	usePersistentObject = shouldUsePersistentObject;
 }
 

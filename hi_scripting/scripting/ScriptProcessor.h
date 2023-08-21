@@ -30,12 +30,15 @@
 *   ===========================================================================
 */
 
-
-#pragma once
-
+#ifndef SCRIPTPROCESSOR_H_INCLUDED
+#define SCRIPTPROCESSOR_H_INCLUDED
 namespace hise { using namespace juce;
 
+
+
 class ModulatorSynthGroup;
+
+
 
 /** A class that has a content that can be populated with script components. 
 *	@ingroup processor_interfaces
@@ -46,7 +49,11 @@ class ProcessorWithScriptingContent: public SuspendableTimer::Manager
 {
 public:
 
-	ProcessorWithScriptingContent(MainController* mc_);
+	ProcessorWithScriptingContent(MainController* mc_) :
+		restoredContentValues(ValueTree("Content")),
+		mc(mc_),
+		contentParameterHandler(*this)
+	{}
 
 	enum EditorStates
 	{
@@ -57,17 +64,37 @@ public:
 
 	virtual ~ProcessorWithScriptingContent();;
 
-	void setAllowObjectConstruction(bool shouldBeAllowed);
+	void setAllowObjectConstruction(bool shouldBeAllowed)
+	{
+		allowObjectConstructors = shouldBeAllowed;
+	}
 
-	bool objectsCanBeCreated() const;
+	bool objectsCanBeCreated() const
+	{
+		return allowObjectConstructors;
+	}
 
-	virtual int getCallbackEditorStateOffset() const;
+	virtual int getCallbackEditorStateOffset() const { return Processor::EditorState::numEditorStates; }
 
 	void suspendStateChanged(bool shouldBeSuspended) override;
 
-	ScriptingApi::Content *getScriptingContent() const;
+	ScriptingApi::Content *getScriptingContent() const
+	{
+		return content.get();
+	}
 
-	Identifier getContentParameterIdentifier(int parameterIndex) const;
+	Identifier getContentParameterIdentifier(int parameterIndex) const
+	{
+		if (auto sc = content->getComponent(parameterIndex))
+			return sc->name.toString();
+
+		auto child = content->getContentProperties().getChild(parameterIndex);
+
+		if (child.isValid())
+			return Identifier(child.getProperty("id").toString());
+
+		return Identifier();
+	}
 
 	void setControlValue(int index, float newValue);
 
@@ -79,20 +106,26 @@ public:
 
 	virtual int getNumScriptParameters() const;
 
-	var getSavedValue(Identifier name);
+	var getSavedValue(Identifier name)
+	{
+		return restoredContentValues.getChildWithName(name).getProperty("value", var::undefined());
+	}
 
 	void restoreContent(const ValueTree &restoredState);
 
 	void saveContent(ValueTree &savedState) const;
 
-	MainController* getMainController_();
+	MainController* getMainController_() { return mc; }
 
-	const MainController* getMainController_() const;
+	const MainController* getMainController_() const { return mc; }
 
 protected:
 
 	/** Call this from the base class to create the content. */
-	void initContent();
+	void initContent()
+	{
+		content = new ScriptingApi::Content(this);
+	}
 
 	friend class JavascriptProcessor;
 
@@ -110,15 +143,29 @@ protected:
 
 	struct ContentParameterHandler: public ScriptParameterHandler
 	{
-		ContentParameterHandler(ProcessorWithScriptingContent& parent);
+		ContentParameterHandler(ProcessorWithScriptingContent& parent):
+			p(parent)
+		{}
 
-		void setParameter(int index, float newValue) final override;
+		void setParameter(int index, float newValue) final override
+		{
+			p.setControlValue(index, newValue);
+		}
 
-		float getParameter(int index) const final override;
+		float getParameter(int index) const final override
+		{
+			return p.getControlValue(index);
+		}
 
-		int getNumParameters() const final override;
+		int getNumParameters() const final override
+		{
+			return p.getNumScriptParameters();
+		}
 
-		Identifier getParameterId(int parameterIndex) const final override;
+		Identifier getParameterId(int parameterIndex) const final override
+		{
+			return p.getContentParameterIdentifier(parameterIndex);
+		}
 
 		ProcessorWithScriptingContent& p;
 	} contentParameterHandler;
@@ -212,17 +259,41 @@ public:
 
 	void setWatchedFilePosition(CodeDocument::Position& newPos);
 
-	void clearFileWatchers();
+	void clearFileWatchers()
+	{
+		watchers.clear();
+	}
 
-	int getNumWatchedFiles() const noexcept;
+	int getNumWatchedFiles() const noexcept
+	{
+		return watchers.size();
+	}
 
 	File getWatchedFile(int index) const;
 
 	CodeDocument& getWatchedFileDocument(int index);
 
-	void setCurrentPopup(DocumentWindow *window);
+	void setCurrentPopup(DocumentWindow *window)
+	{
+		currentPopups.add(window);
+	}
 
-	void deleteAllPopups();
+	void deleteAllPopups()
+	{
+		if (currentPopups.size() != 0)
+		{
+			for (int i = 0; i < currentPopups.size(); i++)
+			{
+				if (currentPopups[i].getComponent() != nullptr)
+				{
+					currentPopups[i]->closeButtonPressed();
+				}
+
+			}
+
+			currentPopups.clear();
+		}
+	}
 
 	void showPopupForFile(const File& f, int charNumberToDisplay = 0, int lineNumberToDisplay = -1);
 
@@ -275,10 +346,23 @@ public:
 
     struct ScopedPreprocessorMerger
     {
-        ScopedPreprocessorMerger(MainController* mc);
-
-        ~ScopedPreprocessorMerger();
-
+        ScopedPreprocessorMerger(MainController* mc)
+        {
+            Processor::Iterator<JavascriptProcessor> iter(mc->getMainSynthChain());
+            
+            while(auto jp = iter.getNextProcessor())
+            {
+                jp->usePreprocessorAtMerge = true;
+                list.add(jp);
+            }
+        }
+        
+        ~ScopedPreprocessorMerger()
+        {
+            for(auto jp: list)
+                jp->usePreprocessorAtMerge = false;
+        }
+        
         Array<WeakReference<JavascriptProcessor>> list;
     };
     
@@ -299,10 +383,15 @@ public:
 		*/
 		SnippetDocument(const Identifier &callbackName_, const String &parameters=String());
 
-        ~SnippetDocument();
-
+        ~SnippetDocument()
+        {
+            SpinLock::ScopedLockType sl(pendingLock);
+            notifier.cancelPendingUpdate();
+            pendingNewContent = {};
+        }
+        
 		/** Returns the name of the SnippetDocument. */
-		const Identifier &getCallbackName() const;;
+		const Identifier &getCallbackName() const { return callbackName; };
 
 		/** Checks if the document contains code. */
 		void checkIfScriptActive();
@@ -311,12 +400,37 @@ public:
 		String getSnippetAsFunction() const;
 
 		/** Checks if the snippet contains any code to execute. This is a very fast operation. */
-		bool isSnippetEmpty() const;;
+		bool isSnippetEmpty() const { return !isActive; };
 
 		/** Returns the number of arguments specified in the constructor. */
-		int getNumArgs() const;
+		int getNumArgs() const { return numArgs; }
 
-		void replaceContentAsync(String s, bool shouldBeAsync=true);
+		void replaceContentAsync(String s, bool shouldBeAsync=true)
+		{
+            
+#if USE_FRONTEND
+            // Not important when using compiled plugins because there will be no editor component
+            // being resized...
+            replaceAllContent(s);
+#else
+            {
+                // Makes sure that this won't be accessed during replacement...
+                SpinLock::ScopedLockType sl(pendingLock);
+                pendingNewContent.swapWith(s);
+            }
+            
+            if(shouldBeAsync)
+            {
+                notifier.notify();
+            }
+            else
+            {   
+                notifier.handleAsyncUpdate();
+            }
+#endif
+		}
+
+		
 
 	private:
 
@@ -326,11 +440,32 @@ public:
 		*/
 		struct Notifier: public AsyncUpdater
 		{
-			Notifier(SnippetDocument& parent_);
+			Notifier(SnippetDocument& parent_):
+				parent(parent_)
+			{
 
-			void notify();
+			}
 
-			void handleAsyncUpdate() override;
+			void notify()
+			{
+				triggerAsyncUpdate();
+			}
+
+			void handleAsyncUpdate() override
+			{
+				String text;
+				
+				{
+					SpinLock::ScopedLockType sl(parent.pendingLock);
+					parent.pendingNewContent.swapWith(text);
+				}
+
+                parent.setDisableUndo(true);
+				parent.replaceAllContent(text);
+                parent.setDisableUndo(false);
+                
+				parent.pendingNewContent = String();
+			}
 
 			SnippetDocument& parent;
 		};
@@ -354,7 +489,7 @@ public:
 	/** A Result object that contains the snippet. */
 	struct SnippetResult
 	{
-		SnippetResult(Result r_, int c_);;
+		SnippetResult(Result r_, int c_) : r(r_), c(c_) {};
 
 		/** the result */
 		Result r;
@@ -401,7 +536,14 @@ public:
 		static CodeDocument* gotoAndReturnDocumentWithDefinition(Processor* p, DebugableObjectBase* object);
 	};
 
-	ValueTree createApiTree() override;
+	ValueTree createApiTree() override
+	{
+#if USE_BACKEND
+		return ApiHelpers::getApiTree();
+#else
+		return {};
+#endif
+	}
 
 	void addPopupMenuItems(PopupMenu &m, Component* c, const MouseEvent &e) override;
 
@@ -423,8 +565,9 @@ public:
 
 	void setActiveEditor(JavascriptCodeEditor* e, CodeDocument::Position pos) override;
 
-	int getCodeFontSize() const override;
+	int getCodeFontSize() const override { return (int)dynamic_cast<const Processor*>(this)->getMainController()->getGlobalCodeFontSize(); }
 
+	
 
 	JavascriptCodeEditor* getActiveEditor() override;
 
@@ -466,21 +609,21 @@ public:
 
 	void setConnectedFile(const String& fileReference, bool compileScriptAfterLoad=true);
 
-	bool isConnectedToExternalFile() const;
+	bool isConnectedToExternalFile() const { return connectedFileReference.isNotEmpty(); }
 
-	const String& getConnectedFileReference() const;
+	const String& getConnectedFileReference() const { return connectedFileReference; }
 
 	void disconnectFromFile();
 
 	void reloadFromFile();
 
-	bool wasLastCompileOK() const;
+	bool wasLastCompileOK() const { return lastCompileWasOK; }
 
-	Result getLastErrorMessage() const;
+	Result getLastErrorMessage() const { return lastResult; }
 
-	ApiProviderBase* getProviderBase() override;
+	ApiProviderBase* getProviderBase() override { return scriptEngine.get(); }
 
-	HiseJavascriptEngine *getScriptEngine();
+	HiseJavascriptEngine *getScriptEngine() { return scriptEngine; }
 
 	void mergeCallbacksToScript(String &x, const String& sepString=String()) const;
 	bool parseSnippetsFromString(const String &x, bool clearUndoHistory = false);
@@ -493,34 +636,97 @@ public:
 
 	void showPopupForCallback(const Identifier& callback, int charNumber, int lineNumber);
 
-	void toggleBreakpoint(const Identifier& snippetId, int lineNumber, int charNumber);
+	void toggleBreakpoint(const Identifier& snippetId, int lineNumber, int charNumber)
+	{
+		HiseJavascriptEngine::Breakpoint bp(snippetId, "", lineNumber, charNumber, charNumber, breakpoints.size());
 
-	HiseJavascriptEngine::Breakpoint getBreakpointForLine(const Identifier &id, int lineIndex);
+		int index = breakpoints.indexOf(bp);
 
-	void getBreakPointsForDisplayedRange(const Identifier& snippetId, Range<int> displayedLineNumbers, Array<int> &lineNumbers);
+		if (index != -1)
+		{
+			breakpoints.remove(index);
+		}
+		else
+		{
+			breakpoints.add(bp);
+		}
 
-	bool anyBreakpointsActive() const;
+		compileScript();
+	}
 
-	void removeAllBreakpoints();
+	HiseJavascriptEngine::Breakpoint getBreakpointForLine(const Identifier &id, int lineIndex)
+	{
+		for (int i = 0; i < breakpoints.size(); i++)
+		{
+			if (breakpoints[i].snippetId == id && breakpoints[i].lineNumber == lineIndex)
+				return breakpoints[i];
+		}
+
+		return HiseJavascriptEngine::Breakpoint();
+	}
+
+	void getBreakPointsForDisplayedRange(const Identifier& snippetId, Range<int> displayedLineNumbers, Array<int> &lineNumbers)
+	{
+		for (int i = 0; i < breakpoints.size(); i++)
+		{
+			if (breakpoints[i].snippetId != snippetId) continue;
+
+			if (displayedLineNumbers.contains(breakpoints[i].lineNumber))
+			{
+				lineNumbers.add(breakpoints[i].lineNumber);
+			}
+		}
+	}
+
+	bool anyBreakpointsActive() const { return breakpoints.size() != 0; }
+
+	void removeAllBreakpoints()
+	{
+		breakpoints.clear();
+
+		compileScript();
+	}
 
 	void cleanupEngine();
 
 	void setCallStackEnabled(bool shouldBeEnabled);
 
-	void addBreakpointListener(HiseJavascriptEngine::Breakpoint::Listener* newListener);
+	void addBreakpointListener(HiseJavascriptEngine::Breakpoint::Listener* newListener)
+	{
+		breakpointListeners.addIfNotAlreadyThere(newListener);
+	}
 
-	void removeBreakpointListener(HiseJavascriptEngine::Breakpoint::Listener* listenerToRemove);
+	void removeBreakpointListener(HiseJavascriptEngine::Breakpoint::Listener* listenerToRemove)
+	{
+		breakpointListeners.removeAllInstancesOf(listenerToRemove);
+	}
 
-	void clearPreprocessorFunctions();
+	void clearPreprocessorFunctions()
+	{
+		preprocessorFunctions.clear();
+	}
 
-	void addPreprocessorFunction(const PreprocessorFunction& pf);
+	void addPreprocessorFunction(const PreprocessorFunction& pf)
+	{
+		preprocessorFunctions.add(pf);
+	}
 
-	ScriptingApi::Content* getContent();
+	ScriptingApi::Content* getContent()
+	{
+		return dynamic_cast<ProcessorWithScriptingContent*>(this)->getScriptingContent();
+	}
+	
+	const ScriptingApi::Content* getContent() const
+	{
+		return dynamic_cast<const ProcessorWithScriptingContent*>(this)->getScriptingContent();
+	}
 
-	const ScriptingApi::Content* getContent() const;
+	
 
-
-	void clearContentPropertiesDoc();
+	void clearContentPropertiesDoc()
+	{
+		contentPropertyDocument = nullptr;
+	}
 
 	void createUICopyFromDesktop();
 
@@ -540,7 +746,10 @@ public:
 
 	MainController* mainController;
 
-	void setOptimisationReport(const String& report);
+	void setOptimisationReport(const String& report)
+	{
+		lastOptimisationReport = report;
+	}
 
 protected:
 
@@ -551,7 +760,7 @@ protected:
 	friend class ProcessorWithScriptingContent;
 
 	/** Overwrite this when you need to do something after the script was recompiled. */
-	virtual void postCompileCallback();;
+	virtual void postCompileCallback() {};
 
 	// ================================================================================================================
 
@@ -657,10 +866,23 @@ public:
 
 	JavascriptThreadPool(MainController* mc);
 
-	~JavascriptThreadPool();
+	~JavascriptThreadPool()
+	{
+		globalServer = nullptr;
+		stopThread(1000);
+	}
 
-	void cancelAllJobs();
+	void cancelAllJobs()
+	{
+		LockHelpers::SafeLock ss(getMainController(), LockHelpers::ScriptLock);
 
+		stopThread(1000);
+		compilationQueue.clear();
+		lowPriorityQueue.clear();
+		highPriorityQueue.clear();
+		deferredPanels.clear();
+	}
+	
 	class Task
 	{
 	public:
@@ -678,19 +900,27 @@ public:
 
 		using Function = std::function < Result(JavascriptProcessor*)>;
 
-		Task() noexcept;;
+		Task() noexcept:
+		  type(Free),
+		  f(),
+		  jp(nullptr)
+		{};
 
-		Task(Type t, JavascriptProcessor* jp_, const Function& functionToExecute) noexcept;
+		Task(Type t, JavascriptProcessor* jp_, const Function& functionToExecute) noexcept:
+			type(t),
+			f(functionToExecute),
+			jp(jp_)
+		{}
 
-		JavascriptProcessor* getProcessor() const noexcept;;
+		JavascriptProcessor* getProcessor() const noexcept { return jp.get(); };
 		
-		Type getType() const noexcept;
+		Type getType() const noexcept { return type; }
 
 		Result callWithResult();
 
-		bool isValid() const noexcept;
+		bool isValid() const noexcept { return (bool)f; }
 
-		bool isHiPriority() const noexcept;
+		bool isHiPriority() const noexcept { return type == Compilation || type == HiPriorityCallbackExecution; }
 
 	private:
 
@@ -705,29 +935,106 @@ public:
 
 	void run() override;;
 
-	const CriticalSection& getLock() const noexcept;;
+	const CriticalSection& getLock() const noexcept { return scriptLock; };
 
-	bool isBusy() const noexcept;
+	bool isBusy() const noexcept { return busy; }
 
-	Task::Type getCurrentTask() const noexcept;
+	Task::Type getCurrentTask() const noexcept { return currentType; }
 
 	void killVoicesAndExtendTimeOut(JavascriptProcessor* jp, int milliseconds=1000);
 
-	SimpleReadWriteLock& getLookAndFeelRenderLock();
+	SimpleReadWriteLock& getLookAndFeelRenderLock()
+	{
+		return lookAndFeelRenderLock;
+	}
 
-	GlobalServer* getGlobalServer();
+	GlobalServer* getGlobalServer() { return globalServer.get(); }
 
-	void resume();
+	void resume()
+	{
+		shouldWakeUp = true;
+	}
 
-	void deactivateSleepUntilCompilation();
+	void deactivateSleepUntilCompilation()
+	{
+		allowSleep = false;
+	}
 
 	struct ScopedSleeper
 	{
-		ScopedSleeper(JavascriptThreadPool& p_, const Identifier& id, int lineNumber_);
+		ScopedSleeper(JavascriptThreadPool& p_, const Identifier& id, int lineNumber_) :
+			p(p_),
+			wasSleeping(p.isSleeping),
+			cid(id),
+			lineNumber(lineNumber_)
+		{
+			if (!p.allowSleep)
+				return;
 
-		void sendMessage(bool on);
+			sendMessage(true);
 
-		~ScopedSleeper();
+			p.isSleeping = true;
+			p.shouldWakeUp = false;
+
+			auto cThread = Thread::getCurrentThread();
+			std::function<bool()> shouldExit;
+
+			if (cThread != nullptr)
+				shouldExit = [cThread](){ return cThread->threadShouldExit(); };
+			else
+			{
+				auto currentThread = p.getMainController()->getKillStateHandler().getCurrentThread();
+
+				if (currentThread == MainController::KillStateHandler::TargetThread::AudioThread)
+				{
+					auto mc = p.getMainController();
+					shouldExit = [mc]() { return mc->getKillStateHandler().hasRequestedQuit(); };
+				}
+			}
+
+			jassert(shouldExit);
+
+			if (!shouldExit)
+				shouldExit = []() { return true; };
+
+			while (p.allowSleep && !p.shouldWakeUp && !shouldExit())
+			{
+                PendingCompilationList l;
+                auto r = p.executeQueue(Task::ReplEvaluation, l);
+                
+				Thread::sleep(200);
+			}
+
+			sendMessage(false);
+		}
+
+		void sendMessage(bool on)
+		{
+			JavascriptThreadPool* p_ = &p;
+			auto cid_ = cid;
+			auto ln = lineNumber;
+
+			auto f = [p_, cid_, ln, on]()
+			{
+				for (const auto& s : p_->sleepListeners)
+				{
+					if (s != nullptr)
+						s.get()->sleepStateChanged(cid_, ln, on);
+				}
+			};
+
+			MessageManager::callAsync(f);
+		}
+
+		~ScopedSleeper()
+		{
+			p.isSleeping = wasSleeping;
+
+			p.lowPriorityQueue.clear();
+			p.highPriorityQueue.clear();
+			
+			sendMessage(false);
+		}
 
 		const Identifier cid;
 		const int lineNumber;
@@ -735,11 +1042,17 @@ public:
 		const bool wasSleeping;
 	};
 
-	void addSleepListener(SleepListener* s);;
+	void addSleepListener(SleepListener* s)
+	{
+		sleepListeners.addIfNotAlreadyThere(s);
+	};
 
-	void removeSleepListener(SleepListener* s);
+	void removeSleepListener(SleepListener* s)
+	{
+		sleepListeners.removeAllInstancesOf(s);
+	}
 
-	bool  isCurrentlySleeping() const;;
+	bool  isCurrentlySleeping() const { return isSleeping; };
 
 private:
 
@@ -789,3 +1102,98 @@ private:
 } // namespace hise
 
 
+namespace scriptnode
+{
+using namespace juce;
+using namespace hise;
+
+namespace properties
+{
+
+template <class PropertyClass> struct table : public NodePropertyT<int>
+{
+	table() :
+		NodePropertyT<int>(PropertyClass::getId(), -1)
+	{};
+
+	template <class RootObject> void initWithRoot(NodeBase* n, RootObject& r)
+	{
+		if (n != nullptr)
+		{
+			holder = dynamic_cast<ProcessorWithDynamicExternalData*>(n->getScriptProcessor());
+
+			setAdditionalCallback([&r, this](Identifier id, var newValue)
+			{
+				if (id == PropertyIds::Value)
+				{
+					auto index = (int)newValue;
+					changed(r, index);
+				}
+			});
+
+			initialise(n);
+		}
+	}
+	
+private:
+
+	template <class RootObject> void changed(RootObject& r, int index)
+	{
+		if (index == -1)
+			usedTable = &ownedTable;
+		else
+			usedTable = holder->getTable(index);
+
+		if (usedTable == nullptr)
+			usedTable = &ownedTable;
+
+		snex::Types::dyn<float> tableData(usedTable->getWritePointer(), usedTable->getTableSize());
+		PropertyClass p;
+		p.setTableData(r, tableData);
+	}
+
+	WeakReference<hise::ProcessorWithDynamicExternalData> holder;
+	hise::SampleLookupTable ownedTable;
+	WeakReference<hise::Table> usedTable = nullptr;
+};
+
+
+
+#if 0
+template <class PropertyClass> struct slider_pack : public complex_base<PropertyClass>,
+													public SliderPack::Listener
+{
+	// TODO: REWRITE THE FUCKING SLIDER PACK LISTENER CLASS...
+	void sliderPackChanged(SliderPack *s, int index) override
+	{
+
+	}
+
+	void changed(int index) override
+	{
+		if (index >= 0)
+		{
+			if (data = holder->getSliderPackData(index))
+			{
+				data->addPooledChangeListener(this)
+			}
+		}
+			
+		snex::Types::dyn<float> tableData(usedPack->getCachedData());
+		PropertyClass p;
+
+		p.setSliderPackData(r, tableData);
+	}
+
+	WeakReference<SliderPackData> data;
+	HeapBlock<float> dataCopy;
+};
+#endif
+
+
+
+}
+}
+
+
+#endif  // SCRIPTPROCESSOR_H_INCLUDED

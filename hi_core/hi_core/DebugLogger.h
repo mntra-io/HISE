@@ -118,9 +118,19 @@ public:
 
 	struct PerformanceData
 	{
-		PerformanceData(int location_, float thisPercentage_, float averagePercentage_, Processor* p_);;
+		PerformanceData(int location_, float thisPercentage_, float averagePercentage_, Processor* p_) :
+			location(location_),
+			thisPercentage(thisPercentage_),
+			averagePercentage(averagePercentage_),
+			p(p_)
+		{};
 
-		PerformanceData();;
+		PerformanceData() :
+			location(0),
+			thisPercentage(0.0f),
+			averagePercentage(0.0f),
+			p(nullptr)
+		{};
 
 		int location;
 		float thisPercentage;
@@ -149,13 +159,13 @@ public:
 
 	struct Listener
 	{
-		virtual ~Listener();;
+		virtual ~Listener() {};
 
-		virtual void logStarted();;
-		virtual void logEnded();;
-		virtual void errorDetected();;
+		virtual void logStarted() {};
+		virtual void logEnded() {};
+		virtual void errorDetected() {};
 
-		virtual void recordStateChanged(bool isRecording);;
+		virtual void recordStateChanged(bool isRecording) {};
 
 	private:
 
@@ -192,7 +202,10 @@ public:
 
 	void timerCallback() override;
 
-	MainController* getMainController();
+	MainController* getMainController()
+	{
+		return mc;
+	}
 
 	void startLogging();
 	bool isLogging() const;
@@ -214,13 +227,31 @@ public:
 
 	static void fillBufferWithJunk(float* data, int numSamples);
 
-	void setStackBacktrace(const String& newBackTrace) const;
+	void setStackBacktrace(const String& newBackTrace) const
+	{
+		jassert(MessageManager::getInstance()->isThisTheMessageThread());
+
+		messageCallbackStackBacktrace = newBackTrace;
+	}
 
 	void setPerformanceWarningLevel(int newWarningLevel);
 	
-	File getCurrentLogFile() const;
+	File getCurrentLogFile() const
+	{
+		return currentLogFile;
+	}
 
-	double getScaleFactorForWarningLevel() const;
+	double getScaleFactorForWarningLevel() const
+	{
+		switch (warningLevel)
+		{
+		case 0: return 3.0;
+		case 1: return 2.0;
+		case 2: return 1.0;
+		}
+
+		return 1.0;
+	}
 
 	void addSorted(Array<Message*>& list, Message* m);
 
@@ -232,7 +263,9 @@ private:
 
 	struct RecordDumper : public AsyncUpdater
 	{
-		RecordDumper(DebugLogger& parent_);
+		RecordDumper(DebugLogger& parent_):
+			parent(parent_)
+		{}
 
 		void handleAsyncUpdate() override;
 

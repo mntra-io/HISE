@@ -34,7 +34,7 @@
 namespace snex {
 namespace jit {
 using namespace juce;
-USE_ASMJIT_NAMESPACE;
+using namespace asmjit;
 
 
 class ClassCompiler final : public BaseCompiler
@@ -68,12 +68,12 @@ public:
 		syntaxTree = nullptr;
 	}
 
-	void setFunctionCompiler(AsmJitX86Compiler* cc)
+	void setFunctionCompiler(asmjit::X86Compiler* cc)
 	{
 		asmCompiler = cc;
 	}
 
-	AsmJitRuntime* getRuntime()
+	asmjit::Runtime* getRuntime()
 	{
 		if (parentRuntime != nullptr)
 			return parentRuntime;
@@ -82,7 +82,7 @@ public:
 	}
 
 	bool parseOnly = false;
-	AsmJitRuntime* parentRuntime = nullptr;
+	asmjit::Runtime* parentRuntime = nullptr;
 
 	AsmJitFunctionCollection* compileAndGetScope(const ParserHelpers::CodeLocation& classStart, int length)
 	{
@@ -161,7 +161,7 @@ public:
 
 	ScopedPointer<AsmJitFunctionCollection> newScope;
 
-	AsmJitX86Compiler* asmCompiler;
+	asmjit::X86Compiler* asmCompiler;
 
 	juce::String assembly;
 

@@ -701,7 +701,7 @@ hise::Image ScreenshotProvider::getImage(const MarkdownLink& url, float width)
 		if (auto node = dynamic_cast<NodeBase*>(data->network->get(id).getObject()))
 		{
 			MessageManagerLock mmlock;
-			ScopedPointer<Component> c = scriptnode::NodeComponentFactory::createComponent(node);
+			ScopedPointer<Component> c = dynamic_cast<juce::Component*>(node->createComponent());
 			c->setBounds(node->getPositionInCanvas({ 0, 0 }));
 			return c->createComponentSnapshot(c->getLocalBounds());
 		}

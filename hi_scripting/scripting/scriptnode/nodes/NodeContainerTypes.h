@@ -816,8 +816,7 @@ public:
 
 	void process(ProcessDataDyn& data) final override
 	{
-        TRACE_DSP();
-        
+		
 		if (isBypassed())
 		{
 			NodeProfiler np(this, data.getNumSamples());
