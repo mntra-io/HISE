@@ -101,6 +101,7 @@ Array<juce::Identifier> HiseSettings::Project::getAllIds()
     ids.add(ForceStereoOutput);
 	ids.add(AdminPermissions);
 	ids.add(EmbedUserPresets);
+	ids.add(OverwriteOldUserPresets);
 	ids.add(EnableGlobalPreprocessor);
     ids.add(UseGlobalAppDataFolderWindows);
     ids.add(UseGlobalAppDataFolderMacOS);
@@ -172,7 +173,6 @@ Array<juce::Identifier> HiseSettings::Other::getAllIds()
 	Array<Identifier> ids;
 
 	ids.add(UseOpenGL);
-	ids.add(GlassEffect);
 	ids.add(GlobalSamplePath);
 	ids.add(EnableAutosave);
 	ids.add(AutosaveInterval);
@@ -336,6 +336,11 @@ Array<juce::Identifier> HiseSettings::SnexWorkbench::getAllIds()
 		P(HiseSettings::Project::EmbedUserPresets);
 		D("If disabled, the user presets will not be part of the binary and are not extracted automatically on first plugin launch");
 		D("> This is useful if you're running your own preset management or the user preset collection gets too big to be embedded in the plugin");
+		P_();
+
+		P(HiseSettings::Project::OverwriteOldUserPresets);
+		D("If true, then the plugin will silently overwrite user presets with the same name but an older version number.  ");
+		D("This will also overwrite user-modified factory presets but will not modify or delete user-created user presets (with the exception of a name collision).");
 		P_();
 
 		P(HiseSettings::Project::AppGroupID);
@@ -602,10 +607,6 @@ Array<juce::Identifier> HiseSettings::SnexWorkbench::getAllIds()
 		D("> Be aware that this does not affect whether your compiled project uses OpenGL (as this can be defined separately).");
 		P_();
 
-		P(HiseSettings::Other::GlassEffect);
-		D("Uses a glass effect for the popup windows. Disable this on older systems for increased graphics performance");
-		P_();
-
 		P(HiseSettings::Other::GlobalSamplePath);
 		D("If you want to redirect all sample locations to a global sample path (eg. on a dedicated hard drive or the Dropbox folder), you can set it here.")
 		D("Then you can just put a redirection file using the `{GLOBAL_SAMPLE_FOLDER}` wildcard into each sample folder that you want to redirect");
@@ -742,6 +743,7 @@ void HiseSettings::Data::refreshProjectData()
 {
 	loadSettingsFromFile(SettingFiles::ProjectSettings);
 	loadSettingsFromFile(SettingFiles::UserSettings);
+    loadSettingsFromFile(SettingFiles::ExpansionSettings);
 }
 
 void HiseSettings::Data::loadSettingsFromFile(const Identifier& id)
@@ -869,6 +871,7 @@ juce::StringArray HiseSettings::Data::getOptionsFor(const Identifier& id)
 	if (id == Project::EmbedAudioFiles ||
 		id == Project::EmbedImageFiles ||
 		id == Project::EmbedUserPresets ||
+		id == Project::OverwriteOldUserPresets ||
 		id == Compiler::UseIPP ||
         id == Compiler::LegacyCPUSupport ||
         id == Compiler::EnableLoris ||
@@ -878,7 +881,6 @@ juce::StringArray HiseSettings::Data::getOptionsFor(const Identifier& id)
 		id == Scripting::EnableOptimizations ||
 		id == Other::AudioThreadGuardEnabled ||
 		id == Other::UseOpenGL ||
-		id == Other::GlassEffect ||
         id == Other::AutoShowWorkspace ||
 		id == Other::EnableShaderLineNumbers ||
 		id == Compiler::RebuildPoolFiles ||
@@ -1097,6 +1099,7 @@ var HiseSettings::Data::getDefaultSetting(const Identifier& id) const
 	else if (id == Project::EmbedAudioFiles)		return "Yes";
 	else if (id == Project::EmbedImageFiles)		return "Yes";
 	else if (id == Project::EmbedUserPresets)		return "Yes";
+	else if (id == Project::OverwriteOldUserPresets)    return "No";
 	else if (id == Project::SupportFullDynamicsHLAC)	return "No";
 	else if (id == Project::RedirectSampleFolder)	BACKEND_ONLY(return handler_.isRedirected(ProjectHandler::SubDirectories::Samples) ? handler_.getSubDirectory(ProjectHandler::SubDirectories::Samples).getFullPathName() : "");
     else if (id == Project::AAXCategoryFX)			return "AAX_ePlugInCategory_Modulation";           
@@ -1116,7 +1119,6 @@ var HiseSettings::Data::getDefaultSetting(const Identifier& id) const
     else if (id == Project::UseGlobalAppDataFolderWindows) return "No";
     else if (id == Project::UseGlobalAppDataFolderMacOS)   return "No";
 	else if (id == Other::UseOpenGL)				return "No";
-	else if (id == Other::GlassEffect)				return "No";
 	else if (id == Other::EnableAutosave)			return "Yes";
 	else if (id == Other::AutosaveInterval)			return 5;
 	else if (id == Other::AudioThreadGuardEnabled)  return "Yes";
@@ -1275,7 +1277,7 @@ void HiseSettings::Data::settingWasChanged(const Identifier& id, const var& newV
 
 	else if (id == Scripting::CodeFontSize)
 		mc->getFontSizeChangeBroadcaster().sendMessage(sendNotification, (float)newValue);
-	else if (id == Other::UseOpenGL || id == Other::GlassEffect)
+	else if (id == Other::UseOpenGL)
 		PresetHandler::showMessageWindow("Reopen HISE window", "Restart HISE (or reopen this window) in order to apply the new Graphics setting", PresetHandler::IconType::Info);
 	else if (id == Other::EnableAutosave || id == Other::AutosaveInterval)
 		mc->getAutoSaver().updateAutosaving();

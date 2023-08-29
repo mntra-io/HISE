@@ -199,6 +199,12 @@ void SnexSource::addDummyNodeCallbacks(String& s, bool addEvent, bool addReset)
 			b << "instance.prepare(ps);";
 		}
 
+        b << String("void setExternalData(" + instanceType + "& instance, ExternalData& d, int index)");
+        {
+            StatementBlock sb(b, false);
+            b << "instance.setExternalData(d, index);";
+        }
+        
 		if (addReset)
 		{
 			b << String("void reset(" + instanceType + "& instance)");
@@ -242,9 +248,18 @@ void SnexSource::addDummyProcessFunctions(String& s, bool addFrame, const String
 
 		String def1, def2;
 
+		String objPtr;
+
+#if SNEX_MIR_BACKEND
+		objPtr << instanceType << "& instance, ";
+#else
+		String instanceDef = instanceType + " instance;";
+		b << instanceDef;
+#endif
+
 		if (addFrame)
 		{
-			def2 << "void processFrame(" << instanceType << "& instance, span<float, " << String(nc) << ">& data)"; b << def2;
+			def2 << "void processFrame(" << objPtr << "span<float, " << String(nc) << ">& data)"; b << def2;
 			{
 				StatementBlock body(b);
 				b << "instance.processFrame(data);";
@@ -257,7 +272,7 @@ void SnexSource::addDummyProcessFunctions(String& s, bool addFrame, const String
 		else
 			pType << "ProcessData<" << String(nc) << ">";
 
-		def1 << "void process(" << instanceType << "& instance, " << pType << "& data)";
+		def1 << "void process(" << objPtr << pType << "& data)";
 		b << def1;
 		{
 			StatementBlock body(b);
@@ -375,6 +390,8 @@ void SnexSource::ParameterHandler::addParameterCode(String& code)
 
 	for (const auto& p : parameterTree)
 	{
+        ignoreUnused(p);
+        
 		String def;
 		def << "void setParameter" << String(pIndex) << "(" << instanceType << "& instance, double value)";
 		c << def;
@@ -1208,11 +1225,11 @@ juce::Path SnexMenuBar::Factory::createPath(const String& url) const
 
 	LOAD_PATH_IF_URL("new", ColumnIcons::threeDots);
 	LOAD_PATH_IF_URL("edit", ColumnIcons::openWorkspaceIcon);
-	LOAD_PATH_IF_URL("popup", HiBinaryData::ProcessorEditorHeaderIcons::popupShape);
-	LOAD_PATH_IF_URL("compile", EditorIcons::compileIcon);
-	LOAD_PATH_IF_URL("reset", EditorIcons::swapIcon);
+	LOAD_EPATH_IF_URL("popup", HiBinaryData::ProcessorEditorHeaderIcons::popupShape);
+	LOAD_EPATH_IF_URL("compile", EditorIcons::compileIcon);
+	LOAD_EPATH_IF_URL("reset", EditorIcons::swapIcon);
 	LOAD_PATH_IF_URL("add", ColumnIcons::threeDots);
-	LOAD_PATH_IF_URL("delete", SampleMapIcons::deleteSamples);
+	LOAD_EPATH_IF_URL("delete", SampleMapIcons::deleteSamples);
 	LOAD_PATH_IF_URL("asm", SnexIcons::asmIcon);
 	LOAD_PATH_IF_URL("debug", SnexIcons::bugIcon);
 	//LOAD_PATH_IF_URL("optimize", SnexIcons::optimizeIcon);

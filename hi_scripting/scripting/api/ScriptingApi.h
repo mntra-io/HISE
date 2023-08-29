@@ -39,6 +39,8 @@ namespace hise { using namespace juce;
 class ScriptBaseMidiProcessor;
 class JavascriptMidiProcessor;
 
+
+
 /** This class wraps all available functions for the scripting engine provided by a ScriptProcessor.
 *	@ingroup scripting
 */
@@ -457,6 +459,9 @@ public:
 		/** Loads a file and returns its content as array of Buffers. */
 		var loadAudioFileIntoBufferArray(String audioFileReference);
 
+		/** Returns the list of wavetables of the current expansion (or factory content). */
+		var getWavetableList();
+
 		/** Loads an image into the pool. You can use a wildcard to load multiple images at once. */
 		void loadImageIntoPool(const String& id);
 
@@ -576,6 +581,9 @@ public:
 
 		/** Creates an object that can listen to transport events. */
 		var createTransportHandler();
+
+		/** Creates a modulation matrix object that handles dynamic modulation using the given Global Modulator Container as source. */
+		var createModulationMatrix(String containerId);
 
 		/** Exports an object as JSON. */
 		void dumpAsJSON(var object, String fileName);
@@ -906,6 +914,15 @@ public:
 		/** Creates a JSON object from the sample file that can be used with loadSampleMapFromJSON. */
 		var parseSampleFile(var sampleFile);
 
+		/** Sets the timestretch ratio for the sampler depending on its timestretch mode. */
+		void setTimestretchRatio(double newRatio);
+
+		/** Returns the current timestretching options as JSON object. */
+		var getTimestretchOptions();
+
+		/** Sets the timestretching options from a JSON object. */
+		void setTimestretchOptions(var newOptions);
+
 		/** Converts the user preset data of a audio waveform to a base 64 samplemap. */
 		String getAudioWaveformContentAsBase64(var presetObj);
 
@@ -1175,6 +1192,9 @@ public:
 
 		/** Returns true if the sustain pedal is pressed. */
 		bool isSustainPedalDown() const { return sustainState; }
+
+		/** Use a uniform voice index for the given container. */
+		void setUseUniformVoiceHandler(String containerId, bool shouldUseUniformVoiceHandling);
 
 		// ============================================================================================================
 

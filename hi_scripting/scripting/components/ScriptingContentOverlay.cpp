@@ -34,6 +34,27 @@
 
 namespace hise { using namespace juce;
 
+namespace OverlayIcons
+{
+	
+	namespace data
+	{
+		static const unsigned char lockShape[] = { 110,109,41,100,31,68,33,48,94,67,98,156,188,33,68,33,48,94,67,248,163,35,68,211,205,101,67,248,163,35,68,92,47,111,67,108,248,163,35,68,223,111,184,67,98,248,163,35,68,164,32,189,67,139,188,33,68,125,239,192,67,41,100,31,68,125,239,192,67,108,37,182,
+		213,67,125,239,192,67,98,96,5,209,67,125,239,192,67,135,54,205,67,164,32,189,67,135,54,205,67,223,111,184,67,108,135,54,205,67,92,47,111,67,98,135,54,205,67,211,205,101,67,96,5,209,67,33,48,94,67,37,182,213,67,33,48,94,67,108,41,100,31,68,33,48,94,67,
+		99,109,166,91,248,67,68,11,76,67,108,166,171,219,67,68,11,76,67,108,166,171,219,67,160,186,20,67,108,137,129,219,67,160,186,20,67,108,137,129,219,67,184,126,20,67,98,137,129,219,67,254,20,196,66,172,252,239,67,229,80,100,66,84,155,4,68,229,80,100,66,
+		98,98,56,17,68,229,80,100,66,227,117,27,68,254,20,196,66,227,117,27,68,184,126,20,67,108,227,117,27,68,160,186,20,67,108,49,112,27,68,160,186,20,67,108,49,112,27,68,193,234,76,67,108,41,28,13,68,193,234,76,67,108,41,28,13,68,160,186,20,67,108,229,24,
+		13,68,160,186,20,67,98,229,24,13,68,168,166,20,67,246,24,13,68,176,146,20,67,246,24,13,68,184,126,20,67,98,246,24,13,68,0,192,1,67,242,74,9,68,98,16,229,66,84,155,4,68,98,16,229,66,98,35,235,255,67,98,16,229,66,133,91,248,67,66,128,1,67,231,59,248,67,
+		180,8,20,67,108,166,91,248,67,180,8,20,67,108,166,91,248,67,68,11,76,67,99,101,0,0 };
+
+		static const unsigned char penShape[] = { 110,109,96,69,112,67,182,243,141,64,108,154,73,133,67,143,194,240,65,98,158,95,136,67,201,118,16,66,59,111,136,67,92,15,56,66,172,108,133,67,125,191,80,66,108,51,179,122,67,100,123,137,66,108,240,7,74,67,172,28,170,65,108,20,46,90,67,82,184,150,64,98,
+			51,51,96,67,12,2,187,191,88,25,106,67,131,192,202,191,96,69,112,67,182,243,141,64,99,109,14,173,62,67,164,240,1,66,108,113,29,111,67,213,120,159,66,108,127,42,171,66,0,32,109,67,108,117,147,20,66,190,223,61,67,108,14,173,62,67,164,240,1,66,99,109,236,
+			81,200,65,121,9,75,67,108,123,148,145,66,53,158,121,67,108,0,0,0,0,74,60,138,67,108,236,81,200,65,121,9,75,67,99,101,0,0 };
+	}
+
+	DEFINE_DATA(lockShape, 393);
+	DEFINE_DATA(penShape, 183);
+};
+
 ScriptEditHandler::ScriptEditHandler()
 {
 
@@ -189,7 +210,7 @@ ScriptingContentOverlay::ScriptingContentOverlay(ScriptEditHandler* handler_) :
 	lasso.setLookAndFeel(&llaf);
 
 	Path path;
-	path.loadPathFromData(OverlayIcons::lockShape, sizeof(OverlayIcons::lockShape));
+	path.loadPathFromData(OverlayIcons::lockShape, SIZE_OF_PATH(OverlayIcons::lockShape));
 
 	dragModeButton->setShape(path, true, true, false);
 
@@ -252,13 +273,13 @@ void ScriptingContentOverlay::setEditMode(bool editModeEnabled)
 
 	if (dragMode == false)
 	{
-		p.loadPathFromData(OverlayIcons::lockShape, sizeof(OverlayIcons::lockShape));
+		p.loadPathFromData(OverlayIcons::lockShape, SIZE_OF_PATH(OverlayIcons::lockShape));
 		clearDraggers();
 		setInterceptsMouseClicks(false, true);
 	}
 	else
 	{
-		p.loadPathFromData(OverlayIcons::penShape, sizeof(OverlayIcons::penShape));
+		p.loadPathFromData(OverlayIcons::penShape, SIZE_OF_PATH(OverlayIcons::penShape));
 		setInterceptsMouseClicks(true, true);
 	}
 
@@ -505,32 +526,13 @@ void ScriptingContentOverlay::findLassoItemsInArea(Array<ScriptComponent*> &item
 
 void ScriptingContentOverlay::mouseDown(const MouseEvent& e)
 {
-	if (e.mods.isMiddleButtonDown())
-	{
-		if (auto zp = findParentComponentOfClass<ZoomableViewport>())
-		{
-			auto ze = e.getEventRelativeTo(zp);
-			setMouseCursor(MouseCursor::DraggingHandCursor);
-			zp->mouseDown(ze);
-			return;
-		}
-	}
+	CHECK_MIDDLE_MOUSE_DOWN(e);
 }
 
 void ScriptingContentOverlay::mouseUp(const MouseEvent &e)
 {
-	if (e.mods.isMiddleButtonDown())
-	{
-		if (auto zp = findParentComponentOfClass<ZoomableViewport>())
-		{
-			auto ze = e.getEventRelativeTo(zp);
-			setMouseCursor(MouseCursor::NormalCursor);
-			zp->mouseUp(ze);
-			return;
-		}
-	}
+	CHECK_MIDDLE_MOUSE_UP(e);
 		
-
 	if (isDisabledUntilUpdate)
 		return;
 
@@ -655,6 +657,9 @@ void ScriptingContentOverlay::mouseUp(const MouseEvent &e)
 				int insertX = e.getEventRelativeTo(content).getMouseDownPosition().getX();
 				int insertY = e.getEventRelativeTo(content).getMouseDownPosition().getY();
 
+				insertX = jlimit(0, getLocalBounds().getWidth() - 100, insertX);
+				insertY = jlimit(0, getLocalBounds().getWidth() - 50, insertY);
+
 				auto parent = b->getNumSelected() == 1 ? b->getFirstFromSelection() : nullptr;
 
 				if (parent != nullptr)
@@ -669,6 +674,9 @@ void ScriptingContentOverlay::mouseUp(const MouseEvent &e)
 
 						insertX += bounds.getX();
 						insertY += bounds.getY();
+
+						insertX = jlimit(0, parentBounds.getWidth() - 100, insertX);
+						insertY = jlimit(0, parentBounds.getWidth() - 50, insertY);
 					}
 				}
 
@@ -739,15 +747,7 @@ void ScriptingContentOverlay::mouseUp(const MouseEvent &e)
 
 void ScriptingContentOverlay::mouseDrag(const MouseEvent& e)
 {
-	if (e.mods.isMiddleButtonDown())
-	{
-		if (auto zp = findParentComponentOfClass<ZoomableViewport>())
-		{
-			auto ze = e.getEventRelativeTo(zp);
-			zp->mouseDrag(ze);
-			return;
-		}
-	}
+	CHECK_MIDDLE_MOUSE_DRAG(e);
 		
 	if (isDisabledUntilUpdate)
 		return;
@@ -838,6 +838,8 @@ void ScriptingContentOverlay::Dragger::paint(Graphics &g)
 
 void ScriptingContentOverlay::Dragger::mouseDown(const MouseEvent& e)
 {
+	CHECK_MIDDLE_MOUSE_DOWN(e);
+
 	if (e.mods.isLeftButtonDown())
 	{
 		auto parent = dynamic_cast<ScriptingContentOverlay*>(getParentComponent());
@@ -862,6 +864,8 @@ void ScriptingContentOverlay::Dragger::mouseDown(const MouseEvent& e)
 
 void ScriptingContentOverlay::Dragger::mouseDrag(const MouseEvent& e)
 {
+	CHECK_MIDDLE_MOUSE_DRAG(e);
+
 	if (e.mods.isRightButtonDown() || e.mods.isMiddleButtonDown())
 		return;
 
@@ -924,48 +928,10 @@ void ScriptingContentOverlay::Dragger::mouseDrag(const MouseEvent& e)
 
 }
 
-hise::MarkdownLink ScriptingContentOverlay::Dragger::getLink() const
-{
-	if (sc != nullptr)
-	{
-		auto objName = sc->getObjectName().toString();
-		objName = objName.replace("Scripting", "");
-		objName = objName.replace("Scripted", "");
-		objName = objName.replace("Script", "");
-
-		if (objName == "Slider")
-			objName = "Knob";
-		else if (objName == "AudioWaveform")
-			objName = "audio-waveform";
-		else if (objName == "FloatingTile")
-			objName = "floating-tile";
-
-
-		String url = "ui-components/plugin-components/" + MarkdownLink::Helpers::getSanitizedFilename(objName);
-
-		return MarkdownLink(File(), url);
-	}
-
-	return {};
-}
-
-void ScriptingContentOverlay::Dragger::setUseSnapShot(bool shouldUseSnapShot)
-{
-	if (shouldUseSnapShot)
-	{
-		auto sf = UnblurryGraphics::getScaleFactorForComponent(this);
-		snapShot = draggedComponent->createComponentSnapshot(draggedComponent->getLocalBounds(), true, sf);
-	}
-	else
-	{
-		snapShot = {};
-	}
-
-	repaint();
-}
-
 void ScriptingContentOverlay::Dragger::mouseUp(const MouseEvent& e)
 {
+	CHECK_MIDDLE_MOUSE_UP(e);
+
 	setMouseCursor(MouseCursor::NormalCursor);
 
 	auto parent = dynamic_cast<ScriptingContentOverlay*>(getParentComponent());
@@ -1019,11 +985,53 @@ void ScriptingContentOverlay::Dragger::mouseUp(const MouseEvent& e)
 	}
 	else
 	{
-		
+
 
 		moveOverlayedComponent(deltaX, deltaY);
 	}
 }
+
+hise::MarkdownLink ScriptingContentOverlay::Dragger::getLink() const
+{
+	if (sc != nullptr)
+	{
+		auto objName = sc->getObjectName().toString();
+		objName = objName.replace("Scripting", "");
+		objName = objName.replace("Scripted", "");
+		objName = objName.replace("Script", "");
+
+		if (objName == "Slider")
+			objName = "Knob";
+		else if (objName == "AudioWaveform")
+			objName = "audio-waveform";
+		else if (objName == "FloatingTile")
+			objName = "floating-tile";
+
+
+		String url = "ui-components/plugin-components/" + MarkdownLink::Helpers::getSanitizedFilename(objName);
+
+		return MarkdownLink(File(), url);
+	}
+
+	return {};
+}
+
+void ScriptingContentOverlay::Dragger::setUseSnapShot(bool shouldUseSnapShot)
+{
+	if (shouldUseSnapShot)
+	{
+		auto sf = UnblurryGraphics::getScaleFactorForComponent(this);
+		snapShot = draggedComponent->createComponentSnapshot(draggedComponent->getLocalBounds(), true, sf);
+	}
+	else
+	{
+		snapShot = {};
+	}
+
+	repaint();
+}
+
+
 
 void ScriptingContentOverlay::Dragger::moveOverlayedComponent(int deltaX, int deltaY)
 {

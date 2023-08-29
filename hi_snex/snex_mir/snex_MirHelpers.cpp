@@ -315,7 +315,7 @@ MIR_var snex::mir::TypeConverters::SymbolToMirVar(const jit::Symbol& s)
 {
 	MIR_var t;
 	t.name = s.id.getIdentifier().toString().getCharPointer().getAddress();
-	t.size = -1;
+	t.size = 0;
 	t.type = TypeInfo2MirType(s.typeInfo);
 	return t;
 }
@@ -336,6 +336,7 @@ String snex::mir::TypeConverters::FunctionData2MirTextLabel(const NamespacedIden
 				fid.namespaces.remove(i--);
 		}
 		
+        label << "_";
 
 		label << NamespacedIdentifier2MangledMirVar(fid);
 	}

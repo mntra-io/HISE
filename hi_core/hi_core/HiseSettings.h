@@ -94,6 +94,7 @@ DECLARE_ID(ReadOnlyFactoryPresets);
 DECLARE_ID(ForceStereoOutput);
 DECLARE_ID(AdminPermissions);
 DECLARE_ID(EmbedUserPresets);
+DECLARE_ID(OverwriteOldUserPresets);
 DECLARE_ID(UseGlobalAppDataFolderWindows);
 DECLARE_ID(UseGlobalAppDataFolderMacOS);
 DECLARE_ID(DefaultUserPreset);
@@ -160,7 +161,6 @@ namespace Other
 DECLARE_ID(GlobalSamplePath);
 DECLARE_ID(UseOpenGL);
 DECLARE_ID(EnableShaderLineNumbers);
-DECLARE_ID(GlassEffect);
 DECLARE_ID(EnableAutosave);
 DECLARE_ID(AutosaveInterval);
 DECLARE_ID(AudioThreadGuardEnabled);
