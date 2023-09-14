@@ -163,7 +163,16 @@ struct ScriptTableListModel : public juce::TableListBoxModel,
 
     var getRowData() const;
 
+
 private:
+
+	bool shouldSendCallOnDrag() const
+	{
+		return tableMetadata.getProperty("CallbackOnSliderDrag", true);
+	}
+	
+	
+	RangeHelpers::IdSet rangeSet = RangeHelpers::IdSet::scriptnode;
 
 	Array<int> repaintedColumns;
 
@@ -216,6 +225,9 @@ private:
     
 	var tableMetadata;
 	var columnMetadata;
+
+	mutable hise::SimpleReadWriteLock rowLock;
+
 	var rowData;
 	var originalRowData;
 	WeakCallbackHolder cellCallback;

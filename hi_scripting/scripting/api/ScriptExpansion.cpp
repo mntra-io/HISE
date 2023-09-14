@@ -49,6 +49,7 @@ struct ScriptUserPresetHandler::Wrapper
 	API_VOID_METHOD_WRAPPER_3(ScriptUserPresetHandler, updateAutomationValues);
 	API_METHOD_WRAPPER_1(ScriptUserPresetHandler, getAutomationIndex);
 	API_METHOD_WRAPPER_2(ScriptUserPresetHandler, setAutomationValue);
+	API_METHOD_WRAPPER_0(ScriptUserPresetHandler, getSecondsSinceLastPresetLoad);
 	API_VOID_METHOD_WRAPPER_1(ScriptUserPresetHandler, updateSaveInPresetComponents);
 	API_VOID_METHOD_WRAPPER_0(ScriptUserPresetHandler, updateConnectedComponentsFromModuleState);
 	API_VOID_METHOD_WRAPPER_1(ScriptUserPresetHandler, setUseUndoForPresetLoading);
@@ -87,6 +88,7 @@ ScriptUserPresetHandler::ScriptUserPresetHandler(ProcessorWithScriptingContent* 
 	ADD_API_METHOD_1(setUseUndoForPresetLoading);
 	ADD_API_METHOD_0(createObjectForSaveInPresetComponents);
 	ADD_API_METHOD_0(createObjectForAutomationValues);
+	ADD_API_METHOD_0(getSecondsSinceLastPresetLoad);
 	ADD_API_METHOD_0(runTest);
 	
 }
@@ -504,6 +506,12 @@ void ScriptUserPresetHandler::updateAutomationValues(var data, bool sendMessage,
     {
         getMainController()->getControlUndoManager()->perform(new AutomationValueUndoAction(this, data, sendMessage));
     }
+}
+
+double ScriptUserPresetHandler::getSecondsSinceLastPresetLoad()
+{
+	auto& uph = getMainController()->getUserPresetHandler();
+	return uph.getSecondsSinceLastPresetLoad();
 }
 
 juce::var ScriptUserPresetHandler::createObjectForAutomationValues()
@@ -3015,6 +3023,83 @@ juce::File ScriptUnlocker::getLicenseKeyFile()
 #endif
 	
 }
+
+struct BeatportManager::Wrapper
+{
+	API_METHOD_WRAPPER_0(BeatportManager, validate);
+	API_METHOD_WRAPPER_0(BeatportManager, isBeatportAccess);
+};
+
+BeatportManager::BeatportManager(ProcessorWithScriptingContent* sp):
+	ConstScriptingObject(sp, 0)
+{
+#if HISE_INCLUDE_BEATPORT
+	pimpl = new Pimpl();
+#endif
+
+	ADD_API_METHOD_0(validate);
+	ADD_API_METHOD_0(isBeatportAccess);
+}
+
+BeatportManager::~BeatportManager()
+{
+#if HISE_INCLUDE_BEATPORT
+	pimpl = nullptr;
+#endif
+}
+
+var BeatportManager::validate()
+{
+	auto t = Time::getMillisecondCounter();
+
+	var obj;
+
+#if HISE_INCLUDE_BEATPORT
+	obj = pimpl->validate();
+#else
+
+	// simulate waiting...
+	Thread::getCurrentThread()->wait(1500);
+
+	auto responseFile = getBeatportProjectFolder(getScriptProcessor()->getMainController_()).getChildFile("validate_response.json");
+
+	if(!responseFile.existsAsFile())
+		reportScriptError("You need to create a validate_response.json file in the beatport folder that simulates a response");
+
+	
+	auto ok = JSON::parse(responseFile.loadFileAsString(), obj);
+
+	if(ok.failed())
+		reportScriptError("Error at loading dummy JSON: " + ok.getErrorMessage());
+	
+#endif
+
+	auto now = Time::getMillisecondCounter();
+
+	dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine()->extendTimeout((int)(now - t));
+
+	return obj;
+}
+
+bool BeatportManager::isBeatportAccess()
+{
+#if HISE_INCLUDE_BEATPORT
+	return pimpl->isBeatportAccess();
+#else
+	auto t = Time::getMillisecondCounter();
+
+	Thread::getCurrentThread()->wait(500);
+	auto responseFile = getBeatportProjectFolder(getScriptProcessor()->getMainController_()).getChildFile("validate_response.json");
+
+	auto now = Time::getMillisecondCounter();
+
+	dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine()->extendTimeout((int)(now - t));
+
+	return responseFile.existsAsFile();
+#endif
+}
+
+
 
 struct ScriptUnlocker::RefObject::Wrapper
 {

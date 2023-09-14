@@ -1991,26 +1991,52 @@ void CompileExporter::ProjectTemplateHelpers::handleAdditionalSourceCode(Compile
 		REPLACE_WILDCARD_WITH_STRING("%USE_SPLASH_SCREEN%", "disabled");
 	}
 
+
+	String beatportLibPath = "";
+
+	if(additionalSourceCodeDirectory.getChildFile("beatport").isDirectory())
+	{
+#if JUCE_WINDOWS
+        beatportLibPath << additionalSourceCodeDirectory.getFullPathName() + "/beatport/lib";
+        beatportLibPath << ";";
+        beatportLibPath = beatportLibPath.replaceCharacter('/', '\\');
+        
+        REPLACE_WILDCARD_WITH_STRING("%BEATPORT_DEBUG_LIB%", "");
+        REPLACE_WILDCARD_WITH_STRING("%BEATPORT_RELEASE_LIB%", "");
+        REPLACE_WILDCARD_WITH_STRING("%BEATPORT_LIB_MACOS%", "");
+#else
+        
+        auto df = additionalSourceCodeDirectory.getChildFile("beatport").getChildFile("lib").getChildFile("macos").getChildFile("Debug");
+        auto rf = additionalSourceCodeDirectory.getChildFile("beatport").getChildFile("lib").getChildFile("macos").getChildFile("Release");
+        
+        REPLACE_WILDCARD_WITH_STRING("%BEATPORT_DEBUG_LIB%", df.getFullPathName());
+        REPLACE_WILDCARD_WITH_STRING("%BEATPORT_RELEASE_LIB%", rf.getFullPathName());
+        REPLACE_WILDCARD_WITH_STRING("%BEATPORT_LIB_MACOS%", "Access");
+#endif
+	}
+    else
+    {
+        REPLACE_WILDCARD_WITH_STRING("%BEATPORT_DEBUG_LIB%", "");
+        REPLACE_WILDCARD_WITH_STRING("%BEATPORT_RELEASE_LIB%", "");
+        REPLACE_WILDCARD_WITH_STRING("%BEATPORT_LIB_MACOS%", "");
+    }
+
 #if JUCE_MAC
     const String additionalStaticLibs = exporter->GET_SETTING(HiseSettings::Project::OSXStaticLibs);
     templateProject = templateProject.replace("%OSX_STATIC_LIBS%", additionalStaticLibs);
 #else
 
 	auto additionalStaticLibFolder = exporter->GET_SETTING(HiseSettings::Project::WindowsStaticLibFolder);
-
+	
 	if (additionalStaticLibFolder.isNotEmpty())
 	{
-		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_D64%", additionalStaticLibFolder + "/Debug_x64");
-		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_R64%", additionalStaticLibFolder + "/Release_x64");
-		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_D32%", additionalStaticLibFolder + "/Debug_x86");
-		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_R32%", additionalStaticLibFolder + "/Release_x86");
+		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_D64%", beatportLibPath + additionalStaticLibFolder + "/Debug_x64");
+		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_R64%", beatportLibPath + additionalStaticLibFolder + "/Release_x64");
 	}
 	else
 	{
-		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_D64%", "");
-		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_R64%", "");
-		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_D32%", "");
-		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_R32%", "");
+		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_D64%", beatportLibPath);
+		REPLACE_WILDCARD_WITH_STRING("%WIN_STATIC_LIB_FOLDER_R64%", beatportLibPath);
 	}
 #endif
     

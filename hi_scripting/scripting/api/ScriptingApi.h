@@ -155,8 +155,11 @@ public:
 		/** Stores a copy of the current event into the given holder object. */
 		void store(var messageEventHolder) const;
 
-		/** Creates a artificial copy of this event and returns the new event ID. */
+		/** Creates a artificial copy of this event and returns the new event ID. If the event is already artificial it will return the event ID. */
 		int makeArtificial();
+
+		/** Creates a artificial copy of this event and returns the new event ID. If the event is artificial it will make a new one with a new ID. */
+		int makeArtificialOrLocal();
 
 		/** Checks if the event was created by a script earlier. */
 		bool isArtificial() const;
@@ -186,6 +189,8 @@ public:
 
 	private:
 
+		int makeArtificialInternal(bool makeLocal);
+		
 		WeakCallbackHolder allNotesOffCallback;
 
 		friend class Synth;
@@ -362,6 +367,9 @@ public:
         
 		/** Creates a reference to the script license manager. */
 		var createLicenseUnlocker();
+
+		/** Creates a beatport manager object. */
+		var createBeatportManager();
 
 		/** Renders a MIDI event list as audio data on a background thread and calls a function when it's ready. */
 		void renderAudio(var eventList, var finishCallback);
@@ -585,8 +593,17 @@ public:
 		/** Creates a modulation matrix object that handles dynamic modulation using the given Global Modulator Container as source. */
 		var createModulationMatrix(String containerId);
 
+		/** Creates a macro handler that lets you programmatically change the macro connections. */
+		var createMacroHandler();
+
 		/** Exports an object as JSON. */
 		void dumpAsJSON(var object, String fileName);
+
+		/** Compresses a JSON object as Base64 string using zstd. */
+		String compressJSON(var object);
+
+		/** Expands a compressed JSON object. */
+		var uncompressJSON(const String& b64);
 
 		/** Imports a JSON file as object. */
 		var loadFromJSON(String fileName);
