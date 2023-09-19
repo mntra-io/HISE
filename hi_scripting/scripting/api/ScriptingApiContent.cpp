@@ -6689,6 +6689,17 @@ struct TextInputData: public ScriptingApi::Content::TextInputDataBase,
                 alignment = Justification::centred;
         }
     }
+
+	~TextInputData()
+    {
+	    if(inputLabel != nullptr)
+	    {
+		    MessageManagerLock mm;
+			inputLabel = nullptr;
+			done = true;
+			prop = var();
+	    }
+    }
     
     void textEditorFocusLost(TextEditor&) override
     {
@@ -6768,6 +6779,9 @@ struct TextInputData: public ScriptingApi::Content::TextInputDataBase,
     
     void dismissAndCall(bool ok)
     {
+		if(done || inputLabel == nullptr)
+			return;
+
         var args[2] = {var(ok), var(inputLabel->getText())};
         
         inputLabel->getParentComponent()->removeChildComponent(inputLabel);
