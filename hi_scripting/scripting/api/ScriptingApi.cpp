@@ -272,6 +272,7 @@ struct ScriptingApi::Message::Wrapper
 	API_METHOD_WRAPPER_0(Message, getTimestamp);
 	API_VOID_METHOD_WRAPPER_1(Message, store);
 	API_METHOD_WRAPPER_0(Message, makeArtificial);
+	API_METHOD_WRAPPER_0(Message, makeArtificialOrLocal);
 	API_METHOD_WRAPPER_0(Message, isArtificial);
 	API_VOID_METHOD_WRAPPER_0(Message, sendToMidiOut);
 	API_VOID_METHOD_WRAPPER_1(Message, setAllNotesOffCallback);
@@ -319,6 +320,7 @@ allNotesOffCallback(p, nullptr, var(), 0)
 	ADD_API_METHOD_1(setStartOffset);
 	ADD_API_METHOD_1(store);
 	ADD_API_METHOD_0(makeArtificial);
+	ADD_API_METHOD_0(makeArtificialOrLocal);
 	ADD_API_METHOD_0(isArtificial);
 	ADD_API_METHOD_1(setAllNotesOffCallback);
 	ADD_API_METHOD_0(sendToMidiOut);
@@ -735,11 +737,17 @@ void ScriptingApi::Message::store(var messageEventHolder) const
 
 int ScriptingApi::Message::makeArtificial()
 {
+	return makeArtificialInternal(false);
+}
+
+int ScriptingApi::Message::makeArtificialInternal(bool makeLocal)
+{
 	if (messageHolder != nullptr)
 	{
-		if (messageHolder->isArtificial()) return messageHolder->getEventId();
-
 		HiseEvent copy(*messageHolder);
+
+		if (!makeLocal && copy.isArtificial())
+			return copy.getEventId();
 
 		copy.setArtificial();
 
@@ -767,6 +775,11 @@ int ScriptingApi::Message::makeArtificial()
 	}
 
 	return 0;
+}
+
+int ScriptingApi::Message::makeArtificialOrLocal()
+{
+	return makeArtificialInternal(true);
 }
 
 bool ScriptingApi::Message::isArtificial() const
@@ -890,6 +903,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_1(Engine, createAndRegisterAudioFile);
 	API_METHOD_WRAPPER_1(Engine, createAndRegisterRingBuffer);
 	API_METHOD_WRAPPER_0(Engine, createMidiList);
+	API_METHOD_WRAPPER_0(Engine, createBeatportManager);
 	API_METHOD_WRAPPER_0(Engine, createUnorderedStack);
 	API_METHOD_WRAPPER_0(Engine, createTimerObject);
 	API_METHOD_WRAPPER_0(Engine, createMessageHolder);
@@ -898,6 +912,8 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_0(Engine, getPlayHead);
 	API_VOID_METHOD_WRAPPER_2(Engine, dumpAsJSON);
 	API_METHOD_WRAPPER_1(Engine, loadFromJSON);
+	API_METHOD_WRAPPER_1(Engine, compressJSON);
+	API_METHOD_WRAPPER_1(Engine, uncompressJSON);
 	API_VOID_METHOD_WRAPPER_1(Engine, setCompileProgress);
 	API_METHOD_WRAPPER_2(Engine, matchesRegex);
 	API_METHOD_WRAPPER_2(Engine, getRegexMatches);
@@ -935,6 +951,7 @@ struct ScriptingApi::Engine::Wrapper
     API_METHOD_WRAPPER_1(Engine, createFixObjectFactory);
 	API_METHOD_WRAPPER_0(Engine, createErrorHandler);
 	API_METHOD_WRAPPER_1(Engine, createModulationMatrix);
+	API_METHOD_WRAPPER_0(Engine, createMacroHandler);
 	API_METHOD_WRAPPER_0(Engine, getWavetableList);
 	API_VOID_METHOD_WRAPPER_3(Engine, showYesNoWindow);
 	API_VOID_METHOD_WRAPPER_1(Engine, addModuleStateToUserPreset);
@@ -1026,6 +1043,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
   ADD_API_METHOD_1(openWebsite);
 	ADD_API_METHOD_0(createUserPresetHandler);
 	ADD_API_METHOD_0(createMidiAutomationHandler);
+	ADD_API_METHOD_0(createMacroHandler);
   ADD_API_METHOD_1(loadNextUserPreset);
 	ADD_API_METHOD_1(loadPreviousUserPreset);
 	ADD_API_METHOD_1(isUserPresetReadOnly);
@@ -1080,6 +1098,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_1(createAndRegisterRingBuffer);
 	ADD_API_METHOD_0(getGlobalRoutingManager);
     ADD_API_METHOD_0(getLorisManager);
+	ADD_API_METHOD_0(createBeatportManager);
 	ADD_API_METHOD_1(loadFont);
 	ADD_API_METHOD_2(loadFontAs);
 	ADD_API_METHOD_1(loadAudioFileIntoBufferArray);
@@ -1118,6 +1137,8 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_1(decodeBase64ValueTree);
 	ADD_API_METHOD_2(renderAudio);
 	ADD_API_METHOD_3(playBuffer);
+	ADD_API_METHOD_1(compressJSON);
+	ADD_API_METHOD_1(uncompressJSON);
 }
 
 
@@ -1795,8 +1816,13 @@ juce::var ScriptingApi::Engine::createLicenseUnlocker()
 	return var(new ScriptUnlocker::RefObject(getScriptProcessor()));
 }
 
+var ScriptingApi::Engine::createBeatportManager()
+{
+	return var(new BeatportManager(getScriptProcessor()));
+}
+
 struct AudioRenderer : public Thread,
-					   public ControlledObject
+                       public ControlledObject
 {
 	static constexpr int NumThrowAwayBuffers = 4;
 
@@ -3158,6 +3184,11 @@ juce::var ScriptingApi::Engine::createModulationMatrix(String containerId)
 	return new ScriptingObjects::ScriptModulationMatrix(getScriptProcessor(), containerId);
 }
 
+var ScriptingApi::Engine::createMacroHandler()
+{
+	return new ScriptingObjects::ScriptedMacroHandler(getScriptProcessor());
+}
+
 void ScriptingApi::Engine::dumpAsJSON(var object, String fileName)
 {
 	if (!object.isObject())
@@ -3175,6 +3206,39 @@ void ScriptingApi::Engine::dumpAsJSON(var object, String fileName)
 
 	f.replaceWithText(JSON::toString(object, false, DOUBLE_TO_STRING_DIGITS));
 
+}
+
+String ScriptingApi::Engine::compressJSON(var object)
+{
+	auto x = JSON::toString(object, true);
+
+	zstd::ZDefaultCompressor comp;
+	
+	MemoryBlock data;
+	comp.compress(x, data);
+
+	return data.toBase64Encoding();
+}
+
+var ScriptingApi::Engine::uncompressJSON(const String& b64)
+{
+	MemoryBlock mb;
+	mb.fromBase64Encoding(b64);
+
+	String json;
+
+	zstd::ZDefaultCompressor comp;
+	comp.expand(mb, json);
+
+	var value;
+	auto r = JSON::parse(json, value);
+
+	if(!r.wasOk())
+	{
+		reportScriptError(r.getErrorMessage());
+	}
+
+	return value;
 }
 
 var ScriptingApi::Engine::loadFromJSON(String fileName)

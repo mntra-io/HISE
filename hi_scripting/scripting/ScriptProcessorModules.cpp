@@ -89,7 +89,7 @@ JavascriptMidiProcessor::~JavascriptMidiProcessor()
 
 Path JavascriptMidiProcessor::getSpecialSymbol() const
 {
-	Path path; path.loadPathFromData(HiBinaryData::SpecialSymbols::scriptProcessor, sizeof(HiBinaryData::SpecialSymbols::scriptProcessor)); return path;
+	Path path; path.loadPathFromData(HiBinaryData::SpecialSymbols::scriptProcessor, SIZE_OF_PATH(HiBinaryData::SpecialSymbols::scriptProcessor)); return path;
 }
 
 void JavascriptMidiProcessor::suspendStateChanged(bool shouldBeSuspended)
@@ -706,7 +706,7 @@ JavascriptMasterEffect::~JavascriptMasterEffect()
 
 Path JavascriptMasterEffect::getSpecialSymbol() const
 {
-	Path path; path.loadPathFromData(HiBinaryData::SpecialSymbols::scriptProcessor, sizeof(HiBinaryData::SpecialSymbols::scriptProcessor)); return path;
+	Path path; path.loadPathFromData(HiBinaryData::SpecialSymbols::scriptProcessor, SIZE_OF_PATH(HiBinaryData::SpecialSymbols::scriptProcessor)); return path;
 }
 
 void JavascriptMasterEffect::connectionChanged()
@@ -905,7 +905,17 @@ void JavascriptMasterEffect::renderWholeBuffer(AudioSampleBuffer &buffer)
 	{
 		if (getActiveNetwork() != nullptr)
 		{
-			getActiveNetwork()->process(buffer, eventBuffer);
+			auto numChannels = channelIndexes.size();
+			auto numSamples = buffer.getNumSamples();
+
+			auto data = (float**)alloca(numChannels * sizeof(float*));
+
+			for(int i = 0; i < numChannels; i++)
+				data[i] = buffer.getWritePointer(channelIndexes[i]);
+
+			ProcessDataDyn pd(data, numSamples, numChannels);
+			pd.setEventBuffer(*eventBuffer);
+			getActiveNetwork()->process(pd);
 			return;
 		}
 

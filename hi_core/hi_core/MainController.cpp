@@ -1008,22 +1008,29 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 	
 	if (hostBpm == -1.0)
 	{
-		// We need to get the host bpm again...
-		if (auto ph = thisAsProcessor->getPlayHead())
-		{
-			AudioPlayHead::CurrentPositionInfo bpmInfo;
-			ph->getCurrentPosition(bpmInfo);
+        if(insideInternalExport)
+        {
+            // AU plugins will not catch the correct
+            // tempo so we need to use the one from
+            // the playhead object
+            hostBpm = newTime.bpm;
+        }
+        else
+        {
+            // We need to get the host bpm again...
+            if (auto ph = thisAsProcessor->getPlayHead())
+            {
+                AudioPlayHead::CurrentPositionInfo bpmInfo;
+                ph->getCurrentPosition(bpmInfo);
 
-			hostBpm = bpmInfo.bpm;
-		}
+                hostBpm = bpmInfo.bpm;
+            }
+        }
 	}
 
-	setBpm(getMasterClock().getBpmToUse(hostBpm, *internalBpmPointer));
-	
+    setBpm(getMasterClock().getBpmToUse(hostBpm, *internalBpmPointer));
+    
 #endif
-
-	
-
 
 #if !FRONTEND_IS_PLUGIN
 
@@ -1951,17 +1958,12 @@ void MainController::SampleManager::handleNonRealtimeState()
 
 		LockHelpers::SafeLock sl(mc, LockHelpers::AudioLock);
 
-		
-
 		while (auto nrt = iter.getNextProcessor())
 			nrt->nonRealtimeModeChanged(isNonRealtime());
 
 		internalsSetToNonRealtime = isNonRealtime();
 	}
 }
-
-
-
 
 hise::MainController::UserPresetHandler::CustomAutomationData::Ptr MainController::UserPresetHandler::getCustomAutomationData(int index) const
 {
@@ -1993,6 +1995,15 @@ bool MainController::UserPresetHandler::restoreStateManager(const ValueTree& new
 bool MainController::UserPresetHandler::saveStateManager(ValueTree& newPreset, const Identifier& id)
 {
 	return processStateManager(true, newPreset, id);
+}
+
+double MainController::UserPresetHandler::getSecondsSinceLastPresetLoad() const
+{
+	auto now = Time::getMillisecondCounter();
+
+	auto delta = now - timeOfLastPresetLoad;
+
+	return (double)delta / 1000.0;
 }
 
 bool MainController::UserPresetHandler::processStateManager(bool shouldSave, ValueTree& presetRoot, const Identifier& stateId)

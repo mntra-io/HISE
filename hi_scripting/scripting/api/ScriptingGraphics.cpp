@@ -2459,6 +2459,31 @@ bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const
 					var n = c->getParentComponent()->getName();
 					argsObject.getDynamicObject()->setProperty("parentName", n);
 				}
+                
+                static const StringArray hiddenProps = {"jcclr"};
+                
+                if(c != nullptr)
+                {
+                    for(auto& nv: c->getProperties())
+                    {
+                        if(!argsObject.hasProperty(nv.name))
+                        {
+                            bool hidden = false;
+                            
+                            for(const auto& hp: hiddenProps)
+                            {
+                                if(nv.name.toString().contains(hp))
+                                {
+                                    hidden = true;
+                                    break;
+                                }
+                            }
+                            
+                            if(!hidden)
+                                argsObject.getDynamicObject()->setProperty(nv.name, nv.value);
+                        }
+                    }
+                }
 
 				var::NativeFunctionArgs arg(thisObject, args, 2);
 				auto engine = dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine();
@@ -3949,7 +3974,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawSliderPackTextPopup(Graphic
 	SliderPack::LookAndFeelMethods::drawSliderPackTextPopup(g_, s, textToDraw);
 }
 
-void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTableRowBackground(Graphics& g_, const ScriptTableListModel::LookAndFeelData& d, int rowNumber, int width, int height, bool rowIsSelected)
+void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTableRowBackground(Graphics& g_, const ScriptTableListModel::LookAndFeelData& d, int rowNumber, int width, int height, bool rowIsSelected, bool rowIsHovered)
 {
 	if (functionDefined("drawTableRowBackground"))
 	{
@@ -3962,6 +3987,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTableRowBackground(Graphics
 
 		obj->setProperty("rowIndex", rowNumber);
 		obj->setProperty("selected", rowIsSelected);
+		obj->setProperty("hover", rowIsHovered);
 
 		Rectangle<int> a(0, 0, width, height);
 
@@ -3971,7 +3997,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTableRowBackground(Graphics
 			return;
 	}
 
-	ScriptTableListModel::LookAndFeelMethods::drawTableRowBackground(g_, d, rowNumber, width, height, rowIsSelected);
+	ScriptTableListModel::LookAndFeelMethods::drawTableRowBackground(g_, d, rowNumber, width, height, rowIsSelected, rowIsHovered);
 }
 
 void ScriptingObjects::ScriptedLookAndFeel::Laf::drawTableCell(Graphics& g_, const ScriptTableListModel::LookAndFeelData& d, const String& text, int rowNumber, int columnId, int width, int height, bool rowIsSelected, bool cellIsClicked, bool cellIsHovered)

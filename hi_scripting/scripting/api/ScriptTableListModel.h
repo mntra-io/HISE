@@ -80,7 +80,7 @@ struct ScriptTableListModel : public juce::TableListBoxModel,
 	{
 		virtual ~LookAndFeelMethods();;
 
-		virtual void drawTableRowBackground(Graphics& g, const LookAndFeelData& d, int rowNumber, int width, int height, bool rowIsSelected);
+		virtual void drawTableRowBackground(Graphics& g, const LookAndFeelData& d, int rowNumber, int width, int height, bool rowIsSelected, bool rowIsHovered);
 
 		virtual void drawTableCell(Graphics& g, const LookAndFeelData& d, const String& text, int rowNumber, int columnId, int width, int height, bool rowIsSelected, bool cellIsClicked, bool cellIsHovered);
 
@@ -163,7 +163,16 @@ struct ScriptTableListModel : public juce::TableListBoxModel,
 
     var getRowData() const;
 
+
 private:
+
+	bool shouldSendCallOnDrag() const
+	{
+		return tableMetadata.getProperty("CallbackOnSliderDrag", true);
+	}
+	
+	
+	RangeHelpers::IdSet rangeSet = RangeHelpers::IdSet::scriptnode;
 
 	Array<int> repaintedColumns;
 
@@ -209,13 +218,16 @@ private:
 	DefaultLookAndFeel fallback;
 	WeakReference<LookAndFeelMethods> laf = nullptr;
 
-	Point<int> hoverPos;
+	Point<int> hoverPos = { 0, -1 };
 	Point<int> lastClickedCell;
 
     bool processSpaceKey = false;
     
 	var tableMetadata;
 	var columnMetadata;
+
+	mutable hise::SimpleReadWriteLock rowLock;
+
 	var rowData;
 	var originalRowData;
 	WeakCallbackHolder cellCallback;
