@@ -108,6 +108,11 @@ struct WebViewData : public ReferenceCountedObject
 	*/
 	void setUsePersistentCalls(bool usePersistentCalls);
 
+	void setUseScaleFactorForZoom(bool shouldApplyScaleFactorAsZoom)
+	{
+		applyScaleFactorAsZoom = shouldApplyScaleFactorAsZoom;
+	}
+
 	/** Clears all caches and persistent calls and (optionally) the file resource information. */
 	void reset(bool resetFileStructure=false);
 
@@ -145,12 +150,31 @@ struct WebViewData : public ReferenceCountedObject
 	*/
 	bool explode();
 
+	bool shouldApplyScaleFactorAsZoom() const
+	{
+		return applyScaleFactorAsZoom;
+	}
+
+    bool isDebugModeEnabled() const
+    {
+        return debugModeEnabled;
+    }
+    
+    void setEnableDebugMode(bool shouldBeEnabled)
+    {
+        debugModeEnabled = shouldBeEnabled;
+    }
+    
 private:
 
 	File projectRootDirectory;
 
+	bool applyScaleFactorAsZoom = true;
+
 	bool usePersistentCalls = true;
 
+    bool debugModeEnabled = false;
+    
 	StringPairArray initScripts;
 
 	using OpaqueResourceType = std::tuple<std::vector<uint8>, std::string>;
@@ -213,8 +237,10 @@ struct SorryDavid: public Component
 	void doNothing(){};
 };
 
-struct WebViewWrapper : public Component
+class WebViewWrapper : public Component
 {
+public:
+
 #if JUCE_WINDOWS
 	using NativeComponentType = juce::HWNDComponent;
 #define setWindowHandle setHWND

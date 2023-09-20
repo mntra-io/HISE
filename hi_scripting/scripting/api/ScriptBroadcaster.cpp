@@ -536,7 +536,7 @@ struct ScriptBroadcaster::Display: public Component,
 		LOAD_PATH_IF_URL("workspace", ColumnIcons::openWorkspaceIcon);
 		LOAD_PATH_IF_URL("reset", ColumnIcons::resetIcon);
 		LOAD_PATH_IF_URL("breakpoint", ColumnIcons::breakpointIcon);
-		LOAD_PATH_IF_URL("enable", HiBinaryData::ProcessorEditorHeaderIcons::bypassShape);
+		LOAD_EPATH_IF_URL("enable", HiBinaryData::ProcessorEditorHeaderIcons::bypassShape);
 		LOAD_PATH_IF_URL("delay", ColumnIcons::delayIcon);
 
 		return p;
@@ -3307,6 +3307,38 @@ void ScriptBroadcaster::sendMessageInternal(var args, bool isSync)
 	}
 }
 
+ScriptBroadcaster::DelayedFunction::DelayedFunction(ScriptBroadcaster* b, var f, const Array<var>& args_,
+	int milliSeconds, const var& thisObj):
+	c(b->getScriptProcessor(), b, f, 0),
+	bc(b),
+	args(args_)
+{
+	c.setHighPriority();
+	c.incRefCount();
+
+	if (thisObj.isObject() && thisObj.getObject() != b)
+		c.setThisObjectRefCounted(thisObj);
+
+	startTimer(milliSeconds);
+}
+
+ScriptBroadcaster::DelayedFunction::~DelayedFunction()
+{
+	stopTimer();
+}
+
+void ScriptBroadcaster::DelayedFunction::timerCallback()
+{
+	if (bc != nullptr && !bc->bypassed)
+	{
+		ScopedLock sl(bc->delayFunctionLock);
+
+		c.call(args.getRawDataPointer(), args.size());
+	}
+				
+	stopTimer();
+}
+
 void ScriptBroadcaster::sendSyncMessage(var args)
 {
 	sendMessageInternal(args, true);
@@ -4070,7 +4102,8 @@ Result ScriptBroadcaster::sendInternal(const Array<var>& args)
             auto r = i->callSync(thisValues);
             if (!r.wasOk())
             {
-				sendErrorMessage(i, r.getErrorMessage(), false);
+
+				sendErrorMessage(i, this->getMetadata().id + ": " + r.getErrorMessage(), false);
                 return r;
             }
         }
@@ -4253,6 +4286,227 @@ ScriptBroadcaster::Metadata::Metadata(const var& obj, bool mustBeValid) :
 		c = scriptnode::PropertyHelpers::getColourFromVar(obj["colour"]);
 }
 
+ScriptBroadcaster::Metadata::operator bool() const
+{ return hash != 0; }
+
+bool ScriptBroadcaster::Metadata::operator==(const Metadata& other) const
+{ return hash == other.hash; }
+
+bool ScriptBroadcaster::Metadata::operator==(const var& other) const
+{ return Metadata(other, true) == *this; }
+
+String ScriptBroadcaster::Metadata::getErrorMessage() const
+{ return r.getErrorMessage(); }
+
+
+
+Identifier ScriptBroadcaster::getObjectName() const
+{ RETURN_STATIC_IDENTIFIER("Broadcaster"); }
+
+int ScriptBroadcaster::getNumChildElements() const
+{ return defaultValues.size(); }
+
+bool ScriptBroadcaster::isAutocompleteable() const
+{ return true; }
+
+bool ScriptBroadcaster::isRealtimeSafe() const
+{ return realtimeSafe; }
+
+bool ScriptBroadcaster::allowRefCount() const
+{ return false; }
+
+const ScriptBroadcaster::Metadata& ScriptBroadcaster::getMetadata() const
+{ return metadata; }
+
+int ScriptBroadcaster::ItemBase::PrioritySorter::compareElements(ItemBase* m1, ItemBase* m2)
+{
+	if (m1->metadata.priority > m2->metadata.priority)
+		return -1; 
+
+	if (m1->metadata.priority < m2->metadata.priority)
+		return 1;
+
+	return 0;
+}
+
+ScriptBroadcaster::ItemBase::ItemBase(const Metadata& m):
+	metadata(m)
+{}
+
+ScriptBroadcaster::ItemBase::~ItemBase()
+{}
+
+void ScriptBroadcaster::ItemBase::registerSpecialBodyItems(ComponentWithPreferredSize::BodyFactory& factory)
+{}
+
+ScriptBroadcaster::TargetBase::TargetBase(const var& obj_, const var& f, const var& metadata_):
+	ItemBase(Metadata(metadata_, true)),
+	obj(obj_)
+{
+	if (auto dl = dynamic_cast<DebugableObjectBase*>(f.getObject()))
+	{
+		location = dl->getLocation();
+	}
+}
+
+ScriptBroadcaster::TargetBase::~TargetBase()
+{}
+
+bool ScriptBroadcaster::TargetBase::operator==(const TargetBase& other) const
+{
+	return obj == other.obj;
+}
+
+Array<var> ScriptBroadcaster::TargetBase::createChildArray() const
+{
+	Array<var> l;
+
+	if (obj.isArray())
+		l.addArray(*obj.getArray());
+	else
+		l.add(obj);
+
+	return l;
+}
+
+Identifier ScriptBroadcaster::ScriptTarget::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("Script Callback"); }
+
+Identifier ScriptBroadcaster::DelayedItem::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("Delayed Callback"); }
+
+Identifier ScriptBroadcaster::ComponentPropertyItem::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("ComponentProperties"); }
+
+Identifier ScriptBroadcaster::ComponentRefreshItem::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("ComponentRefreshItem"); }
+
+Identifier ScriptBroadcaster::ComponentValueItem::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("ComponentValue"); }
+
+Identifier ScriptBroadcaster::OtherBroadcasterTarget::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("Other Broadcaster"); }
+
+ScriptBroadcaster::ListenerBase::ListenerBase(const var& metadata_):
+	ItemBase(Metadata(metadata_, false))
+{}
+
+int ScriptBroadcaster::ListenerBase::getNumInitialCalls() const
+{ return 0; }
+
+Array<var> ScriptBroadcaster::ListenerBase::getInitialArgs(int callIndex) const
+{ return {}; }
+
+ScriptBroadcaster::ListenerBase::~ListenerBase()
+{}
+
+Identifier ScriptBroadcaster::DebugableObjectListener::getItemId() const
+{ return callbackId; }
+
+int ScriptBroadcaster::DebugableObjectListener::getNumInitialCalls() const
+{ return 0; }
+
+Array<var> ScriptBroadcaster::DebugableObjectListener::getInitialArgs(int callIndex) const
+{ return {}; }
+
+Identifier ScriptBroadcaster::ModuleParameterListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("ModuleParameter"); }
+
+Identifier ScriptBroadcaster::EqListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("EqListener"); }
+
+int ScriptBroadcaster::EqListener::getNumInitialCalls() const
+{ return 0; }
+
+Array<var> ScriptBroadcaster::EqListener::getInitialArgs(int callIndex) const
+{ return {}; }
+
+Array<var> ScriptBroadcaster::EqListener::createChildArray() const
+{ return {}; }
+
+Identifier ScriptBroadcaster::RoutingMatrixListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("RoutingMatrix"); }
+
+int ScriptBroadcaster::ScriptCallListener::getNumInitialCalls() const
+{ return 0; }
+
+Array<var> ScriptBroadcaster::ScriptCallListener::getInitialArgs(int callIndex) const
+{ return {}; }
+
+Identifier ScriptBroadcaster::ScriptCallListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("ScriptFunctionCalls"); }
+
+Identifier ScriptBroadcaster::ProcessingSpecSource::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("ProcessingSpecs"); }
+
+int ScriptBroadcaster::ProcessingSpecSource::getNumInitialCalls() const
+{ return 0; }
+
+Array<var> ScriptBroadcaster::ProcessingSpecSource::getInitialArgs(int callIndex) const
+{ return {}; }
+
+Array<var> ScriptBroadcaster::ProcessingSpecSource::createChildArray() const
+{ return processArgs; }
+
+Identifier ScriptBroadcaster::ComponentPropertyListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("ComponentProperties"); }
+
+Identifier ScriptBroadcaster::ComponentVisibilityListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("ComponentVisibility"); }
+
+int ScriptBroadcaster::ComponentVisibilityListener::getNumInitialCalls() const
+{ return items.size(); }
+
+Identifier ScriptBroadcaster::MouseEventListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("MouseEvents"); }
+
+Result ScriptBroadcaster::MouseEventListener::callItem(TargetBase*)
+{ return Result::ok(); }
+
+int ScriptBroadcaster::MouseEventListener::getNumInitialCalls() const
+{ return 0; }
+
+Array<var> ScriptBroadcaster::MouseEventListener::getInitialArgs(int callIndex) const
+{ return {}; }
+
+Identifier ScriptBroadcaster::ComponentValueListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("ComponentValue"); }
+
+int ScriptBroadcaster::ComponentValueListener::getNumInitialCalls() const
+{ return items.size(); }
+
+Identifier ScriptBroadcaster::RadioGroupListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("RadioGroup"); }
+
+int ScriptBroadcaster::RadioGroupListener::getNumInitialCalls() const
+{ return 1; }
+
+Array<var> ScriptBroadcaster::RadioGroupListener::getInitialArgs(int callIndex) const
+{ return { var(currentIndex) }; }
+
+ScriptBroadcaster::OtherBroadcasterListener::OtherBroadcasterListener(
+	const Array<WeakReference<ScriptBroadcaster>>& list, const var& metadata):
+	ListenerBase(metadata),
+	sources(list)
+{}
+
+Identifier ScriptBroadcaster::OtherBroadcasterListener::getItemId() const
+{ RETURN_STATIC_IDENTIFIER("BroadcasterSource"); }
+
+int ScriptBroadcaster::OtherBroadcasterListener::getNumInitialCalls() const
+{ return sources.size(); }
+
+Array<var> ScriptBroadcaster::OtherBroadcasterListener::getInitialArgs(int callIndex) const
+{
+	if (auto sb = sources[callIndex])
+	{
+		return sb->lastValues;
+	}
+
+	jassertfalse;
+	return {};
+}
+
 ScriptBroadcaster::Metadata::Metadata() :
 	r(Result::ok()),
 	hash(0)
@@ -4264,6 +4518,7 @@ void ScriptBroadcaster::Metadata::attachCommentFromCallableObject(const var& cal
 {
     return;
     
+#if 0
 	if (comment.isNotEmpty())
 		return;
 
@@ -4285,6 +4540,7 @@ void ScriptBroadcaster::Metadata::attachCommentFromCallableObject(const var& cal
 			}
 		}
 	}
+#endif
 #endif
 }
 
