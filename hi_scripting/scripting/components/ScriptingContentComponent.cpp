@@ -530,10 +530,37 @@ void ScriptContentComponent::setNewContent(ScriptingApi::Content *c)
 {
 	if (c == nullptr) return;
 
+	currentTextBox = nullptr;
 	contentData = c;
 
 	deleteAllScriptComponents();
 
+    contentData->textInputBroadcaster.addListener(*this, [](ScriptContentComponent& c, ScriptingApi::Content::TextInputDataBase::Ptr ptr)
+    {
+		c.currentTextBox = ptr;
+
+        if(ptr == nullptr || ptr->done)
+            return;
+        
+        Component* comp = &c;
+        
+        if(ptr->parentId.isNotEmpty())
+        {
+            Identifier pid(ptr->parentId);
+            
+            for(int i = 0; i < c.componentWrappers.size(); i++)
+            {
+                if(c.componentWrappers[i]->getScriptComponent()->getName() == pid)
+                {
+                    comp = c.componentWrappers[i]->getComponent();
+                    break;
+                }
+            }
+        }
+        
+        ptr->show(comp);
+    });
+    
 	valuePopupProperties = new ScriptCreatedComponentWrapper::ValuePopup::Properties(p->getMainController(), c->getValuePopupProperties());
 
 	for (int i = 0; i < contentData->components.size(); i++)
