@@ -1798,6 +1798,7 @@ maximum(1.0f)
 	ADD_SCRIPT_PROPERTY(i14, "showTextBox"); 	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 	ADD_SCRIPT_PROPERTY(i15, "scrollWheel"); 	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 	ADD_SCRIPT_PROPERTY(i16, "enableMidiLearn"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+	ADD_SCRIPT_PROPERTY(i17, "sendValueOnDrag"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 
 #if 0
 	componentProperties->setProperty(getIdFor(Mode), 0);
@@ -1838,7 +1839,8 @@ maximum(1.0f)
 	setDefaultValue(ScriptSlider::Properties::showTextBox, true);
 	setDefaultValue(ScriptSlider::Properties::scrollWheel, true);
 	setDefaultValue(ScriptSlider::Properties::enableMidiLearn, true);
-
+	setDefaultValue(ScriptSlider::Properties::sendValueOnDrag, true);
+	
 	ScopedValueSetter<bool> svs(removePropertyIfDefault, false);
 
 	const bool dontUpdateMode = !getPropertyValueTree().hasProperty(getIdFor(Mode));
@@ -3040,6 +3042,7 @@ struct ScriptingApi::Content::ScriptSliderPack::Wrapper
 	API_METHOD_WRAPPER_1(ScriptSliderPack, getSliderValueAt);
 	API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, setAllValues);
 	API_METHOD_WRAPPER_0(ScriptSliderPack, getNumSliders);
+	API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, setAllValuesWithUndo);
 	API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, referToData);
     API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, setWidthArray);
 	API_METHOD_WRAPPER_1(ScriptSliderPack, registerAtParent);
@@ -3097,6 +3100,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	ADD_API_METHOD_2(setSliderAtIndex);
 	ADD_API_METHOD_1(getSliderValueAt);
 	ADD_API_METHOD_1(setAllValues);
+	ADD_API_METHOD_1(setAllValuesWithUndo);
 	ADD_API_METHOD_0(getNumSliders);
 	ADD_API_METHOD_1(referToData);
     ADD_API_METHOD_1(setWidthArray);
@@ -3104,6 +3108,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	ADD_API_METHOD_0(getDataAsBuffer);
 	ADD_API_METHOD_1(setAllValueChangeCausesCallback);
 	ADD_API_METHOD_1(setUsePreallocatedLength);
+	
 }
 
 ScriptingApi::Content::ScriptSliderPack::~ScriptSliderPack()
@@ -3145,14 +3150,21 @@ void ScriptingApi::Content::ScriptSliderPack::setAllValues(var value)
 	if (auto d = getCachedSliderPack())
 	{
 		auto isMultiValue = value.isBuffer() || value.isArray();
-
 		int maxIndex = value.isBuffer() ? (value.getBuffer()->size) : (value.isArray() ? value.size() : 0);
 
 		for (int i = 0; i < d->getNumSliders(); i++)
 		{
 			if (!isMultiValue || isPositiveAndBelow(i, maxIndex))
 			{
-				auto vToSet = isMultiValue ? (float)value[i] : (float)value;
+				float vToSet;
+
+				if(value.isBuffer())
+					vToSet = value.getBuffer()->getSample(i);
+				else if (value.isArray())
+					vToSet = value[i];
+				else
+					vToSet = (float)value;
+				
 				d->setValue(i, (float)vToSet, dontSendNotification);
 			}
 		}
@@ -3165,6 +3177,37 @@ void ScriptingApi::Content::ScriptSliderPack::setAllValues(var value)
 		}
 		else
 			d->getUpdater().sendDisplayChangeMessage(-1, sendNotificationAsync, true);
+	}
+}
+
+void ScriptingApi::Content::ScriptSliderPack::setAllValuesWithUndo(var value)
+{
+	if (auto d = getCachedSliderPack())
+	{
+		auto isMultiValue = value.isBuffer() || value.isArray();
+		int maxIndex = value.isBuffer() ? (value.getBuffer()->size) : (value.isArray() ? value.size() : d->getNumSliders());
+
+		Array<float> newData;
+		newData.ensureStorageAllocated(maxIndex);
+
+		for(int i = 0; i < maxIndex; i++)
+		{
+			float vToSet;
+
+			if(value.isBuffer())
+				vToSet = value.getBuffer()->getSample(i);
+			else if (value.isArray())
+				vToSet = value[i];
+			else
+				vToSet = (float)value;
+
+			newData.add(vToSet);
+		}
+
+		// We always want to send a value change when we're performing a undoable action
+		auto n = (true || allValueChangeCausesCallback) ? sendNotificationAsync : dontSendNotification;
+
+		d->setFromFloatArray(newData, n, true);
 	}
 }
 
