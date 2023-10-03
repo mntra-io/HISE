@@ -1772,6 +1772,8 @@ struct ScriptingApi::Content::ScriptSlider::Wrapper
 	API_METHOD_WRAPPER_0(ScriptSlider, getMinValue);
 	API_METHOD_WRAPPER_0(ScriptSlider, getMaxValue);
 	API_METHOD_WRAPPER_1(ScriptSlider, contains);
+    API_METHOD_WRAPPER_0(ScriptSlider, createModifiers);
+    API_VOID_METHOD_WRAPPER_2(ScriptSlider, setModifiers);
 };
 
 ScriptingApi::Content::ScriptSlider::ScriptSlider(ProcessorWithScriptingContent *base, Content* /*parentContent*/, Identifier name_, int x, int y, int, int) :
@@ -1856,16 +1858,18 @@ maximum(1.0f)
 	initInternalPropertyFromValueTreeOrDefault(Properties::filmstripImage);
 	initInternalPropertyFromValueTreeOrDefault(ScriptComponent::linkedTo);
 
-	ADD_API_METHOD_1(setValuePopupFunction);
-	ADD_API_METHOD_1(setMidPoint);
+	ADD_TYPED_API_METHOD_1(setValuePopupFunction, VarTypeChecker::Function);
+	ADD_TYPED_API_METHOD_1(setMidPoint, VarTypeChecker::Number);
 	ADD_API_METHOD_3(setRange);
-	ADD_API_METHOD_1(setMode);
-	ADD_API_METHOD_1(setStyle);
-	ADD_API_METHOD_1(setMinValue);
-	ADD_API_METHOD_1(setMaxValue);
+	ADD_TYPED_API_METHOD_1(setMode, VarTypeChecker::String);
+	ADD_TYPED_API_METHOD_1(setStyle, VarTypeChecker::String);
+	ADD_TYPED_API_METHOD_1(setMinValue, VarTypeChecker::Number);
+	ADD_TYPED_API_METHOD_1(setMaxValue, VarTypeChecker::Number);
 	ADD_API_METHOD_0(getMinValue);
 	ADD_API_METHOD_0(getMaxValue);
 	ADD_API_METHOD_1(contains);
+    ADD_API_METHOD_0(createModifiers);
+    ADD_TYPED_API_METHOD_2(setModifiers, VarTypeChecker::String, VarTypeChecker::IndexOrArray);
 
 	//addConstant("Decibel", HiSlider::Mode::Decibel);
 	//addConstant("Discrete", HiSlider::Mode::Discrete);
@@ -2285,6 +2289,26 @@ juce::Array<hise::ScriptingApi::Content::ScriptComponent::PropertyWithValue> Scr
 
 	return idList;
 }
+
+void ScriptingApi::Content::ScriptSlider::setModifiers(String x, juce::var modifierData)
+{
+    DynamicObject::Ptr obj;
+    
+    if(modObject.getDynamicObject())
+        obj = modObject.getDynamicObject();
+    else
+        obj = new DynamicObject();
+    
+    obj->setProperty(Identifier(x), modifierData);
+    
+    modObject = var(obj.get());
+}
+
+
+juce::var ScriptingApi::Content::ScriptSlider::createModifiers() { 
+    return var(new ModifierObject(getScriptProcessor()));
+}
+
 
 struct ScriptingApi::Content::ScriptButton::Wrapper
 {
@@ -3042,6 +3066,7 @@ struct ScriptingApi::Content::ScriptSliderPack::Wrapper
 	API_METHOD_WRAPPER_1(ScriptSliderPack, getSliderValueAt);
 	API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, setAllValues);
 	API_METHOD_WRAPPER_0(ScriptSliderPack, getNumSliders);
+	API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, setAllValuesWithUndo);
 	API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, referToData);
     API_VOID_METHOD_WRAPPER_1(ScriptSliderPack, setWidthArray);
 	API_METHOD_WRAPPER_1(ScriptSliderPack, registerAtParent);
@@ -3099,6 +3124,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	ADD_API_METHOD_2(setSliderAtIndex);
 	ADD_API_METHOD_1(getSliderValueAt);
 	ADD_API_METHOD_1(setAllValues);
+	ADD_API_METHOD_1(setAllValuesWithUndo);
 	ADD_API_METHOD_0(getNumSliders);
 	ADD_API_METHOD_1(referToData);
     ADD_API_METHOD_1(setWidthArray);
@@ -3106,6 +3132,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	ADD_API_METHOD_0(getDataAsBuffer);
 	ADD_API_METHOD_1(setAllValueChangeCausesCallback);
 	ADD_API_METHOD_1(setUsePreallocatedLength);
+	
 }
 
 ScriptingApi::Content::ScriptSliderPack::~ScriptSliderPack()
@@ -3147,14 +3174,21 @@ void ScriptingApi::Content::ScriptSliderPack::setAllValues(var value)
 	if (auto d = getCachedSliderPack())
 	{
 		auto isMultiValue = value.isBuffer() || value.isArray();
-
 		int maxIndex = value.isBuffer() ? (value.getBuffer()->size) : (value.isArray() ? value.size() : 0);
 
 		for (int i = 0; i < d->getNumSliders(); i++)
 		{
 			if (!isMultiValue || isPositiveAndBelow(i, maxIndex))
 			{
-				auto vToSet = isMultiValue ? (float)value[i] : (float)value;
+				float vToSet;
+
+				if(value.isBuffer())
+					vToSet = value.getBuffer()->getSample(i);
+				else if (value.isArray())
+					vToSet = value[i];
+				else
+					vToSet = (float)value;
+				
 				d->setValue(i, (float)vToSet, dontSendNotification);
 			}
 		}
@@ -3167,6 +3201,37 @@ void ScriptingApi::Content::ScriptSliderPack::setAllValues(var value)
 		}
 		else
 			d->getUpdater().sendDisplayChangeMessage(-1, sendNotificationAsync, true);
+	}
+}
+
+void ScriptingApi::Content::ScriptSliderPack::setAllValuesWithUndo(var value)
+{
+	if (auto d = getCachedSliderPack())
+	{
+		auto isMultiValue = value.isBuffer() || value.isArray();
+		int maxIndex = value.isBuffer() ? (value.getBuffer()->size) : (value.isArray() ? value.size() : d->getNumSliders());
+
+		Array<float> newData;
+		newData.ensureStorageAllocated(maxIndex);
+
+		for(int i = 0; i < maxIndex; i++)
+		{
+			float vToSet;
+
+			if(value.isBuffer())
+				vToSet = value.getBuffer()->getSample(i);
+			else if (value.isArray())
+				vToSet = value[i];
+			else
+				vToSet = (float)value;
+
+			newData.add(vToSet);
+		}
+
+		// We always want to send a value change when we're performing a undoable action
+		auto n = (true || allValueChangeCausesCallback) ? sendNotificationAsync : dontSendNotification;
+
+		d->setFromFloatArray(newData, n, true);
 	}
 }
 

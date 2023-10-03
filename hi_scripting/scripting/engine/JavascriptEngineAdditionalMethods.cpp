@@ -375,6 +375,10 @@ var HiseJavascriptEngine::RootObject::FunctionCall::getResult(const Scope& s) co
 					{
 						constObject->getIndexAndNumArgsForFunction(dot->child, functionIndex, numArgs);
 						isConstObjectApiFunction = true;
+                        
+#if ENABLE_SCRIPTING_SAFE_CHECKS
+                        types = constObject->getForcedParameterTypes(functionIndex, numArgs);
+#endif
 
 						CHECK_CONDITION_WITH_LOCATION(functionIndex != -1, "function not found");
 						CHECK_CONDITION_WITH_LOCATION(numArgs == arguments.size(), "argument amount mismatch: " + String(arguments.size()) + ", Expected: " + String(numArgs));
@@ -390,7 +394,10 @@ var HiseJavascriptEngine::RootObject::FunctionCall::getResult(const Scope& s) co
 			for (int i = 0; i < arguments.size(); i++)
 			{
 				parameters[i] = arguments[i]->getResult(s);
-				HiseJavascriptEngine::checkValidParameter(i, parameters[i], location);
+                
+#if ENABLE_SCRIPTING_SAFE_CHECKS
+				HiseJavascriptEngine::checkValidParameter(i, parameters[i], location, types[i]);
+#endif
 			}
 				
 #if ENABLE_SCRIPTING_BREAKPOINTS
@@ -408,6 +415,10 @@ var HiseJavascriptEngine::RootObject::FunctionCall::getResult(const Scope& s) co
 			if (ConstScriptingObject* c = dynamic_cast<ConstScriptingObject*>(thisObject.getObject()))
 			{
 				c->getIndexAndNumArgsForFunction(dot->child, functionIndex, numArgs);
+                
+#if ENABLE_SCRIPTING_SAFE_CHECKS
+                types = c->getForcedParameterTypes(functionIndex, numArgs);
+#endif
 
 				CHECK_CONDITION_WITH_LOCATION(functionIndex != -1, "function not found");
 				CHECK_CONDITION_WITH_LOCATION(numArgs == arguments.size(), "argument amount mismatch: " + String(arguments.size()) + ", Expected: " + String(numArgs));
@@ -415,7 +426,25 @@ var HiseJavascriptEngine::RootObject::FunctionCall::getResult(const Scope& s) co
 				var parameters[5];
 
 				for (int i = 0; i < arguments.size(); i++)
-					parameters[i] = arguments[i]->getResult(s);
+                {
+                    parameters[i] = arguments[i]->getResult(s);
+                    
+#if USE_BACKEND && HISE_WARN_UNDEFINED_PARAMETER_CALLS
+                    if(parameters[i].isUndefined() || parameters[i].isVoid())
+                    {
+                        auto p = dynamic_cast<Processor*>(c->getScriptProcessor());
+                        String errorMessage = "Warning: undefined parameter " + String(i);
+                        auto e = Error::fromLocation(location, errorMessage);
+                        debugError(p, errorMessage + "\n:\t\t\t" + e.toString(p));
+                        continue;
+                    }
+#endif
+                    
+#if ENABLE_SCRIPTING_SAFE_CHECKS
+                    HiseJavascriptEngine::checkValidParameter(i, parameters[i], location, types[i]);
+#endif
+                }
+					
 
 				return c->callFunction(functionIndex, parameters, numArgs);
 			}
