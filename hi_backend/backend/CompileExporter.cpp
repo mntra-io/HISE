@@ -564,8 +564,18 @@ CompileExporter::ErrorCodes CompileExporter::exportInternal(TargetTypes type, Bu
 		const String directoryPath = tempDirectory.getFullPathName();
 
         JavascriptProcessor::ScopedPreprocessorMerger sm(chainToExport->getMainController());
-        
-		compressValueTree<PresetDictionaryProvider>(exportPresetFile(), directoryPath, "preset");
+
+		try
+		{
+			compressValueTree<PresetDictionaryProvider>(exportPresetFile(), directoryPath, "preset");
+		}
+		catch(Result& r)
+		{
+			std::cout << "Error at exporting preset: " + r.getErrorMessage();
+			return ErrorCodes::CompileError;
+		}
+
+		
 
 #if DONT_EMBED_FILES_IN_FRONTEND
 		const bool embedFiles = false;
@@ -582,9 +592,17 @@ CompileExporter::ErrorCodes CompileExporter::exportInternal(TargetTypes type, Bu
 		// Embed the user presets and extract them on first load
 		compressValueTree<UserPresetDictionaryProvider>(userPresetTree, directoryPath, "userPresets");
 
-		// Always embed scripts and fonts, but don't embed samplemaps
-		compressValueTree<JavascriptDictionaryProvider>(exportEmbeddedFiles(), directoryPath, "externalFiles");
-
+		try
+		{
+			// Always embed scripts and fonts, but don't embed samplemaps
+			compressValueTree<JavascriptDictionaryProvider>(exportEmbeddedFiles(), directoryPath, "externalFiles");
+		}
+		catch(Result& r)
+		{
+			std::cout << "Error at embedding external files: " + r.getErrorMessage();
+			return ErrorCodes::CorruptedPoolFiles;
+		}
+		
 		auto& handler = GET_PROJECT_HANDLER(chainToExport);
 
 		auto iof = handler.getTempFileForPool(FileHandlerBase::Images);
