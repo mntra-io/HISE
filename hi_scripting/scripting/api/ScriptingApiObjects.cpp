@@ -54,16 +54,16 @@ struct ScriptingObjects::MidiList::Wrapper
 ScriptingObjects::MidiList::MidiList(ProcessorWithScriptingContent *p) :
 ConstScriptingObject(p, 0)
 {
-	ADD_API_METHOD_1(fill);
+	ADD_TYPED_API_METHOD_1(fill, VarTypeChecker::Number);
 	ADD_API_METHOD_0(clear);
 	ADD_API_METHOD_1(getValue);
 	ADD_API_METHOD_1(getValueAmount);
-	ADD_API_METHOD_1(getIndex);
+	ADD_TYPED_API_METHOD_1(getIndex, VarTypeChecker::Number);
 	ADD_API_METHOD_0(isEmpty);
 	ADD_API_METHOD_3(setRange);
 	ADD_API_METHOD_0(getNumSetValues);
 	ADD_API_METHOD_2(setValue);
-	ADD_API_METHOD_1(restoreFromBase64String);
+	ADD_TYPED_API_METHOD_1(restoreFromBase64String, VarTypeChecker::String);
 	ADD_API_METHOD_0(getBase64String);
 
 	clear();
@@ -2003,7 +2003,14 @@ struct ScriptingObjects::ScriptSliderPackData::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptSliderPackData, setDisplayCallback);
 	API_VOID_METHOD_WRAPPER_1(ScriptSliderPackData, setContentCallback);
     API_VOID_METHOD_WRAPPER_1(ScriptSliderPackData, setUsePreallocatedLength);
+	API_VOID_METHOD_WRAPPER_1(ScriptSliderPackData, setAllValuesWithUndo);
+	API_VOID_METHOD_WRAPPER_1(ScriptSliderPackData, setAllValues);
+	API_VOID_METHOD_WRAPPER_2(ScriptSliderPackData, setValueWithUndo);
+	API_METHOD_WRAPPER_0(ScriptSliderPackData, getDataAsBuffer);
     API_VOID_METHOD_WRAPPER_1(ScriptSliderPackData, linkTo);
+	API_VOID_METHOD_WRAPPER_1(ScriptSliderPackData, setAssignIsUndoable);
+	API_METHOD_WRAPPER_0(ScriptSliderPackData, toBase64);
+	API_VOID_METHOD_WRAPPER_1(ScriptSliderPackData, fromBase64);
 };
 
 ScriptingObjects::ScriptSliderPackData::ScriptSliderPackData(ProcessorWithScriptingContent* pwsc, int dataIndex, ExternalDataHolder* otherHolder) :
@@ -2019,6 +2026,14 @@ ScriptingObjects::ScriptSliderPackData::ScriptSliderPackData(ProcessorWithScript
 	ADD_API_METHOD_1(setContentCallback);
     ADD_API_METHOD_1(setUsePreallocatedLength);
     ADD_API_METHOD_1(linkTo);
+	ADD_API_METHOD_1(setAllValuesWithUndo);
+	ADD_API_METHOD_1(setAllValues);
+	ADD_API_METHOD_2(setValueWithUndo);
+	ADD_API_METHOD_0(getDataAsBuffer);
+	ADD_API_METHOD_1(setAssignIsUndoable);
+	ADD_API_METHOD_0(toBase64);
+	ADD_TYPED_API_METHOD_1(fromBase64, VarTypeChecker::String);
+	
 }
 
 var ScriptingObjects::ScriptSliderPackData::getStepSize() const
@@ -2049,10 +2064,85 @@ void ScriptingObjects::ScriptSliderPackData::setUsePreallocatedLength(int numUse
         data->setUsePreallocatedLength(32);
 }
 
+void ScriptingObjects::ScriptSliderPackData::setAssignIsUndoable(bool shouldBeUndoable)
+{
+	assignIsUndoable = shouldBeUndoable;
+}
+
+void ScriptingObjects::ScriptSliderPackData::fromBase64(const String& b64)
+{
+	if(auto data = getSliderPackData())
+		data->fromBase64String(b64);
+}
+
+String ScriptingObjects::ScriptSliderPackData::toBase64() const
+{
+	if(auto data = getSliderPackData())
+		return data->toBase64String();
+
+	return "";
+}
+
+void ScriptingObjects::ScriptSliderPackData::assign(const int index, var newValue)
+{
+	if(assignIsUndoable)
+		setValueWithUndo(index, (float)newValue);
+	else
+		setValue(index, (float)newValue);
+}
+
+var ScriptingObjects::ScriptSliderPackData::getAssignedValue(int index) const
+{
+	return getValue(index);
+}
+
+int ScriptingObjects::ScriptSliderPackData::getCachedIndex(const var& indexExpression) const
+{ return (int)indexExpression; }
+
 void ScriptingObjects::ScriptSliderPackData::setValue(int sliderIndex, float value)
 {
 	if(auto data = getSliderPackData())
 		data->setValue(sliderIndex, value, sendNotification);
+}
+
+void ScriptingObjects::ScriptSliderPackData::setValueWithUndo(int sliderIndex, float value)
+{
+	if(auto data = getSliderPackData())
+		data->setValue(sliderIndex, value, sendNotification, true);
+}
+
+void ScriptingObjects::ScriptSliderPackData::setAllValues(var value)
+{
+	if(auto d = getSliderPackData())
+	{
+		auto isMultiValue = value.isBuffer() || value.isArray();
+		int maxIndex = value.isBuffer() ? (value.getBuffer()->size) : (value.isArray() ? value.size() : d->getNumSliders());
+
+		Array<float> newData;
+		newData.ensureStorageAllocated(maxIndex);
+
+		for(int i = 0; i < maxIndex; i++)
+			newData.add(isMultiValue ? (float)value[i] : (float)value);
+		
+		d->setFromFloatArray(newData, sendNotificationAsync, false);
+	}
+}
+
+void ScriptingObjects::ScriptSliderPackData::setAllValuesWithUndo(var value)
+{
+	if(auto d = getSliderPackData())
+	{
+		auto isMultiValue = value.isBuffer() || value.isArray();
+		int maxIndex = value.isBuffer() ? (value.getBuffer()->size) : (value.isArray() ? value.size() : d->getNumSliders());
+
+		Array<float> newData;
+		newData.ensureStorageAllocated(maxIndex);
+
+		for(int i = 0; i < maxIndex; i++)
+			newData.add(isMultiValue ? (float)value[i] : (float)value);
+		
+		d->setFromFloatArray(newData, sendNotificationAsync, true);
+	}
 }
 
 float ScriptingObjects::ScriptSliderPackData::getValue(int index) const
@@ -2570,14 +2660,14 @@ moduleHandler(m_, dynamic_cast<JavascriptProcessor*>(p))
 
 	ADD_API_METHOD_0(getId);
 	ADD_API_METHOD_0(getType);
-	ADD_API_METHOD_2(setAttribute);
-	ADD_API_METHOD_1(setBypassed);
+    ADD_TYPED_API_METHOD_2(setAttribute, VarTypeChecker::Number, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(setBypassed, VarTypeChecker::Number);
 	ADD_API_METHOD_0(isBypassed);
-	ADD_API_METHOD_1(setIntensity);
+	ADD_TYPED_API_METHOD_1(setIntensity, VarTypeChecker::Number);
 	ADD_API_METHOD_0(getIntensity);
-  ADD_API_METHOD_1(getAttribute);
-  ADD_API_METHOD_1(getAttributeId);
-	ADD_API_METHOD_1(getAttributeIndex);
+    ADD_TYPED_API_METHOD_1(getAttribute, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(getAttributeId, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(getAttributeIndex, VarTypeChecker::String);
 	ADD_API_METHOD_0(getCurrentLevel);
 	ADD_API_METHOD_0(exportState);
 	ADD_API_METHOD_1(restoreState);
@@ -3024,13 +3114,14 @@ moduleHandler(fx, dynamic_cast<JavascriptProcessor*>(p))
 	}
 
 	ADD_API_METHOD_0(getId);
-	ADD_API_METHOD_2(setAttribute);
-	ADD_API_METHOD_1(setBypassed);
+	ADD_TYPED_API_METHOD_2(setAttribute, VarTypeChecker::Number, VarTypeChecker::Number);
+	ADD_TYPED_API_METHOD_1(setBypassed, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(getAttribute, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(getAttributeId, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(getAttributeIndex, VarTypeChecker::String);
 	ADD_API_METHOD_0(isBypassed);
 	ADD_API_METHOD_0(isSuspended);
-    ADD_API_METHOD_1(getAttribute);
-    ADD_API_METHOD_1(getAttributeId);
-		ADD_API_METHOD_1(getAttributeIndex);
+    
 	ADD_API_METHOD_1(getCurrentLevel);
 	ADD_API_METHOD_0(exportState);
 	ADD_API_METHOD_1(restoreState);
@@ -4731,10 +4822,19 @@ struct ScriptingObjects::ScriptingMessageHolder::Wrapper
 ScriptingObjects::ScriptingMessageHolder::ScriptingMessageHolder(ProcessorWithScriptingContent* pwsc) :
 	ConstScriptingObject(pwsc, (int)HiseEvent::Type::numTypes)
 {
-	ADD_API_METHOD_1(setNoteNumber);
-	ADD_API_METHOD_1(setVelocity);
-	ADD_API_METHOD_1(setControllerNumber);
-	ADD_API_METHOD_1(setControllerValue);
+	ADD_TYPED_API_METHOD_1(setNoteNumber, VarTypeChecker::Number);
+	ADD_TYPED_API_METHOD_1(setVelocity, VarTypeChecker::Number);
+	ADD_TYPED_API_METHOD_1(setControllerNumber, VarTypeChecker::Number);
+	ADD_TYPED_API_METHOD_1(setControllerValue, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(setChannel, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(setGain, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(setType, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(setTransposeAmount, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(setFineDetune, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(setCoarseDetune, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(setTimestamp, VarTypeChecker::Number);
+    ADD_TYPED_API_METHOD_1(setStartOffset, VarTypeChecker::Number);
+    
 	ADD_API_METHOD_0(getControllerNumber);
 	ADD_API_METHOD_0(getControllerValue);
 	ADD_API_METHOD_0(getNoteNumber);
@@ -4742,22 +4842,15 @@ ScriptingObjects::ScriptingMessageHolder::ScriptingMessageHolder(ProcessorWithSc
 	ADD_API_METHOD_1(ignoreEvent);
 	ADD_API_METHOD_0(getEventId);
 	ADD_API_METHOD_0(getChannel);
-	ADD_API_METHOD_1(setChannel);
 	ADD_API_METHOD_0(getGain);
-	ADD_API_METHOD_1(setGain);
-	ADD_API_METHOD_1(setType);
-	ADD_API_METHOD_1(setTransposeAmount);
 	ADD_API_METHOD_0(getTransposeAmount);
-	ADD_API_METHOD_1(setCoarseDetune);
 	ADD_API_METHOD_0(getCoarseDetune);
-	ADD_API_METHOD_1(setFineDetune);
 	ADD_API_METHOD_0(getFineDetune);
 	ADD_API_METHOD_0(getTimestamp);
-	ADD_API_METHOD_1(setTimestamp);
 	ADD_API_METHOD_0(isNoteOn);
 	ADD_API_METHOD_0(isNoteOff);
 	ADD_API_METHOD_0(isController);
-	ADD_API_METHOD_1(setStartOffset);
+	
 	ADD_API_METHOD_0(clone);
 	ADD_API_METHOD_0(dump);
 
@@ -5050,6 +5143,8 @@ struct ScriptingObjects::ScriptedMidiPlayer::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setRepaintOnPositionChange);
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, flushMessageList);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getEventList);
+	API_VOID_METHOD_WRAPPER_2(ScriptedMidiPlayer, flushMessageListToSequence);
+	API_METHOD_WRAPPER_1(ScriptedMidiPlayer, getEventListFromSequence);
 	API_METHOD_WRAPPER_2(ScriptedMidiPlayer, convertEventListToNoteRectangles);
 	API_METHOD_WRAPPER_2(ScriptedMidiPlayer, saveAsMidiFile);
 	API_VOID_METHOD_WRAPPER_0(ScriptedMidiPlayer, reset);
@@ -5068,6 +5163,7 @@ struct ScriptingObjects::ScriptedMidiPlayer::Wrapper
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getNumSequences);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getTicksPerQuarter);
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setUseTimestampInTicks);
+	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getPlayState);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getTimeSignature);
 	API_METHOD_WRAPPER_1(ScriptedMidiPlayer, setTimeSignature);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getLastPlayedNotePosition);
@@ -5080,6 +5176,9 @@ struct ScriptingObjects::ScriptedMidiPlayer::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setRecordEventCallback);
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setUseGlobalUndoManager);
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, connectToMetronome);
+	API_VOID_METHOD_WRAPPER_0(ScriptedMidiPlayer, clearAllSequences);
+	API_METHOD_WRAPPER_1(ScriptedMidiPlayer, isSequenceEmpty);
+	
 };
 
 ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingContent* p, MidiPlayer* player_):
@@ -5093,7 +5192,9 @@ ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingC
 	ADD_API_METHOD_1(connectToPanel);
 	ADD_API_METHOD_1(setRepaintOnPositionChange);
 	ADD_API_METHOD_0(getEventList);
+	ADD_API_METHOD_1(getEventListFromSequence);
 	ADD_API_METHOD_1(flushMessageList);
+	ADD_API_METHOD_2(flushMessageListToSequence);
 	ADD_API_METHOD_0(reset);
 	ADD_API_METHOD_0(undo);
 	ADD_API_METHOD_0(redo);
@@ -5110,6 +5211,7 @@ ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingC
 	ADD_API_METHOD_3(create);
 	ADD_API_METHOD_0(getNumTracks);
 	ADD_API_METHOD_0(getNumSequences);
+	ADD_API_METHOD_0(getPlayState);
 	ADD_API_METHOD_0(getTimeSignature);
 	ADD_API_METHOD_1(setTimeSignature);
 	ADD_API_METHOD_1(setSyncToMasterClock);
@@ -5124,6 +5226,8 @@ ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingC
 	ADD_API_METHOD_1(setRecordEventCallback);
 	ADD_API_METHOD_1(setUseGlobalUndoManager);
 	ADD_API_METHOD_1(connectToMetronome);
+	ADD_API_METHOD_1(isSequenceEmpty);
+	ADD_API_METHOD_0(clearAllSequences);
 }
 
 ScriptingObjects::ScriptedMidiPlayer::~ScriptedMidiPlayer()
@@ -5329,38 +5433,45 @@ void ScriptingObjects::ScriptedMidiPlayer::connectToMetronome(var metronome)
 	}
 }
 
-var ScriptingObjects::ScriptedMidiPlayer::getEventList()
+var ScriptingObjects::ScriptedMidiPlayer::getEventListFromSequence(int sequenceIndexOneBased)
 {
+	if(sequenceIndexOneBased == 0)
+		reportScriptError("Nope. One based!!!");
+
 	Array<var> eventHolders;
 
-	if (!sequenceValid())
-		return var(eventHolders);
-
-	auto sr = getPlayer()->getSampleRate();
-	auto bpm = getPlayer()->getMainController()->getBpm();
-
-	getPlayer()->getCurrentSequence()->setTimeStampEditFormat(useTicks ? HiseMidiSequence::TimestampEditFormat::Ticks : HiseMidiSequence::TimestampEditFormat::Samples);
-
-	auto list = getPlayer()->getCurrentSequence()->getEventList(sr, bpm);
-
-	for (const auto& e : list)
+	if(auto seq = getPlayer()->getSequenceWithIndex(sequenceIndexOneBased))
 	{
-		ScopedPointer<ScriptingMessageHolder> holder = new ScriptingMessageHolder(getScriptProcessor());
-		holder->setMessage(e);
-		eventHolders.add(holder.release());
+		auto sr = getPlayer()->getSampleRate();
+		auto bpm = getPlayer()->getMainController()->getBpm();
+
+		seq->setTimeStampEditFormat(useTicks ? HiseMidiSequence::TimestampEditFormat::Ticks : HiseMidiSequence::TimestampEditFormat::Samples);
+
+		auto list = seq->getEventList(sr, bpm);
+
+		for (const auto& e : list)
+		{
+			ScopedPointer<ScriptingMessageHolder> holder = new ScriptingMessageHolder(getScriptProcessor());
+			holder->setMessage(e);
+			eventHolders.add(holder.release());
+		}
 	}
 
 	return var(eventHolders);
 }
 
-void ScriptingObjects::ScriptedMidiPlayer::flushMessageList(var messageList)
+var ScriptingObjects::ScriptedMidiPlayer::getEventList()
 {
-	if (!sequenceValid())
-		return;
+	return getEventListFromSequence(-1);
+}
+
+void ScriptingObjects::ScriptedMidiPlayer::flushMessageListToSequence(var messageList, int sequenceIndex)
+{
+	Array<HiseEvent> events;
 
 	if (auto ar = messageList.getArray())
 	{
-		Array<HiseEvent> events;
+		events.ensureStorageAllocated(messageList.size());
 
 		for (auto e : *ar)
 		{
@@ -5369,14 +5480,31 @@ void ScriptingObjects::ScriptedMidiPlayer::flushMessageList(var messageList)
 			else
 				reportScriptError("Illegal item in message list: " + e.toString());
 		}
-
-		if (auto seq = getPlayer()->getCurrentSequence())
-			seq->setTimeStampEditFormat(useTicks ? HiseMidiSequence::TimestampEditFormat::Ticks : HiseMidiSequence::TimestampEditFormat::Samples);
-
-		getPlayer()->flushEdit(events);
 	}
 	else
+	{
 		reportScriptError("Input is not an array");
+	}
+	
+	if(auto seq = getPlayer()->getSequenceWithIndex(sequenceIndex))
+	{
+		auto t = useTicks ? HiseMidiSequence::TimestampEditFormat::Ticks : HiseMidiSequence::TimestampEditFormat::Samples;
+
+		seq->setTimeStampEditFormat(t);
+
+		getPlayer()->flushEdit(events, t, sequenceIndex);
+	}
+	else
+	{
+		reportScriptError("Can't find sequence with one based index " + sequenceIndex);
+	}
+}
+
+void ScriptingObjects::ScriptedMidiPlayer::flushMessageList(var messageList)
+{
+	auto currentSequenceIndex = getPlayer()->getAttribute(MidiPlayer::SpecialParameters::CurrentSequence);
+
+	flushMessageListToSequence(messageList, -1);
 }
 
 void ScriptingObjects::ScriptedMidiPlayer::setUseTimestampInTicks(bool shouldUseTimestamps)

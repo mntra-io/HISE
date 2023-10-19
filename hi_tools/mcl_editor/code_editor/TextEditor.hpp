@@ -224,6 +224,8 @@ public:
 
 private:
 
+    Array<int> currentTitles;
+    
 	ScopedPointer<LanguageManager> languageManager;
 
 	friend class Autocomplete;
@@ -339,6 +341,7 @@ private:
 
 	bool autocompleteEnabled = true;
     bool showAutocompleteAfterDelay = false;
+    bool showStickyLines = true;
 	
 	Selection currentClosure[2];
 
