@@ -45,7 +45,7 @@
 
 #define JUCE_USE_DARK_SPLASH_SCREEN 1
 
-#define JUCE_PROJUCER_VERSION 0x60104
+#define JUCE_PROJUCER_VERSION 0x60103
 
 //==============================================================================
 #define JUCE_MODULE_AVAILABLE_hi_backend                  1
@@ -240,7 +240,7 @@
 #endif
 
 #ifndef    HISE_DEFAULT_OPENGL_VALUE
- //#define HISE_DEFAULT_OPENGL_VALUE 1
+ #define   HISE_DEFAULT_OPENGL_VALUE 0
 #endif
 
 #ifndef    HISE_USE_SYSTEM_APP_DATA_FOLDER
@@ -321,7 +321,7 @@
 // hi_faust_types flags:
 
 #ifndef    FAUST_NO_WARNING_MESSAGES
- //#define FAUST_NO_WARNING_MESSAGES 0
+ #define   FAUST_NO_WARNING_MESSAGES 1
 #endif
 
 //==============================================================================
@@ -566,7 +566,7 @@
 #endif
 
 #ifndef    JUCE_STRICT_REFCOUNTEDPOINTER
- //#define JUCE_STRICT_REFCOUNTEDPOINTER 0
+ #define   JUCE_STRICT_REFCOUNTEDPOINTER 1
 #endif
 
 #ifndef    JUCE_ENABLE_ALLOCATION_HOOKS
