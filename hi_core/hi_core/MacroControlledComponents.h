@@ -444,8 +444,8 @@ public:
             {
                 case Action::TextInput:
                     return ModifierKeys::shiftModifier;
-                case Action::ResetToDefault:
-                    return doubleClickModifier;
+            case Action::ResetToDefault:
+                    return doubleClickModifier | ModifierKeys::altModifier;
                 case Action::FineTune:
                     return  ModifierKeys::commandModifier |
                             ModifierKeys::ctrlModifier |
@@ -524,7 +524,8 @@ public:
         
         if(a == ModifierObject::Action::TextInput)
         {
-            return onShiftClick(e);
+            onShiftClick(e);
+			return true;
         }
         if(a == ModifierObject::Action::ResetToDefault)
         {

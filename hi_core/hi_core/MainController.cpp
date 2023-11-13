@@ -1383,6 +1383,21 @@ void MainController::storePlayheadIntoDynamicObject(AudioPlayHead::CurrentPositi
 	//hostInfo->setProperty(isLooping, newPosition.isLooping);
 }
 
+MainController::CustomTypeFace::CustomTypeFace(ReferenceCountedObjectPtr<juce::Typeface> tf, Identifier id_):
+	typeface(tf),
+	id(id_)
+{
+	memset(characterWidths, 0, sizeof(float) * 128);
+
+	auto numPrintable = 127 - 32;
+	String s;
+	for(char i = 32; i < 127; i++)
+	{
+		s = String::fromUTF8((&i), 1);
+		characterWidths[i] = tf->getStringWidth(s);
+	}
+}
+
 void MainController::prepareToPlay(double sampleRate_, int samplesPerBlock)
 {
     if(sampleRate_ <= 0.0 || samplesPerBlock <= 0)
@@ -1599,6 +1614,22 @@ juce::Typeface* MainController::getFont(const String &fontName) const
 	}
 
 	return nullptr;
+}
+
+float MainController::getStringWidthFromEmbeddedFont(const String& text, const String& fontName, float fontSize,
+	                                     float kerningFactor)
+{
+	for(auto& tf: customTypeFaces)
+	{
+		auto nameToUse = tf.id.isValid() ? tf.id.toString() : tf.typeface->getName();
+
+		if (nameToUse == fontName)
+			return tf.getStringWidthFloat(text, fontSize, kerningFactor);
+	}
+
+	getConsoleHandler().writeToConsole("Warning: default font used for getStringWidth() method (might cause race conditions on Windows)", 0, getMainSynthChain(), Colours::white);
+
+	return Font(fontName, fontSize, Font::plain).withExtraKerningFactor(kerningFactor).getStringWidthFloat(text);
 }
 
 Font MainController::getFontFromString(const String& fontName, float fontSize) const
@@ -1887,11 +1918,11 @@ float MainController::getGlobalCodeFontSize() const
 }
 
 
-void MainController::loadUserPresetAsync(const ValueTree& v)
+void MainController::loadUserPresetAsync(const File& f)
 {
 	//getMainSynthChain()->killAllVoices();
 	//presetLoadRampFlag.set(OldUserPresetHandler::FadeOut);
-	userPresetHandler.loadUserPreset(v);
+	userPresetHandler.loadUserPreset(f);
 }
 
 #if USE_BACKEND
@@ -2122,12 +2153,9 @@ void MainController::UserPresetHandler::DefaultPresetManager::resetToDefault()
 	{
 		auto& up = getMainController()->getUserPresetHandler();
 		
-		if (defaultFile.existsAsFile())
-			up.setCurrentlyLoadedFile(defaultFile);
-		
 		MainController::ScopedBadBabysitter sbs(getMainController());
 
-		up.loadUserPreset(defaultPreset, false);
+		up.loadUserPresetFromValueTree(defaultPreset, up.currentlyLoadedFile, defaultFile, false);
 	}
 		
 }
