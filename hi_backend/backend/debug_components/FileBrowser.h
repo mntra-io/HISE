@@ -465,8 +465,7 @@ struct TableComponent:   public Component,
 		  type(RequestType::numRequestTypes),
 		  requested(false),
 		  performed(false),
-		  status(0),
-		  url({})
+		  status(0)
 		{}
 
 		using Callback = std::function<void(const ResponseData&)>;
