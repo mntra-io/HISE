@@ -718,9 +718,11 @@ public:
 		struct UndoableUserPresetLoad : public ControlledObject,
 										public UndoableAction
 		{
-			UndoableUserPresetLoad(MainController* mc, ValueTree newPreset_, ValueTree forcedOld=ValueTree()):
+			UndoableUserPresetLoad(MainController* mc, const File& oldFile_, const File& newFile_, ValueTree newPreset_, ValueTree forcedOld=ValueTree()):
 				ControlledObject(mc),
-				newPreset(newPreset_)
+				newPreset(newPreset_),
+			    oldFile(oldFile_),
+			    newFile(newFile_)
 			{
 				if (forcedOld.isValid())
 					oldPreset = forcedOld;
@@ -730,26 +732,28 @@ public:
 
 			bool perform() override
 			{
-				getMainController()->getUserPresetHandler().loadUserPreset(newPreset, false);
+				getMainController()->getUserPresetHandler().loadUserPresetFromValueTree(newPreset, oldFile, newFile, false);
 				return true;
 			}
 
 			bool undo() override
 			{
-				getMainController()->getUserPresetHandler().loadUserPreset(oldPreset, false);
+				getMainController()->getUserPresetHandler().loadUserPresetFromValueTree(oldPreset, newFile, oldFile, false);
 				return true;
 			}
 
 			UndoableAction* createCoalescedAction(UndoableAction* nextAction) override
 			{
 				if (auto upAction = dynamic_cast<UndoableUserPresetLoad*>(nextAction))
-					return new UndoableUserPresetLoad(getMainController(), upAction->newPreset, oldPreset);
+					return new UndoableUserPresetLoad(getMainController(), oldFile, upAction->newFile, upAction->newPreset, oldPreset);
 
 				return nullptr;
 			}
 
 			ValueTree oldPreset;
 			ValueTree newPreset;
+			File oldFile;
+			File newFile;
 		};
 
 		struct TagDataBase
@@ -833,8 +837,8 @@ public:
 		*/
 		void incPreset(bool next, bool stayInSameDirectory);
 
-		void loadUserPreset(const ValueTree& v, bool useUndoManagerIfEnabled=true);
-		void loadUserPreset(const File& f);
+		void loadUserPresetFromValueTree(const ValueTree& v, const File& oldFile, const File& newFile, bool useUndoManagerIfEnabled=true);
+		void loadUserPreset(const File& f, bool useUndoManagerIfEnabled=true);
 
 		
 
@@ -862,7 +866,7 @@ public:
 		File getCurrentlyLoadedFile() const;;
 
 		/** @internal */
-		void setCurrentlyLoadedFile(const File& f);
+		//void setCurrentlyLoadedFile(const File& f);
 
 		/** @internal */
 		void sendRebuildMessage();
@@ -1024,6 +1028,9 @@ public:
 		
 
     private:
+
+		friend class UserPresetHelpers;
+		friend class FrontendProcessor;
 
 		uint32 timeOfLastPresetLoad = 0;
 
@@ -1729,6 +1736,11 @@ public:
 	
 	void fillWithCustomFonts(StringArray &fontList);
 	juce::Typeface* getFont(const String &fontName) const;
+
+	float getStringWidthFromEmbeddedFont(const String& text, const String& fontName, float fontSize,
+	                                     float kerningFactor);
+	
+
 	ValueTree exportCustomFontsAsValueTree() const;
 	ValueTree exportAllMarkdownDocsAsValueTree() const;
 	void restoreCustomFontValueTree(const ValueTree &v);
@@ -1828,7 +1840,7 @@ public:
 	}
 
 
-	void loadUserPresetAsync(const ValueTree& v);
+	void loadUserPresetAsync(const File& f);
 
 	UndoManager* getControlUndoManager() { return controlUndoManager; }
 
@@ -1877,6 +1889,9 @@ public:
     
     LambdaBroadcaster<int>& getBlocksizeBroadcaster() { return blocksizeBroadcaster; }
     
+    /** sets the new BPM and sends a message to all registered tempo listeners if the tempo changed. */
+    void setBpm(double bpm_);
+    
 private: // Never call this directly, but wrap it through DelayedRenderer...
 
 	/** This is the main processing loop that is shared among all subclasses. */
@@ -1890,9 +1905,6 @@ protected:
     void prepareToPlay(double sampleRate_, int samplesPerBlock);
     
 	bool deletePendingFlag = false;
-
-	/** sets the new BPM and sends a message to all registered tempo listeners if the tempo changed. */
-	void setBpm(double bpm_);
 
 	/** @brief Add this at the beginning of your processBlock() method to enable CPU measurement */
 	void startCpuBenchmark(int bufferSize);
@@ -2044,13 +2056,29 @@ private:
 
 	struct CustomTypeFace
 	{
-		CustomTypeFace(ReferenceCountedObjectPtr<juce::Typeface> tf, Identifier id_) :
-			typeface(tf),
-			id(id_)
-		{};
+		CustomTypeFace(ReferenceCountedObjectPtr<juce::Typeface> tf, Identifier id_);;
+
+		float getStringWidthFloat(const String& text, float fontSize, float kerning) const
+		{
+			auto pos = text.begin();
+			auto end = text.end();
+
+			float normalisedLength = 0.0f;
+
+			while(pos != end)
+			{
+				auto c = *pos++;
+				normalisedLength += characterWidths[jlimit<uint8>(31, 128, c)];
+				normalisedLength += kerning;
+			}
+
+			return normalisedLength * fontSize;
+		}
 
 		ReferenceCountedObjectPtr<juce::Typeface> typeface;
 		Identifier id;
+
+		float characterWidths[128];
 	};
 
 	ScopedPointer<juce::dsp::Oversampling<float>> oversampler;
