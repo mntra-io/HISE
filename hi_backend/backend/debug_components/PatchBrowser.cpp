@@ -30,6 +30,8 @@
 *   ===========================================================================
 */
 
+#include "PatchBrowser.h"
+
 namespace hise { using namespace juce;
 
 // ====================================================================================================================
@@ -161,7 +163,7 @@ void PatchBrowser::itemDropped(const SourceDetails& dragSourceDetails)
 			{
 				editorOfParent->getChainBar()->refreshPanel();
 				editorOfParent->sendResizedMessage();
-				editorOfChain->changeListenerCallback(editorOfChain->getProcessor());
+				editorOfChain->otherChange(editorOfChain->getProcessor());
 				editorOfChain->childEditorAmountChanged();
 			}
 
@@ -760,6 +762,8 @@ void PatchBrowser::toggleFoldAll()
 
 void PatchBrowser::toggleShowChains()
 {
+	SUSPEND_GLOBAL_DISPATCH(rootWindow->getBackendProcessor(), "toggle patch browser edit mode");
+
 	showChains = !showChains;
 	rebuildModuleList(true);
     repaint();
@@ -933,7 +937,6 @@ void PatchBrowser::ModuleDragTarget::buttonClicked(Button *b)
 		const bool isHidden = getProcessor()->getEditorState(Processor::EditorState::Visible);
 
 		getProcessor()->setEditorState(Processor::Visible, !isHidden, sendNotification);
-		getProcessor()->sendChangeMessage();
 
 		mainEditor->getRootContainer()->refreshSize(false);
 		
@@ -1029,9 +1032,14 @@ void PatchBrowser::ModuleDragTarget::drawDragStatus(Graphics &g, Rectangle<float
 
 PatchBrowser::PatchCollection::PatchCollection(ModulatorSynth *synth, int hierarchy_, bool showChains) :
 ModuleDragTarget(synth),
+BypassListener(synth->getMainController()->getRootDispatcher()),
+#if HISE_NEW_PROCESSOR_DISPATCH
+idAndColourDispatcher(synth->getMainController()->getRootDispatcher(), *this, BIND_MEMBER_FUNCTION_1(PatchCollection::updateIdAndColour)),
+#endif
 hierarchy(hierarchy_)
 {
-	synth->addBypassListener(this);
+	synth->addBypassListener(this, dispatch::DispatchType::sendNotificationAsync);
+	NEW_PROCESSOR_DISPATCH(synth->addNameAndColourListener(&idAndColourDispatcher, dispatch::DispatchType::sendNotificationAsync));
 	addAndMakeVisible(peak);
 	addAndMakeVisible(idLabel);
 	addAndMakeVisible(foldButton = new ShapeButton("Fold Overview", Colour(0xFF222222), Colours::white.withAlpha(0.4f), Colour(0xFF222222)));
@@ -1114,7 +1122,10 @@ hierarchy(hierarchy_)
 PatchBrowser::PatchCollection::~PatchCollection()
 {
 	if(getProcessor() != nullptr)
+	{
 		getProcessor()->removeBypassListener(this);
+		NEW_PROCESSOR_DISPATCH(getProcessor()->removeNameAndColourListener(&idAndColourDispatcher));
+	}
 }
 
 void PatchBrowser::PatchCollection::mouseDown(const MouseEvent& e)
@@ -1371,6 +1382,7 @@ void PatchBrowser::PatchCollection::toggleShowChains()
 
 PatchBrowser::PatchItem::PatchItem(Processor *p, Processor *parent_, int hierarchy_, const String &searchTerm) :
 Item(searchTerm.toLowerCase()),
+BypassListener(p->getMainController()->getRootDispatcher()),
 ModuleDragTarget(p),
 parent(parent_),
 lastId(String()),
@@ -1381,7 +1393,7 @@ lastMouseDown(0)
     
 	addAndMakeVisible(closeButton);
 	addAndMakeVisible(createButton);
-	p->addBypassListener(this);
+	p->addBypassListener(this, dispatch::DispatchType::sendNotificationAsync);
 
     addAndMakeVisible(idLabel);
 	addAndMakeVisible(gotoWorkspace);
@@ -1472,7 +1484,6 @@ void PatchBrowser::PatchItem::popupCallback(int menuIndex)
 		break;
 	case PatchBrowser::ModuleDragTarget::ViewSettings::Visible:
 		getProcessor()->toggleEditorState(Processor::Visible, sendNotification);
-		getProcessor()->sendChangeMessage();
 		mainEditor->getRootContainer()->refreshSize(false);	
 		break;
 	case PatchBrowser::ModuleDragTarget::ViewSettings::Solo:
@@ -1485,7 +1496,6 @@ void PatchBrowser::PatchItem::popupCallback(int menuIndex)
 		break;
 	case PatchBrowser::ModuleDragTarget::ViewSettings::Bypassed:
 		getProcessor()->setBypassed(!getProcessor()->isBypassed());
-		getProcessor()->sendChangeMessage();
 		break;
 	case PatchBrowser::ModuleDragTarget::ViewSettings::Copy:
 		PresetHandler::copyProcessorToClipboard(getProcessor());
@@ -1524,7 +1534,7 @@ void PatchBrowser::PatchItem::popupCallback(int menuIndex)
 		{
 			editorOfParent->getChainBar()->refreshPanel();
 			editorOfParent->sendResizedMessage();
-			editorOfChain->changeListenerCallback(editorOfChain->getProcessor());
+			editorOfChain->otherChange(editorOfChain->getProcessor());
 			editorOfChain->childEditorAmountChanged();
 		}
 
@@ -1704,6 +1714,7 @@ struct PlotterPopup: public Component
 {
 	PlotterPopup(Processor* m_):
 		m(m_),
+		p(m_->getMainController()->getGlobalUIUpdater()),
 		resizer(this, nullptr)
 	{
 		dynamic_cast<Modulation*>(m.get())->setPlotter(&p);
@@ -2087,7 +2098,7 @@ AutomationDataBrowser::AutomationCollection::ConnectionItem::ConnectionItem(Auto
 	if (auto pc = dynamic_cast<AutomationData::ProcessorConnection*>(c.get()))
 	{
 		if (pc->connectedProcessor != nullptr)
-			pc->connectedProcessor->addChangeListener(this);
+			updater = new Updater(*this, pc->connectedProcessor);
 	}
 
 	setSize(380 - 16, ITEM_HEIGHT);
@@ -2095,11 +2106,7 @@ AutomationDataBrowser::AutomationCollection::ConnectionItem::ConnectionItem(Auto
 
 AutomationDataBrowser::AutomationCollection::ConnectionItem::~ConnectionItem()
 {
-	if (auto pc = dynamic_cast<AutomationData::ProcessorConnection*>(c.get()))
-	{
-		if (pc->connectedProcessor != nullptr)
-			pc->connectedProcessor->removeChangeListener(this);
-	}
+	updater = nullptr;
 }
 
 void AutomationDataBrowser::AutomationCollection::ConnectionItem::paint(Graphics& g)
@@ -2182,6 +2189,7 @@ AutomationDataBrowser::AutomationCollection::AutomationCollection(MainController
 	SimpleTimer(mc->getGlobalUIUpdater()),
 	Collection(),
 	data(data_),
+	NEW_AUTOMATION_WITH_COMMA(listener(mc->getRootDispatcher(), *this, [this](int, double){ this->repaint();}))
 	index(index_)
 {
 	for (auto c_ : data->connectionList)
@@ -2191,10 +2199,14 @@ AutomationDataBrowser::AutomationCollection::AutomationCollection(MainController
 		addAndMakeVisible(items.getLast());
 	}
 
+#if USE_OLD_AUTOMATION_DISPATCH
 	data->asyncListeners.addListener(*this, [](AutomationCollection& c, int index, float v)
 	{
 		c.repaint();
 	}, false);
+#endif
+
+	IF_NEW_AUTOMATION_DISPATCH(data->dispatcher.addValueListener(&listener, true, dispatch::DispatchType::sendNotificationAsync));
 
 	checkIfChanged(false);
 }
@@ -2207,6 +2219,10 @@ void AutomationDataBrowser::AutomationCollection::checkIfChanged(bool rebuildIfC
 	if (hasComponentConnection != hasComponentConnectionNow ||
 		hasMidiConnection != hasMidiConnectionNow)
 	{
+		hasComponentConnection = hasComponentConnectionNow;
+		hasMidiConnection = hasMidiConnectionNow;
+		repaint();
+
 		if (rebuildIfChanged)
 		{
 			if (auto p = findParentComponentOfClass<AutomationDataBrowser>())
@@ -2223,10 +2239,6 @@ void AutomationDataBrowser::AutomationCollection::checkIfChanged(bool rebuildIfC
 
 			return;
 		}
-		
-		hasComponentConnection = hasComponentConnectionNow;
-		hasMidiConnection = hasMidiConnectionNow;
-		repaint();
 	}
 }
 

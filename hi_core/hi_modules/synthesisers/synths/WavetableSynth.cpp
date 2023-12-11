@@ -57,12 +57,14 @@ WavetableSynth::WavetableSynth(MainController *mc, const String &id, int numVoic
 	parameterNames.add("TableIndexValue");
 	parameterNames.add("RefreshMipmap");
 
+	updateParameterSlots();
+
 	editorStateIdentifiers.add("TableIndexChainShown");
 
 	for (int i = 0; i < numVoices; i++) 
 		addVoice(new WavetableSynthVoice(this));
 
-	tableIndexChain->setColour(JUCE_LIVE_CONSTANT(Colour(0xff4D54B3)));
+	tableIndexChain->setColour(JUCE_LIVE_CONSTANT_OFF(Colour(0xff4D54B3)));
 	tableIndexBipolarChain->setColour(Colour(0xff4D54B3));
 }
 

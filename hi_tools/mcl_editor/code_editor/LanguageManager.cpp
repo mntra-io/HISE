@@ -75,13 +75,29 @@ mcl::FoldableLineRange::List LanguageManager::createLineRange(const juce::CodeDo
     bool firstInLine = false;
     mcl::FoldableLineRange::WeakPtr currentElement;
 
+    bool checkScopedStatement = false;
+    
     while (auto c = it.nextChar())
     {
         switch (c)
         {
+        case '.':
+        {
+            if(currentElement != nullptr && checkScopedStatement)
+            {
+                currentElement->setScoped(true);
+                checkScopedStatement = false;
+            }
+            
+            break;
+        }
         case '{':
         {
             auto thisLine = it.getLine();
+            
+            checkScopedStatement = true;
+            
+            it.skipWhitespace();
 
             if (firstInLine)
                 thisLine -= 1;
@@ -106,6 +122,7 @@ mcl::FoldableLineRange::List LanguageManager::createLineRange(const juce::CodeDo
         }
         case '}':
         {
+            checkScopedStatement = false;
             if (currentElement != nullptr)
             {
                 currentElement->setEnd(it.getPosition());
@@ -158,6 +175,11 @@ mcl::FoldableLineRange::List LanguageManager::createLineRange(const juce::CodeDo
 
             break;
         }
+        case ' ':
+        case '\t':
+        case '\n':
+        case '\r': break; // don't reset the check at whitespace
+        default: checkScopedStatement = false; // reset the check at non-white space
         }
 
         firstInLine = (c == '\n') || (firstInLine && CharacterFunctions::isWhitespace(c));
@@ -770,6 +792,8 @@ void FaustLanguageManager::setupEditor(mcl::TextEditor* e)
 {
     currentEditor = e;
     e->setIncludeDotInAutocomplete(true);
+    e->tokenCollection = new TokenCollection(getLanguageId());
+    addTokenProviders(e->tokenCollection.get());
 }
 
 }

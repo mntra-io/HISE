@@ -428,6 +428,8 @@ namespace IDs
 	DECLARE_ID(users);
 }
 
+#undef DECLARE_ID
+
 // TODO: fix multiple active tables
 // TODO: fix URL when clicking on cell
 // TODO: show issue & title when resuming work
@@ -465,7 +467,8 @@ struct TableComponent:   public Component,
 		  type(RequestType::numRequestTypes),
 		  requested(false),
 		  performed(false),
-		  status(0)
+		  status(0),
+		  url(URL())
 		{}
 
 		using Callback = std::function<void(const ResponseData&)>;

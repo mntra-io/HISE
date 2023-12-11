@@ -65,6 +65,8 @@ ModulatorSynthChain::ModulatorSynthChain(MainController *mc, const String &id, i
 	effectChain->getFactoryType()->setConstrainer(constrainer, false);
 	effectChain->setForceMonophonicProcessingOfPolyphonicEffects(true);
 
+	updateParameterSlots();
+
 	disableChain(PitchModulation, true);
 }
 
@@ -417,12 +419,11 @@ void ModulatorSynthChain::reset()
 	}
 #endif
 	
-
-    this->getHandler()->clearAsync(nullptr);
-    
     midiProcessorChain->getHandler()->clearAsync(midiProcessorChain);
     gainChain->getHandler()->clearAsync(gainChain);
     effectChain->getHandler()->clearAsync(effectChain);
+	this->getHandler()->clearAsync(nullptr);
+
     getMatrix().resetToDefault();
     getMatrix().setNumSourceChannels(2);
 
@@ -453,7 +454,7 @@ void ModulatorSynthChain::reset()
         setAttribute(i, getDefaultValue(i), dontSendNotification);
     }
     
-    sendChangeMessage();
+    sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Preset);
 }
 
 int ModulatorSynthChain::getNumActiveVoices() const
@@ -576,8 +577,13 @@ void ModulatorSynthChain::setUseUniformVoiceHandler(bool shouldUseVoiceHandler, 
         auto cs = dynamic_cast<ModulatorSynth*>(getHandler()->getProcessor(i));
         cs->setUseUniformVoiceHandler(shouldUseVoiceHandler, externalVoiceHandler);
     }
-    
+
+#if USE_OLD_PROCESSOR_DISPATCH
     getMainController()->getProcessorChangeHandler().sendProcessorChangeMessage(this, MainController::ProcessorChangeHandler::EventType::ProcessorColourChange, false);
+#endif
+#if USE_NEW_PROCESSOR_DISPATCH
+	dispatcher.setColour(Colours::black);
+#endif
 }
 
 

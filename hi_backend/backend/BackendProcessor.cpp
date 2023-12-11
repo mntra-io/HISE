@@ -113,7 +113,7 @@ scriptUnlocker(this)
 			return SafeFunctionCall::OK;
 		};
 
-		getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, MainController::KillStateHandler::SampleLoadingThread);
+		getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 	}
     
     externalClockSim.bpm = dynamic_cast<GlobalSettingManager*>(this)->globalBPM;
@@ -160,6 +160,10 @@ BackendProcessor::~BackendProcessor()
 	AudioThreadGuard::setHandler(nullptr);
 #endif
 
+    getJavascriptThreadPool().stopThread(1000);
+	getJavascriptThreadPool().getGlobalServer()->cleanup();
+
+
 	getSampleManager().cancelAllJobs();
 
 	getSampleManager().getProjectHandler().removeListener(this);
@@ -190,7 +194,7 @@ void BackendProcessor::projectChanged(const File& /*newRootDirectory*/)
 		return SafeFunctionCall::OK;
 	};
 
-	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, MainController::KillStateHandler::SampleLoadingThread);
+	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 
 	refreshExpansionType();
 	
@@ -426,7 +430,7 @@ void BackendProcessor::setStateInformation(const void *data, int sizeInBytes)
 		return SafeFunctionCall::OK;
 	};
 
-	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, MainController::KillStateHandler::SampleLoadingThread);
+	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 }
 
 AudioProcessorEditor* BackendProcessor::createEditor()

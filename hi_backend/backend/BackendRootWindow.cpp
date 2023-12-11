@@ -103,7 +103,7 @@ namespace hise { using namespace juce;
 
 	addAndMakeVisible(floatingRoot = new FloatingTile(owner, nullptr));
 
-	
+	dynamic_cast<MainController*>(ownerProcessor)->addScriptListener(this, false);
 
 	loadKeyPressMap();
 
@@ -338,6 +338,8 @@ BackendRootWindow::~BackendRootWindow()
 
 	getMainController()->getLockFreeDispatcher().removePresetLoadListener(this);
 
+	getMainController()->removeScriptListener(this);
+
     GET_PROJECT_HANDLER(getMainController()->getMainSynthChain()).removeListener(this);
     
 	getBackendProcessor()->getCommandManager()->clearCommands();
@@ -493,7 +495,7 @@ void BackendRootWindow::setScriptProcessorForWorkspace(JavascriptProcessor* jsp)
 
 	if (editorOfChain != nullptr)
 	{
-		editorOfChain->changeListenerCallback(editorOfChain->getProcessor());
+		editorOfChain->otherChange(editorOfChain->getProcessor());
 		editorOfChain->childEditorAmountChanged();
 	}
 }
@@ -683,6 +685,11 @@ void BackendRootWindow::newHisePresetLoaded()
 	{
 		BackendPanelHelpers::ScriptingWorkspace::setGlobalProcessor(this, jsp);
 		BackendPanelHelpers::showWorkspace(this, BackendPanelHelpers::Workspace::ScriptingWorkspace, sendNotificationSync);
+
+		SafeAsyncCall::callWithDelay<BackendRootWindow>(*this, [](BackendRootWindow& r)
+		{
+			r.rebuildTokenProviders("HiseScript");;
+		}, 500);
 	}
 }
 
@@ -695,6 +702,11 @@ void BackendRootWindow::gotoIfWorkspace(Processor* p)
         BackendPanelHelpers::ScriptingWorkspace::setGlobalProcessor(this, jsp);
         BackendPanelHelpers::showWorkspace(this, BackendPanelHelpers::Workspace::ScriptingWorkspace, sendNotification);
 
+		SafeAsyncCall::call<BackendRootWindow>(*this, [](BackendRootWindow& r)
+		{
+			r.rebuildTokenProviders("HiseScript");;
+		});
+		
     }
     else if (auto sampler = dynamic_cast<ModulatorSampler*>(p))
     {

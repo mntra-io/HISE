@@ -575,6 +575,8 @@ void SliderPack::resized()
 {
 	int w = getWidth();
 
+    setTextAreaPopup(getLocalBounds().removeFromRight(100).removeFromTop(40));
+    
     if(data != nullptr && (sliderWidths.isEmpty() || getNumSliders()+1 != (sliderWidths.size())))
     {
         float widthPerSlider = (float)w / (float)data->getNumSliders();
@@ -732,7 +734,7 @@ void SliderPack::mouseDrag(const MouseEvent &e)
 
 		rightClickLine.setEnd((float)x, (float)y);
 
-		repaint();
+        repaintWithTextBox(Rectangle<float>(rightClickLine.getStart(), rightClickLine.getEnd()).toNearestInt().expanded(5));
 	}
 	else
 	{
@@ -758,6 +760,9 @@ void SliderPack::mouseDrag(const MouseEvent &e)
 
 			double value = s->proportionOfLengthToValue(normalizedValue);
 
+			if(isPositiveAndBelow(currentlyDraggedSlider, sliders.size()))
+                repaintWithTextBox(sliders[currentlyDraggedSlider]->getBoundsInParent());
+
 			currentlyDragged = true;
 			currentlyDraggedSlider = sliderIndex;
 			currentlyDraggedSliderValue = value;
@@ -766,7 +771,8 @@ void SliderPack::mouseDrag(const MouseEvent &e)
 
 			currentlyDraggedSliderValue = s->getValue();
 
-			repaint();
+			if(isPositiveAndBelow(currentlyDraggedSlider, sliders.size()))
+                repaintWithTextBox(sliders[currentlyDraggedSlider]->getBoundsInParent());
 		}
 
 		if (std::abs(sliderIndex - lastDragIndex) > 1)
@@ -829,6 +835,7 @@ void SliderPack::mouseExit(const MouseEvent &)
 	if (!isEnabled()) return;
 
 	currentlyDragged = false;
+	currentlyHoveredSlider = -1;
 	repaint();
 }
 
@@ -927,9 +934,11 @@ void SliderPack::setValuesFromLine()
 
 	data->setFromFloatArray(newValues, sendNotificationAsync, true);
 	
+	repaint();
+
 	rightClickLine = Line<float>(0.0f, 0.0f, 0.0f, 0.0f);
 
-	repaint();
+	
 }
 
 void SliderPack::displayedIndexChanged(SliderPackData* d, int newIndex)
@@ -1248,7 +1257,20 @@ void SliderPack::setComplexDataUIBase(ComplexDataUIBase* newData)
 }
 
 void SliderPack::mouseMove(const MouseEvent& mouseEvent)
-{ repaint(); }
+{
+	auto thisIndex = getSliderIndexForMouseEvent(mouseEvent);
+
+	if(thisIndex != currentlyHoveredSlider)
+	{
+		if(isPositiveAndBelow(currentlyHoveredSlider, sliders.size()))
+            repaintWithTextBox(sliders[currentlyHoveredSlider]->getBoundsInParent());
+
+		currentlyHoveredSlider = thisIndex;
+
+		if(isPositiveAndBelow(currentlyHoveredSlider, sliders.size()))
+            repaintWithTextBox(sliders[currentlyHoveredSlider]->getBoundsInParent());
+	}
+}
 
 void SliderPack::notifyListeners(int index, NotificationType n)
 {
