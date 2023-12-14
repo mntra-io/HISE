@@ -1151,7 +1151,7 @@ void TableComponent::timerCallback()
 
 	for(auto c: finishedIssues)
 	{
-		jassert(!c->currentlyActive);
+		//jassert(!c->currentlyActive);
 		finishedList.add(c->toJSON());
 	}
 
@@ -2304,7 +2304,7 @@ Image TableComponent::AssetProvider::getImage(const MarkdownLink& markdownLink, 
 	{
 		if(auto mb = rf.obj.getBinaryData())
 		{
-			auto newImage = ImageCache::getFromMemory(mb->getData(), mb->getSize());
+			auto newImage = ImageCache::getFromMemory(mb->getData(), (int)mb->getSize());
 
 			auto b = newImage.getBounds();
 			auto ok = newImage.isValid();
@@ -2342,7 +2342,7 @@ Image TableComponent::AssetProvider::getImage(const MarkdownLink& markdownLink, 
 		g.setColour(Colours::white.withAlpha(0.3f));
 		g.drawRoundedRectangle(b.getBounds().toFloat(), 3.0f, 1.0f);
 		g.setColour(Colours::white.withAlpha(0.8f));
-		g.setFont(GLOBAL_BOLD_FONT()),
+        g.setFont(GLOBAL_BOLD_FONT());
 		g.drawText("Refresh this to load the image from the URL", b.getBounds().toFloat(), Justification::centred);
 		return b;
 	}

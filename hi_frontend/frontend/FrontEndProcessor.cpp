@@ -95,6 +95,8 @@ void FrontendProcessor::processBlock (AudioSampleBuffer& buffer, MidiBuffer& mid
 #if USE_COPY_PROTECTION
 	if (!keyFileCorrectlyLoaded || (((unlockCounter++ & 1023) == 0) && !unlocker.isUnlocked()))
     {
+		getKillStateHandler().initFromProcessCallback();
+
         buffer.clear();
         midiMessages.clear();
         return;
@@ -374,6 +376,8 @@ updater(*this)
 
 FrontendProcessor::~FrontendProcessor()
 {
+	getRootDispatcher().setState(dispatch::HashedPath(dispatch::CharPtr::Type::Wildcard), dispatch::State::Shutdown);
+
 	numInstances--;
 
 	notifyShutdownToRegisteredObjects();
@@ -420,7 +424,7 @@ void FrontendProcessor::createPreset(const ValueTree& synthData)
 
 	{
 		LOG_START("Compiling all scripts");
-		LockHelpers::SafeLock sl(this, LockHelpers::ScriptLock);
+		LockHelpers::SafeLock sl(this, LockHelpers::Type::ScriptLock);
 		synthChain->compileAllScripts();
 	}
 

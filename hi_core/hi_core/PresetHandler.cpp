@@ -3533,7 +3533,7 @@ void ModuleStateManager::restoreFromValueTree(const ValueTree &v)
 			if (p->getType().toString() == mcopy["Type"].toString())
 			{
 				p->restoreFromValueTree(mcopy);
-				p->sendPooledChangeMessage();
+				p->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Preset, dispatch::sendNotificationAsync);
 			}
 		}
 	}

@@ -36,6 +36,7 @@ CodeEditorPanel::CodeEditorPanel(FloatingTile* parent) :
 	PanelWithProcessorConnection(parent)
 {
 	tokeniser = new JavascriptTokeniser();
+	tokeniser->setUseScopeStatements(true);
 
 	getMainController()->addScriptListener(this);
 
@@ -433,6 +434,12 @@ struct ScriptContentPanel::Canvas : public ScriptEditHandler,
 		overlay->setShowEditButton(false);
 	}
 
+	~Canvas()
+	{
+		overlay = nullptr;
+		content = nullptr;
+	}
+
 	static void overlayChanged(Canvas& c, const Image& img, float alpha)
 	{
 		c.overlayImage = img;
@@ -573,6 +580,9 @@ private:
 
 void ScriptContentPanel::Canvas::paint(Graphics& g)
 {
+	if(overlay == nullptr || content == nullptr)
+		return;
+
 	g.setColour(JUCE_LIVE_CONSTANT_OFF(Colour(0xFF1b1b1b)));
 
 	auto overlayBounds = FLOAT_RECTANGLE(getLocalArea(overlay, overlay->getLocalBounds()));
@@ -1109,7 +1119,7 @@ bool ScriptContentPanel::Editor::Actions::rebuildAndRecompile(Editor& e_)
     
 	auto p = e->getProcessor();
 
-	p->getMainController()->getKillStateHandler().killVoicesAndCall(p, f, MainController::KillStateHandler::ScriptingThread);
+	p->getMainController()->getKillStateHandler().killVoicesAndCall(p, f, MainController::KillStateHandler::TargetThread::ScriptingThread);
 
 	return true;
 }

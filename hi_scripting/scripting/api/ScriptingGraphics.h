@@ -558,6 +558,9 @@ namespace ScriptingObjects
 		/** Adds a drop shadow based on the alpha values of the current image. */
 		void addDropShadowFromAlpha(var colour, int radius);
 
+		/** fills the entire component with a random colour to indicate a UI repaint. */
+		void drawRepaintMarker(const String& label);
+
 		/** Applies an OpenGL shader to the panel. Returns false if the shader could not be compiled. */
 		bool applyShader(var shader, var area);
 
@@ -680,7 +683,7 @@ namespace ScriptingObjects
 			void drawButtonBackground(Graphics& g, Button& button, const Colour& /*backgroundColour*/,
 				bool isMouseOverButton, bool isButtonDown) override;
 
-			void drawNumberTag(Graphics& g, Colour& c, Rectangle<int> area, int offset, int size, int number) override;
+			void drawNumberTag(Graphics& g, Component& comp, Colour& c, Rectangle<int> area, int offset, int size, int number) override;
 
 			Path createPresetBrowserIcons(const String& id) override;
 			void drawPresetBrowserBackground(Graphics& g, Component* p) override;

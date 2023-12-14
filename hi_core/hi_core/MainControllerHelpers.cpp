@@ -123,7 +123,7 @@ int MidiControllerAutomationHandler::getMidiControllerNumber(Processor *interfac
 void MidiControllerAutomationHandler::refreshAnyUsedState()
 {
 	AudioThreadGuard::Suspender suspender;
-	LockHelpers::SafeLock sl(mc, LockHelpers::AudioLock);
+	LockHelpers::SafeLock sl(mc, LockHelpers::Type::AudioLock);
 
 	ignoreUnused(suspender);
 
@@ -161,7 +161,7 @@ void MidiControllerAutomationHandler::removeMidiControlledParameter(Processor *i
 {
 	{
 		AudioThreadGuard audioGuard(&(mc->getKillStateHandler()));
-		LockHelpers::SafeLock sl(mc, LockHelpers::AudioLock);
+		LockHelpers::SafeLock sl(mc, LockHelpers::Type::AudioLock);
 
 		for (int i = 0; i < 128; i++)
 		{
@@ -366,7 +366,7 @@ struct MidiControllerAutomationHandler::MPEData::Data: public Processor::DeleteL
 			{
 				c->removeDeleteListener(this);
 				c->setBypassed(true);
-				c->sendChangeMessage();
+				c->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Custom);
 			}
 			else
 				jassertfalse;
@@ -440,7 +440,7 @@ void MidiControllerAutomationHandler::MPEData::restoreFromValueTree(const ValueT
         return SafeFunctionCall::OK;
 	};
 
-	getMainController()->getKillStateHandler().killVoicesAndCall(getMainController()->getMainSynthChain(), f, MainController::KillStateHandler::SampleLoadingThread);
+	getMainController()->getKillStateHandler().killVoicesAndCall(getMainController()->getMainSynthChain(), f, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 
 	asyncRestorer.restore(v);
 }
@@ -934,7 +934,7 @@ bool MidiControllerAutomationHandler::handleControllerMessage(const HiseEvent& e
 					if (uph.isUsingCustomDataModel())
 					{
 						if (auto ad = uph.getCustomAutomationData(a.attribute))
-							ad->call(snappedValue);
+							ad->call(snappedValue, dispatch::DispatchType::sendNotificationSync);
 					}
 					else
 					{

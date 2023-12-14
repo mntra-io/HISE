@@ -1082,6 +1082,8 @@ MidiPlayer::MidiPlayer(MainController *mc, const String &id, ModulatorSynth*) :
 	addAttributeID(LoopEnd);
 	addAttributeID(PlaybackSpeed);
 
+	updateParameterSlots();
+
 	mc->addTempoListener(this);
 }
 
@@ -1196,7 +1198,7 @@ void MidiPlayer::addSequence(HiseMidiSequence::Ptr newSequence, bool select)
 	if (select)
 	{
 		currentSequenceIndex = currentSequences.size() - 1;
-		sendChangeMessage();
+		sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Custom);
 	}
 
 	sendSequenceUpdateMessage(sendNotificationAsync);
@@ -1991,7 +1993,7 @@ void MidiPlayer::flushOverdubNotes(double timestampForActiveNotes/*=-1.0*/)
 
 bool MidiPlayer::stopInternal(int timestamp)
 {
-	sendAllocationFreeChangeMessage();
+	sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Custom);
 
 	overdubUpdater.stop();
 
@@ -2021,8 +2023,8 @@ bool MidiPlayer::stopInternal(int timestamp)
 
 bool MidiPlayer::startInternal(int timestamp)
 {
-	sendAllocationFreeChangeMessage();
-
+	sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Custom);
+	
 	if (auto seq = getCurrentSequence())
 	{
 		if (isRecording())
@@ -2058,8 +2060,7 @@ bool MidiPlayer::startInternal(int timestamp)
 
 bool MidiPlayer::recordInternal(int timestamp)
 {
-	sendAllocationFreeChangeMessage();
-
+	sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Custom);
 	
 
 	if (overdubMode)
@@ -2430,7 +2431,7 @@ void MidiPlayer::addNoteOffsToPendingNoteOns()
 
 	bool sortAfterOp = false;
 
-	LockHelpers::SafeLock sl(getMainController(), LockHelpers::AudioLock);
+	LockHelpers::SafeLock sl(getMainController(), LockHelpers::Type::AudioLock);
 
 	for (auto& futureEvent : midiChain->artificialEvents)
 	{

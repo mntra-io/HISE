@@ -1349,7 +1349,7 @@ PooledUIUpdater::Listener::~Listener()
 PooledUIUpdater::SimpleTimer::SimpleTimer(PooledUIUpdater* h, bool shouldStart):
 	updater(h)
 {
-	if(shouldStart)
+	if(updater != nullptr && shouldStart)
 		start();
 }
 
@@ -1373,6 +1373,9 @@ bool PooledUIUpdater::SimpleTimer::isTimerRunning() const
 
 void PooledUIUpdater::SimpleTimer::startOrStop(bool shouldStart)
 {
+	if(updater == nullptr)
+		return;
+
 	WeakReference<SimpleTimer> safeThis(this);
 
 	auto f = [safeThis, shouldStart]()
@@ -1416,6 +1419,10 @@ bool PooledUIUpdater::Broadcaster::isHandlerInitialised() const
 
 void PooledUIUpdater::timerCallback()
 {
+	PerfettoHelpers::setCurrentThreadName("UI Timer Thread");
+
+	TRACE_DISPATCH("UI Timer callback");
+
 	{
 		ScopedLock sl(simpleTimers.getLock());
 

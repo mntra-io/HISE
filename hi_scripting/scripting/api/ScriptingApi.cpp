@@ -543,7 +543,7 @@ bool ScriptingApi::Message::isMonophonicAfterTouch() const
 	if (constMessageHolder == nullptr)
 	{
 		reportIllegalCall("isMonophonicAfterTouch()", "midi event");
-		RETURN_IF_NO_THROW(-1)
+		RETURN_IF_NO_THROW(false);
 	}
 #endif
 
@@ -582,7 +582,7 @@ bool ScriptingApi::Message::isPolyAftertouch() const
 	if (constMessageHolder == nullptr)
 	{
 		reportIllegalCall("isPolyAftertouch()", "midi event");
-		RETURN_IF_NO_THROW(-1);
+		RETURN_IF_NO_THROW(false);
 	}
 #endif
 
@@ -1650,7 +1650,7 @@ void ScriptingApi::Engine::reloadAllSamples()
 	
 
 
-	mc->getKillStateHandler().killVoicesAndCall(mc->getMainSynthChain(), f, MainController::KillStateHandler::SampleLoadingThread);
+	mc->getKillStateHandler().killVoicesAndCall(mc->getMainSynthChain(), f, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 }
 
 double ScriptingApi::Engine::getPreloadProgress()
@@ -1883,6 +1883,7 @@ struct ScriptUndoableAction : public UndoableAction,
 		// ensure it's called synchronously if possible...
 		callback.setHighPriority();
 		callback.incRefCount();
+		callback.setThisObjectRefCounted(thisObject);
 	}
 
 	bool undo() override
@@ -2077,7 +2078,7 @@ struct AudioRenderer : public Thread,
 		getMainController()->getSampleManager().handleNonRealtimeState();
 		
 		{
-			LockHelpers::SafeLock sl(getMainController(), LockHelpers::AudioLock);
+			LockHelpers::SafeLock sl(getMainController(), LockHelpers::Type::AudioLock);
 
 			int numTodo = numSamplesToRender;
 			int pos = 0;
@@ -2639,6 +2640,9 @@ struct ScriptingApi::Settings::Wrapper
 	API_METHOD_WRAPPER_0(Settings, isOpenGLEnabled);
 	API_VOID_METHOD_WRAPPER_1(Settings, setEnableOpenGL);
 	API_VOID_METHOD_WRAPPER_1(Settings, setEnableDebugMode);
+	API_VOID_METHOD_WRAPPER_0(Settings, startPerfettoTracing);
+	API_VOID_METHOD_WRAPPER_1(Settings, stopPerfettoTracing);
+	API_VOID_METHOD_WRAPPER_0(Settings, crashAndBurn);
 };
 
 ScriptingApi::Settings::Settings(ProcessorWithScriptingContent* s) :
@@ -2682,6 +2686,9 @@ ScriptingApi::Settings::Settings(ProcessorWithScriptingContent* s) :
 	ADD_API_METHOD_1(setEnableOpenGL);
 	ADD_API_METHOD_1(setEnableDebugMode);
 	ADD_API_METHOD_1(setSampleFolder);
+	ADD_API_METHOD_0(startPerfettoTracing);
+	ADD_API_METHOD_1(stopPerfettoTracing);
+	ADD_API_METHOD_0(crashAndBurn);
 }
 
 var ScriptingApi::Settings::getUserDesktopSize()
@@ -2728,6 +2735,62 @@ void ScriptingApi::Settings::setSampleFolder(var sampleFolder)
 	}
 }
 
+void ScriptingApi::Settings::startPerfettoTracing()
+{
+#if PERFETTO
+	auto& mp = MelatoninPerfetto::get();
+	mp.beginSession();
+#else
+	reportScriptError("Perfetto is not enabled, make sure to compile your project / HISE with PERFETTO=1");
+#endif
+}
+
+void ScriptingApi::Settings::stopPerfettoTracing(var traceFileToUse)
+{
+#if PERFETTO
+	if(auto sf = dynamic_cast<ScriptingObjects::ScriptFile*>(traceFileToUse.getObject()))
+	{
+		auto extension = sf->f.getFileExtension();
+
+		auto& mp = MelatoninPerfetto::get();
+
+		mp.customFileLocation = sf->f;
+		mp.endSession(true);
+		mp.customFileLocation = File();
+
+		if(extension != ".pftrace")
+		{
+			reportScriptError("The file needs the extension .pftrace");
+		}
+	}
+	else
+	{
+		reportScriptError("Not a valid file supplied");
+	}
+#else
+	reportScriptError("Perfetto is not enabled, make sure to compile your project / HISE with PERFETTO=1");
+#endif
+}
+
+void ScriptingApi::Settings::crashAndBurn()
+{
+#if USE_BACKEND
+	auto includeSymbols = GET_HISE_SETTING(dynamic_cast<Processor*>(getScriptProcessor()), HiseSettings::Project::CompileWithDebugSymbols);
+
+	if(!includeSymbols)
+	{
+		// don't crash, you're not ready yet...
+		reportScriptError("You need to enable CompileWithDebugSymbols for your project to get a meaningful stack trace");
+	}
+#endif
+	
+	// There you go...
+	volatile int* x = nullptr;
+	*x = 90;
+
+	// If that didn't work, try this...
+	abort();
+}
 
 double ScriptingApi::Settings::getZoomLevel() const
 {
@@ -3625,8 +3688,11 @@ struct ScriptingApi::Sampler::Wrapper
 {
 	API_VOID_METHOD_WRAPPER_1(Sampler, enableRoundRobin);
 	API_VOID_METHOD_WRAPPER_1(Sampler, setActiveGroup);
-	API_VOID_METHOD_WRAPPER_2(Sampler, setMultiGroupIndex);
+	API_VOID_METHOD_WRAPPER_2(Sampler, setMultiGroupIndex)
 	API_METHOD_WRAPPER_0(Sampler, getActiveRRGroup);
+	API_VOID_METHOD_WRAPPER_2(Sampler, setActiveGroupForEventId);
+	API_METHOD_WRAPPER_1(Sampler, getActiveRRGroupForEventId);
+	API_VOID_METHOD_WRAPPER_3(Sampler, setMultiGroupIndexForEventId);
 	API_METHOD_WRAPPER_2(Sampler, getRRGroupsForMessage);
 	API_VOID_METHOD_WRAPPER_0(Sampler, refreshRRMap);
 	API_VOID_METHOD_WRAPPER_1(Sampler, selectSounds);
@@ -3682,6 +3748,9 @@ sampler(sampler_)
 	ADD_API_METHOD_1(enableRoundRobin);
 	ADD_API_METHOD_1(setActiveGroup);
 	ADD_API_METHOD_0(getActiveRRGroup);
+	ADD_API_METHOD_2(setActiveGroupForEventId);
+	ADD_API_METHOD_1(getActiveRRGroupForEventId);
+	ADD_API_METHOD_3(setMultiGroupIndexForEventId);
 	ADD_API_METHOD_2(setRRGroupVolume);
 	ADD_API_METHOD_2(setMultiGroupIndex);
 	ADD_API_METHOD_2(getRRGroupsForMessage);
@@ -3778,29 +3847,10 @@ void ScriptingApi::Sampler::enableRoundRobin(bool shouldUseRoundRobin)
 
 void ScriptingApi::Sampler::setActiveGroup(int activeGroupIndex)
 {
-	ModulatorSampler *s = static_cast<ModulatorSampler*>(sampler.get());
-
-	if (s == nullptr)
-	{
-		reportScriptError("setActiveGroup() only works with Samplers.");
-		return;
-	}
-
-	if (s->isRoundRobinEnabled())
-	{
-		reportScriptError("Round Robin is not disabled. Call 'Synth.enableRoundRobin(false)' before calling this method.");
-		return;
-	}
-
-	bool ok = s->setCurrentGroupIndex(activeGroupIndex);
-
-	if (!ok)
-	{
-		reportScriptError(String(activeGroupIndex) + " is not a valid group index.");
-	}
+	setActiveGroupForEventId(-1, activeGroupIndex);
 }
 
-void ScriptingApi::Sampler::setMultiGroupIndex(var groupIndex, bool enabled)
+void ScriptingApi::Sampler::setActiveGroupForEventId(int eventId, int activeGroupIndex)
 {
 	ModulatorSampler *s = static_cast<ModulatorSampler*>(sampler.get());
 
@@ -3815,13 +3865,42 @@ void ScriptingApi::Sampler::setMultiGroupIndex(var groupIndex, bool enabled)
 		reportScriptError("Round Robin is not disabled. Call 'Synth.enableRoundRobin(false)' before calling this method.");
 		return;
 	}
+	
+	if(s->getMainController()->getKillStateHandler().getCurrentThread() != MainController::KillStateHandler::TargetThread::AudioThread)
+	{
+		reportScriptError("This method is only available in the onNoteOnCallback");
+	}
 
+	bool ok = s->setCurrentGroupIndex(activeGroupIndex, eventId);
+
+	if (!ok)
+	{
+		reportScriptError(String(activeGroupIndex) + " is not a valid group index.");
+	}
+}
+
+void ScriptingApi::Sampler::setMultiGroupIndexForEventId(int eventId, var groupIndex, bool enabled)
+{
+	ModulatorSampler *s = static_cast<ModulatorSampler*>(sampler.get());
+
+	if (s == nullptr)
+	{
+		reportScriptError("setActiveGroup() only works with Samplers.");
+		return;
+	}
+
+	if (s->isRoundRobinEnabled())
+	{
+		reportScriptError("Round Robin is not disabled. Call 'Synth.enableRoundRobin(false)' before calling this method.");
+		return;
+	}
+	
 	if (groupIndex.isArray())
 	{
 		for (const auto& v : *groupIndex.getArray())
 		{
 			auto gIndex = (int)v;
-			auto ok = s->setMultiGroupState(gIndex, enabled);
+			auto ok = s->setMultiGroupState(gIndex, enabled, eventId);
 
 			if (!ok)
 				reportScriptError(String(gIndex) + " is not a valid group index.");
@@ -3830,18 +3909,21 @@ void ScriptingApi::Sampler::setMultiGroupIndex(var groupIndex, bool enabled)
 	else if (groupIndex.isObject())
 	{
 		if (auto ml = dynamic_cast<ScriptingObjects::MidiList*>(groupIndex.getObject()))
-			s->setMultiGroupState(ml->getRawDataPointer(), ml->getNumSetValues());
+			s->setMultiGroupState(ml->getRawDataPointer(), ml->getNumSetValues(), eventId);
 	}
 	else
 	{
-		auto ok = s->setMultiGroupState(groupIndex, enabled);
+		auto ok = s->setMultiGroupState(groupIndex, enabled, eventId);
 
 		if (!ok)
 			reportScriptError(groupIndex.toString() + " is not a valid group index.");
 	}
 }
 
-
+void ScriptingApi::Sampler::setMultiGroupIndex(var groupIndex, bool enabled)
+{
+	setMultiGroupIndexForEventId(-1, groupIndex, enabled);
+}
 
 void ScriptingApi::Sampler::setRRGroupVolume(int groupIndex, int gainInDecibels)
 {
@@ -3856,7 +3938,8 @@ void ScriptingApi::Sampler::setRRGroupVolume(int groupIndex, int gainInDecibels)
 	s->setRRGroupVolume(groupIndex, Decibels::decibelsToGain((float)gainInDecibels));
 }
 
-int ScriptingApi::Sampler::getActiveRRGroup()
+
+int ScriptingApi::Sampler::getActiveRRGroupForEventId(int eventId)
 {
 	ModulatorSampler *s = static_cast<ModulatorSampler*>(sampler.get());
 
@@ -3866,7 +3949,12 @@ int ScriptingApi::Sampler::getActiveRRGroup()
 		return 0;
 	}
 
-	return s->getCurrentRRGroup();
+	return s->getCurrentRRGroup(eventId);
+}
+
+int ScriptingApi::Sampler::getActiveRRGroup()
+{
+	return getActiveRRGroupForEventId(-1);
 }
 
 int ScriptingApi::Sampler::getNumActiveGroups() const
@@ -4455,7 +4543,7 @@ void ScriptingApi::Sampler::refreshInterface()
 		RETURN_VOID_IF_NO_THROW()
 	}
 
-	s->sendChangeMessage();
+	s->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Custom, dispatch::sendNotificationAsync);
 	s->getMainController()->getSampleManager().getModulatorSamplerSoundPool2()->sendChangeMessage();
 }
 
@@ -4463,7 +4551,7 @@ void ScriptingApi::Sampler::loadSampleMap(const String &fileName)
 {
 	WARN_IF_AUDIO_THREAD(true, ScriptGuard::IllegalApiCall);
 
-	jassert(LockHelpers::isLockedBySameThread(getScriptProcessor()->getMainController_(), LockHelpers::ScriptLock));
+	jassert(LockHelpers::isLockedBySameThread(getScriptProcessor()->getMainController_(), LockHelpers::Type::ScriptLock));
 
 	if (fileName.isEmpty())
 		reportScriptError("Trying to load a empty sample map...");
@@ -4647,7 +4735,7 @@ var ScriptingApi::Sampler::loadSfzFile(var sfzFile)
 {
 	WARN_IF_AUDIO_THREAD(true, ScriptGuard::IllegalApiCall);
 
-	jassert(LockHelpers::isLockedBySameThread(getScriptProcessor()->getMainController_(), LockHelpers::ScriptLock));
+	jassert(LockHelpers::isLockedBySameThread(getScriptProcessor()->getMainController_(), LockHelpers::Type::ScriptLock));
 
 	ModulatorSampler *s = static_cast<ModulatorSampler*>(sampler.get());
 
@@ -5242,7 +5330,7 @@ void ScriptingApi::Synth::noteOffDelayedByEventId(int eventId, int timestamp)
 
 #if HISE_USE_BACKWARDS_COMPATIBLE_TIMESTAMPS
 
-		if (getProcessor()->getMainController()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::AudioThread)
+		if (getProcessor()->getMainController()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::AudioThread)
 		{
 			// Apparently there was something wrong with the timestamp calculation.
 		// This restores the old behaviour by removing one block from the timestamps.
@@ -6058,7 +6146,7 @@ int ScriptingApi::Synth::internalAddNoteOn(int channel, int noteNumber, int velo
 
 #if HISE_USE_BACKWARDS_COMPATIBLE_TIMESTAMPS
 
-						if (getProcessor()->getMainController()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::AudioThread)
+						if (getProcessor()->getMainController()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::AudioThread)
 						{
 							// Apparently there was something wrong with the timestamp calculation.
 						// This restores the old behaviour by removing one block from the timestamps.
@@ -6275,10 +6363,9 @@ void ScriptingApi::Synth::setModulatorAttribute(int chain, int modulatorIndex, i
 		}
 	}
 	else if(attributeIndex == -13) modulator->setBypassed(newValue == 1.0f);
-
 	else modulator->setAttribute(attributeIndex, newValue, dontSendNotification);
 
-	modulator->sendChangeMessage();
+	modulator->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Attribute);
 
 
 }
@@ -6424,13 +6511,12 @@ startTime(0.0)
 
 void ScriptingApi::Console::print(var x)
 {
-	
-
 #if USE_BACKEND
 
 	AudioThreadGuard::Suspender suspender;
 	ignoreUnused(suspender);
-    
+	
+
     auto jp = dynamic_cast<JavascriptProcessor*>(getScriptProcessor());
     jp->addInplaceDebugValue(id, lineNumber, x.toString());
     
@@ -6469,9 +6555,9 @@ void ScriptingApi::Console::stop(bool condition)
 
 	auto c = getScriptProcessor()->getMainController_()->getKillStateHandler().getCurrentThread();
 
-	if (c == MainController::KillStateHandler::ScriptingThread ||
-		c == MainController::KillStateHandler::SampleLoadingThread ||
-		c == MainController::KillStateHandler::AudioThread)
+	if (c == MainController::KillStateHandler::TargetThread::ScriptingThread ||
+		c == MainController::KillStateHandler::TargetThread::SampleLoadingThread ||
+		c == MainController::KillStateHandler::TargetThread::AudioThread)
 	{
 		auto n = Time::getMillisecondCounter();
 
@@ -6509,8 +6595,8 @@ void ScriptingApi::Console::blink()
 #if USE_BACKEND && HISE_USE_NEW_CODE_EDITOR
 	if (auto e = getProcessor()->getMainController()->getLastActiveEditor())
 	{
-		Identifier i = id;
-		int l = lineNumber;
+        auto i = id;
+        auto l = lineNumber;
 
 		MessageManager::callAsync([e, i, l]()
 		{
@@ -7270,6 +7356,144 @@ hise::FileHandlerBase::SubDirectories ScriptingApi::FileSystem::getSubdirectory(
 		RETURN_IF_NO_THROW(FileHandlerBase::SubDirectories::numSubDirectories);
 	}
 }
+
+struct ScriptingApi::Threads::Wrapper
+{
+    API_METHOD_WRAPPER_0(ScriptingApi::Threads, getCurrentThread);
+    API_METHOD_WRAPPER_0(ScriptingApi::Threads, isAudioRunning);
+	API_METHOD_WRAPPER_0(ScriptingApi::Threads, isCurrentlyExporting);
+    API_METHOD_WRAPPER_1(ScriptingApi::Threads, isLockedByCurrentThread);
+    API_METHOD_WRAPPER_1(ScriptingApi::Threads, getLockerThread);
+    API_METHOD_WRAPPER_1(ScriptingApi::Threads, isLocked);
+	API_METHOD_WRAPPER_1(ScriptingApi::Threads, toString);
+	API_METHOD_WRAPPER_0(ScriptingApi::Threads, getCurrentThreadName);
+    API_METHOD_WRAPPER_1(ScriptingApi::Threads, killVoicesAndCall);
+};
+
+ScriptingApi::Threads::Threads(ProcessorWithScriptingContent* p):
+	ApiClass(6),
+	ScriptingObject(p)
+{
+	addConstant("Audio", (int)LockHelpers::Type::AudioLock);
+	addConstant("Scripting", (int)LockHelpers::Type::ScriptLock);
+	addConstant("Loading", (int)LockHelpers::Type::SampleLock);
+	addConstant("UI", (int)LockHelpers::Type::MessageLock);
+	addConstant("Unknown", (int)LockHelpers::Type::numLockTypes);
+	addConstant("Free", (int)LockHelpers::Type::unused);
+
+	ADD_API_METHOD_0(getCurrentThread);
+    ADD_API_METHOD_0(isAudioRunning);
+	ADD_API_METHOD_0(isCurrentlyExporting);
+    ADD_API_METHOD_1(isLockedByCurrentThread);
+    ADD_API_METHOD_1(getLockerThread);
+    ADD_API_METHOD_1(isLocked);
+    ADD_API_METHOD_1(killVoicesAndCall);
+	ADD_API_METHOD_1(toString);
+	ADD_API_METHOD_0(getCurrentThreadName);
+}
+
+int ScriptingApi::Threads::getCurrentThread() const
+{
+	auto s = getScriptProcessor()->getMainController_()->getKillStateHandler().getCurrentThread();
+
+	MainController::KillStateHandler::getLockTypeForThread(s);
+
+	switch(s)
+	{
+	case TargetThreadId::MessageThread:		  return (int)LockId::MessageLock;
+	case TargetThreadId::SampleLoadingThread: return (int)LockId::SampleLock;
+	case TargetThreadId::AudioThread:		  return (int)LockId::AudioLock;
+	case TargetThreadId::AudioExportThread:	  return (int)LockId::AudioLock;
+	case TargetThreadId::ScriptingThread:	  return (int)LockId::ScriptLock;
+	case TargetThreadId::UnknownThread:		  return (int)LockId::numLockTypes;
+	case TargetThreadId::Free:				  return (int)LockId::unused;
+	default:								  return -1;
+	}
+}
+
+bool ScriptingApi::Threads::isAudioRunning() const
+{
+	return getScriptProcessor()->getMainController_()->getKillStateHandler().isAudioRunning();
+}
+
+bool ScriptingApi::Threads::isCurrentlyExporting() const
+{
+	return getKillStateHandler().isCurrentlyExporting();
+}
+
+bool ScriptingApi::Threads::isLockedByCurrentThread(int thread) const
+{
+	return getKillStateHandler().currentThreadHoldsLock(getAsLockId(thread));
+}
+
+int ScriptingApi::Threads::getLockerThread(int threadThatIsLocked) const
+{
+	return (int)getKillStateHandler().getLockTypeForThread(getAsThreadId(threadThatIsLocked));
+}
+
+bool ScriptingApi::Threads::isLocked(int thread) const
+{
+	auto t = (LockId)getLockerThread(thread);
+	return t != LockId::unused;
+}
+
+String ScriptingApi::Threads::toString(int thread) const
+{
+	switch(getAsLockId(thread))
+	{
+	case LockHelpers::Type::MessageLock:	return "Message Thread";
+	case LockHelpers::Type::ScriptLock:		return "Scripting Thread";
+	case LockHelpers::Type::SampleLock:		return "Sample Thread";
+	case LockHelpers::Type::IteratorLock:	return "Iterator Thread (never used)";
+	case LockHelpers::Type::AudioLock:		return "Audio Thread";
+	case LockHelpers::Type::numLockTypes:	return "Unknown Thread";
+	case LockHelpers::Type::unused:			return "Free (unlocked)";
+	default:								return "Unknown Thread";
+	}
+}
+
+bool ScriptingApi::Threads::killVoicesAndCall(const var& functionToExecute)
+{
+	WeakCallbackHolder wc(getScriptProcessor(), this, functionToExecute, 0);
+
+	return getKillStateHandler().killVoicesAndCall(dynamic_cast<Processor*>(getScriptProcessor()), [wc](Processor* p)
+	{
+		WeakCallbackHolder copy = std::move(wc);
+
+		if(copy)
+		{
+			LockHelpers::SafeLock sl(p->getMainController(), LockId::ScriptLock);
+			auto ok = copy.callSync(nullptr, 0, nullptr);
+
+			if(!ok.wasOk())
+			{
+				debugError(p, ok.getErrorMessage());
+			}
+
+			return SafeFunctionCall::OK;
+		}
+		else
+		{
+			return SafeFunctionCall::nullPointerCall;
+		}
+	}, TargetThreadId::SampleLoadingThread);
+}
+
+ScriptingApi::Threads::TargetThreadId ScriptingApi::Threads::getAsThreadId(int x)
+{
+	return MainController::KillStateHandler::getThreadForLockType(getAsLockId(x));
+}
+
+ScriptingApi::Threads::LockId ScriptingApi::Threads::getAsLockId(int x)
+{
+	return (LockId)x;
+}
+
+MainController::KillStateHandler& ScriptingApi::Threads::getKillStateHandler()
+{ return getScriptProcessor()->getMainController_()->getKillStateHandler(); }
+
+const MainController::KillStateHandler& ScriptingApi::Threads::getKillStateHandler() const
+{ return getScriptProcessor()->getMainController_()->getKillStateHandler(); }
 
 struct ScriptingApi::Server::Wrapper
 {

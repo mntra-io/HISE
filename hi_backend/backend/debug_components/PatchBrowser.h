@@ -41,8 +41,8 @@ class BackendProcessorEditor;
 class PatchBrowser : public SearchableListComponent,
 					 public DragAndDropTarget,
 					 public ButtonListener,
-					 public Timer,
-					 public MainController::ProcessorChangeHandler::Listener
+				     public MainController::ProcessorChangeHandler::Listener,
+					 public Timer
 {
 
 public:
@@ -128,6 +128,13 @@ public:
 
 	void moduleListChanged(Processor* /*changedProcessor*/, MainController::ProcessorChangeHandler::EventType type) override
 	{
+		if(type == MainController::ProcessorChangeHandler::EventType::ClearBeforeRebuild)
+		{
+			clearCollections();
+			return;
+		}
+
+#if HISE_OLD_PROCESSOR_DISPATCH
 		if (type == MainController::ProcessorChangeHandler::EventType::ProcessorRenamed ||
 			type == MainController::ProcessorChangeHandler::EventType::ProcessorColourChange ||
 			type == MainController::ProcessorChangeHandler::EventType::ProcessorBypassed)
@@ -135,6 +142,7 @@ public:
 			repaintAllItems();
 		}
 		else
+#endif
 		{
 			rebuildModuleList(true);
 		}
@@ -269,12 +277,29 @@ private:
 	class PatchCollection : public SearchableListComponent::Collection,
 							public ModuleDragTarget,
 							public Processor::BypassListener
+							
 	{
 	public:
 
 		PatchCollection(ModulatorSynth *synth, int hierarchy, bool showChains);
 
 		~PatchCollection();
+
+		void updateIdAndColour(dispatch::library::Processor* p)
+		{
+#if HISE_NEW_PROCESSOR_DISPATCH
+			jassert(&p->getOwner<hise::Processor>() == getProcessor());
+
+			auto newText = p->getOwner<hise::Processor>().getId();
+
+			SafeAsyncCall::call<Component>(idLabel, [newText](Component& l)
+			{
+				dynamic_cast<Label*>(&l)->setText(newText, dontSendNotification);
+			});
+#endif
+
+			SafeAsyncCall::repaint(this);
+		}
 
 		void bypassStateChanged(Processor* p, bool bypassState) override
 		{
@@ -334,6 +359,11 @@ private:
 		bool inPopup = false;
 		ScopedPointer<ShapeButton> foldButton;
 		int hierarchy;
+
+		
+#if HISE_NEW_PROCESSOR_DISPATCH
+		dispatch::library::ProcessorHandler::NameAndColourListener idAndColourDispatcher;
+#endif
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PatchCollection)
         JUCE_DECLARE_WEAK_REFERENCEABLE(PatchCollection);
@@ -466,24 +496,36 @@ public:
 
 	struct AutomationCollection : public SearchableListComponent::Collection,
 								  public ControlledObject,
+								  NEW_AUTOMATION_WITH_COMMA(public dispatch::ListenerOwner)
 								  public PooledUIUpdater::SimpleTimer
 	{
-		struct ConnectionItem : public SearchableListComponent::Item,
-								public SafeChangeListener
+		struct ConnectionItem : public SearchableListComponent::Item
 		{
 			ConnectionItem(AutomationData::Ptr d_, AutomationData::ConnectionBase::Ptr c_);
 
 			~ConnectionItem();
 
-			void changeListenerCallback(SafeChangeBroadcaster* b) override
-			{
-				repaint();
-			}
-
 			void paint(Graphics& g) override;
 
 			AutomationData::Ptr d;
 			AutomationData::ConnectionBase::Ptr c;
+
+			struct Updater: public Processor::OtherListener
+			{
+				Updater(ConnectionItem& parent_, Processor* p):
+				  OtherListener(p, dispatch::library::ProcessorChangeEvent::Any),
+				  parent(parent_)
+				{};
+
+				void otherChange(Processor* p) override
+				{
+					parent.repaint();
+				}
+
+				ConnectionItem& parent;
+			};
+
+			ScopedPointer<Updater> updater;
 		};
 
 		void paint(Graphics& g) override;
@@ -499,6 +541,8 @@ public:
 
 		bool hasMidiConnection = false;
 		bool hasComponentConnection = false;
+
+		IF_NEW_AUTOMATION_DISPATCH(dispatch::library::CustomAutomationSource::Listener listener);
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(AutomationCollection);
 	};

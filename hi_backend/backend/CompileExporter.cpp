@@ -1833,8 +1833,26 @@ void CompileExporter::ProjectTemplateHelpers::handleCompilerInfo(CompileExporter
 	REPLACE_WILDCARD_WITH_STRING("%IPP_LIBRARY%", String());
 #endif
 
-	auto& dataObject = exporter->dataObject;
+	const auto includePerfetto = (bool)exporter->dataObject.getSetting(HiseSettings::Project::CompileWithPerfetto);
 
+	REPLACE_WILDCARD_WITH_STRING("%PERFETTO_INCLUDE_WIN%", includePerfetto ? "\nPERFETTO=1\nNOMINMAX=1\nWIN32_LEAN_AND_MEAN=1" : "");
+	REPLACE_WILDCARD_WITH_STRING("%PERFETTO_COMPILER_FLAGS_WIN%", includePerfetto ? " /Zc:__cplusplus /permissive- /vmg" : "");
+	REPLACE_WILDCARD_WITH_STRING("%PERFETTO_INCLUDE_MACOS%", includePerfetto ? "\nPERFETTO=1" : "");
+
+	const auto dontStripSymbols = (bool)exporter->dataObject.getSetting(HiseSettings::Project::CompileWithDebugSymbols);
+
+	REPLACE_WILDCARD_WITH_STRING("%STRIP_SYMBOLS_WIN%", dontStripSymbols ? " alwaysGenerateDebugSymbols=\"1\" debugInformationFormat=\"ProgramDatabase\"" : "");
+
+    if(dontStripSymbols)
+    {
+        REPLACE_WILDCARD_WITH_STRING("%STRIP_SYMBOLS_MACOS%", "stripLocalSymbols=\"0\" customXcodeFlags=\"STRIP_INSTALLED_PRODUCT=NO,COPY_PHASE_STRIP=NO\"");
+    }
+    else
+    {
+        REPLACE_WILDCARD_WITH_STRING("%STRIP_SYMBOLS_MACOS%", "stripLocalSymbols=\"1\"");
+    }
+    
+	auto& dataObject = exporter->dataObject;
 	auto expansionType = GET_SETTING(HiseSettings::Project::ExpansionType);
 
 	if (expansionType == "Custom" || expansionType == "Full")

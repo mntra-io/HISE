@@ -1051,6 +1051,7 @@ void ScriptTableListModel::setCallback(var callback)
 	{
 		cellCallback = WeakCallbackHolder(pwsc, nullptr, callback, 1);
 		cellCallback.incRefCount();
+		cellCallback.addAsSource(this, "cellCallback");
 	}
 }
 
@@ -1106,6 +1107,8 @@ void ScriptTableListModel::sendCallback(int rowId, int columnId, var value, Even
 			obj->setProperty("Type", "Undo");
 		case EventType::SpaceKey:
 			obj->setProperty("Type", "SpaceKey");
+        default:
+            break;
 		}
 
 		if (type == EventType::SetValue ||

@@ -235,7 +235,21 @@ void Modulation::setPlotter(Plotter *targetPlotter)
 	if (attachedPlotter != nullptr)
 	{
 		attachedPlotter->setMode((Plotter::Mode)(int)getMode()); // ugly as f***
-		
+
+		WeakReference<Processor> safeThis(dynamic_cast<Processor*>(this));
+
+		attachedPlotter->setCleanupFunction([safeThis](Plotter* p)
+		{
+			if(safeThis.get() != nullptr)
+			{
+				auto mod = dynamic_cast<Modulation*>(safeThis.get());
+				auto tp = mod->attachedPlotter.getComponent();
+
+				if(tp == p)
+					mod->setPlotter(nullptr);
+			}
+		});
+
 		auto modChain = dynamic_cast<ModulatorChain*>(this);
 
 		if (modChain == nullptr)
@@ -715,7 +729,6 @@ void TimeModulation::applyPanModulation(float * calculatedModValues, float * des
 VoiceStartModulator::VoiceStartModulator(MainController *mc, const String &id, int numVoices, Modulation::Mode m) :
 		VoiceModulation(numVoices, m),
 		Modulator(mc, id, numVoices),
-		Modulation(m),
 		unsavedValue(1.0f)
 {
 	voiceValues.insertMultiple(0, 1.0f, numVoices);
@@ -937,8 +950,7 @@ float TimeVariantModulator::getLastConstantValue() const noexcept
 
 TimeVariantModulator::TimeVariantModulator(MainController* mc, const String& id, Modulation::Mode m):
 	Modulator(mc, id, 1),
-	TimeModulation(m),
-	Modulation(m)
+	TimeModulation(m)
 {
 	lastConstantValue = getInitialValue();
 	smoothedIntensity.setValueWithoutSmoothing(0);
