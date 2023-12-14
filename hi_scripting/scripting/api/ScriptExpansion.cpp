@@ -130,7 +130,7 @@ void ScriptUserPresetHandler::loadCustomUserPreset(const var& dataObject)
 {
 	if (customLoadCallback)
 	{
-		LockHelpers::SafeLock sl(getScriptProcessor()->getMainController_(), LockHelpers::ScriptLock);
+		LockHelpers::SafeLock sl(getScriptProcessor()->getMainController_(), LockHelpers::Type::ScriptLock);
 
 		var args = dataObject;
 		auto ok = customLoadCallback.callSync(&args, 1, nullptr);
@@ -144,7 +144,7 @@ var ScriptUserPresetHandler::saveCustomUserPreset(const String& presetName)
 {
 	if (customSaveCallback)
 	{
-		LockHelpers::SafeLock sl(getScriptProcessor()->getMainController_(), LockHelpers::ScriptLock);
+		LockHelpers::SafeLock sl(getScriptProcessor()->getMainController_(), LockHelpers::Type::ScriptLock);
 
 		var rv;
 		var args = presetName;
@@ -272,11 +272,15 @@ void ScriptUserPresetHandler::setCustomAutomation(var automationData)
 	}
 }
 
-ScriptUserPresetHandler::AttachedCallback::AttachedCallback(ScriptUserPresetHandler* parent, MainController::UserPresetHandler::CustomAutomationData::Ptr cData_, var f, bool isSynchronous) :
+ScriptUserPresetHandler::AttachedCallback::AttachedCallback(ScriptUserPresetHandler* parent, MainController::UserPresetHandler::CustomAutomationData::Ptr cData_, var f, dispatch::DispatchType n_) :
   cData(cData_),
-  customUpdateCallback(parent->getScriptProcessor(), nullptr, var(), 2),
-  customAsyncUpdateCallback(parent->getScriptProcessor(), nullptr, var(), 2)
+  n(n_),
+  NEW_AUTOMATION_WITH_COMMA(listener(parent->getMainController()->getRootDispatcher(), *this, BIND_MEMBER_FUNCTION_2(AttachedCallback::onUpdate)))
+  customAsyncUpdateCallback(parent->getScriptProcessor(), nullptr, var(), 2),
+  customUpdateCallback(parent->getScriptProcessor(), nullptr, var(), 2)
 {
+#if USE_OLD_AUTOMATION_DISPATCH
+	auto isSynchronous = n == dispatch::DispatchType::sendNotificationSync;
 	if (isSynchronous)
 	{
 		customUpdateCallback = WeakCallbackHolder(parent->getScriptProcessor(), parent, f, 2);
@@ -287,16 +291,32 @@ ScriptUserPresetHandler::AttachedCallback::AttachedCallback(ScriptUserPresetHand
 		customAsyncUpdateCallback = WeakCallbackHolder(parent->getScriptProcessor(), parent, f, 2);
 		cData->asyncListeners.addListener(*this, AttachedCallback::onCallbackAsync, false);
 	}
+#endif
+	
+#if USE_NEW_AUTOMATION_DISPATCH
+	if(n == dispatch::DispatchType::sendNotificationAsync)
+		customAsyncUpdateCallback = WeakCallbackHolder(parent->getScriptProcessor(), parent, f, 2);
+	else
+		customUpdateCallback = WeakCallbackHolder(parent->getScriptProcessor(), parent, f, 2);
+
+	cData->dispatcher.addValueListener(&listener, false, n);
+#endif
+
+
 }
 
 ScriptUserPresetHandler::AttachedCallback::~AttachedCallback()
 {
+#if USE_OLD_AUTOMATION_DISPATCH
 	if (customUpdateCallback)
 		cData->syncListeners.removeListener(*this);
 
 	if (customAsyncUpdateCallback)
 		cData->asyncListeners.removeListener(*this);
+#endif
 
+	IF_NEW_AUTOMATION_DISPATCH(cData->dispatcher.removeValueListener(&listener));
+	
 	cData = nullptr;
 }
 
@@ -317,9 +337,22 @@ void ScriptUserPresetHandler::AttachedCallback::onCallbackAsync(AttachedCallback
 	}
 }
 
+void ScriptUserPresetHandler::AttachedCallback::onUpdate(int index, float value)
+{
+	if(n == dispatch::DispatchType::sendNotificationAsync)
+	{
+		onCallbackAsync(*this, index, value);
+	}
+	else
+	{
+		juce::var data[2] = {juce::var(index), var(value) };
+		onCallbackSync(*this, data);
+	}
+}
+
 void ScriptUserPresetHandler::attachAutomationCallback(String automationId, var updateCallback, var isSynchronous)
 {
-	auto realSync = ApiHelpers::isSynchronous(isSynchronous);
+	auto n = ApiHelpers::getDispatchType(isSynchronous, false);
 
 	if (auto cData = getMainController()->getUserPresetHandler().getCustomAutomationData(Identifier(automationId)))
 	{
@@ -335,7 +368,7 @@ void ScriptUserPresetHandler::attachAutomationCallback(String automationId, var 
 
 		if (HiseJavascriptEngine::isJavascriptFunction(updateCallback))
 		{
-			attachedCallbacks.add(new AttachedCallback(this, cData, updateCallback, realSync));
+			attachedCallbacks.add(new AttachedCallback(this, cData, updateCallback, n));
 		}
 
 		return;
@@ -353,9 +386,9 @@ void ScriptUserPresetHandler::clearAttachedCallbacks()
 
 struct AutomationValueUndoAction: public UndoableAction
 {
-    AutomationValueUndoAction(ScriptUserPresetHandler* s, var newData_, bool sendMessage_):
+    AutomationValueUndoAction(ScriptUserPresetHandler* s, var newData_, dispatch::DispatchType n_):
       newData(newData_),
-      sendMessage(sendMessage_),
+      n(n_),
       suph(s)
     {
         auto& h = suph->getMainController()->getUserPresetHandler();
@@ -380,7 +413,7 @@ struct AutomationValueUndoAction: public UndoableAction
     {
         if(suph != nullptr)
         {
-            suph->updateAutomationValues(oldData, sendMessage, false);
+            suph->updateAutomationValues(oldData, ApiHelpers::getDispatchTypeMagicNumber(n), false);
             return true;
         }
         
@@ -391,7 +424,7 @@ struct AutomationValueUndoAction: public UndoableAction
     {
         if(suph != nullptr)
         {
-            suph->updateAutomationValues(newData, sendMessage, false);
+            suph->updateAutomationValues(newData, ApiHelpers::getDispatchTypeMagicNumber(n), false);
             return true;
         }
         
@@ -400,7 +433,7 @@ struct AutomationValueUndoAction: public UndoableAction
     
     var oldData;
     var newData;
-    bool sendMessage;
+    dispatch::DispatchType n;
     WeakReference<ScriptUserPresetHandler> suph;
 };
 
@@ -426,15 +459,17 @@ bool ScriptUserPresetHandler::setAutomationValue(int automationIndex, float newV
 
 	if (uph.isUsingCustomDataModel() && isPositiveAndBelow(automationIndex, uph.getNumCustomAutomationData()))
 	{
-		uph.getCustomAutomationData(automationIndex)->call(newValue);
+		uph.getCustomAutomationData(automationIndex)->call(newValue, dispatch::DispatchType::sendNotificationSync);
 		return true;
 	}
 
 	return false;
 }
 
-void ScriptUserPresetHandler::updateAutomationValues(var data, bool sendMessage, bool useUndoManager)
+void ScriptUserPresetHandler::updateAutomationValues(var data, var sendMessage, bool useUndoManager)
 {
+	auto n = ApiHelpers::getDispatchType(sendMessage, true);
+
 	auto& uph = getMainController()->getUserPresetHandler();
 
 	if (data.isInt() || data.isInt64())
@@ -503,14 +538,14 @@ void ScriptUserPresetHandler::updateAutomationValues(var data, bool sendMessage,
 				{
 					float fv = (float)value;
 					FloatSanitizers::sanitizeFloatNumber(fv);
-					cData->call(fv, sendMessage);
+					cData->call(fv, n);
 				}
 			}
 		}
     }
     else
     {
-        getMainController()->getControlUndoManager()->perform(new AutomationValueUndoAction(this, data, sendMessage));
+        getMainController()->getControlUndoManager()->perform(new AutomationValueUndoAction(this, data, n));
     }
 }
 
@@ -2213,7 +2248,7 @@ void FullInstrumentExpansion::expansionPackLoaded(Expansion* e)
 			{
 				p->getMainController()->loadPresetFromValueTree(pr);
 				return SafeFunctionCall::OK;
-			}, MainController::KillStateHandler::SampleLoadingThread);
+			}, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 		}
 		else
 		{
@@ -2229,7 +2264,7 @@ void FullInstrumentExpansion::expansionPackLoaded(Expansion* e)
 				}
 
 				return SafeFunctionCall::OK;
-			}, MainController::KillStateHandler::SampleLoadingThread);
+			}, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 		}
 
 
@@ -2456,7 +2491,7 @@ void FullInstrumentExpansion::DefaultHandler::expansionPackLoaded(Expansion* e)
 				p->getMainController()->loadPresetFromValueTree(copy);
 
 				return SafeFunctionCall::OK;
-			}, MainController::KillStateHandler::SampleLoadingThread);
+			}, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 		}
 	}
 }

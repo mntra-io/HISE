@@ -335,6 +335,7 @@ ScriptingApi::Content::ScriptComponent::ScriptComponent(ProcessorWithScriptingCo
 	asyncValueUpdater(*this),
 	propertyTree(name_.isValid() ? parent->getValueTreeForComponent(name) : ValueTree("Component")),
 	value(0.0),
+	NEW_AUTOMATION_WITH_COMMA(automationListener(base->getMainController_()->getRootDispatcher(), *this, BIND_MEMBER_FUNCTION_2(ScriptComponent::updateAutomation)))
     subComponentNotifier(*this),
 	skipRestoring(false),
 	hasChanged(false),
@@ -615,7 +616,8 @@ void ScriptingApi::Content::ScriptComponent::setScriptObjectPropertyWithChangeMe
 	{
 		if (currentAutomationData != nullptr)
 		{
-			currentAutomationData->asyncListeners.removeListener(*this);
+			IF_OLD_AUTOMATION_DISPATCH(currentAutomationData->asyncListeners.removeListener(*this));
+			IF_NEW_AUTOMATION_DISPATCH(currentAutomationData->dispatcher.removeValueListener(&automationListener));
 		}
 
 		if (!newValue.toString().isEmpty())
@@ -626,10 +628,14 @@ void ScriptingApi::Content::ScriptComponent::setScriptObjectPropertyWithChangeMe
 			{
 				if ((sc.currentAutomationData = sc.getScriptProcessor()->getMainController_()->getUserPresetHandler().getCustomAutomationData(newCustomId)))
 				{
+#if USE_OLD_AUTOMATION_DISPATCH
 					sc.currentAutomationData->asyncListeners.addListener(sc, [](ScriptComponent& c, int index, float v)
 					{
 						c.setValue(v);
 					}, true);
+#endif
+
+					IF_NEW_AUTOMATION_DISPATCH(sc.currentAutomationData->dispatcher.addValueListener(&sc.automationListener, true, dispatch::DispatchType::sendNotificationAsyncHiPriority));
 				}
 			};
 
@@ -924,7 +930,7 @@ void ScriptingApi::Content::ScriptComponent::sendValueListenerMessage()
 	{
 		auto currentThread = getScriptProcessor()->getMainController_()->getKillStateHandler().getCurrentThread();
 
-		if (currentThread == MainController::KillStateHandler::AudioThread)
+		if (currentThread == MainController::KillStateHandler::TargetThread::AudioThread)
 		{
 			asyncValueUpdater.triggerAsyncUpdate();
 			return;
@@ -976,7 +982,7 @@ void ScriptingApi::Content::ScriptComponent::AsyncControlCallbackSender::sendCon
 	{
 		changePending = true;
 
-		if (p->getMainController_()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::ScriptingThread ||
+		if (p->getMainController_()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::ScriptingThread ||
             p->getMainController_()->isFlakyThreadingAllowed())
 			handleAsyncUpdate();
 		else
@@ -1367,7 +1373,11 @@ ScriptingApi::Content::ScriptComponent::~ScriptComponent()
 		linkedComponent->removeLinkedTarget(this);
 
 	if (currentAutomationData != nullptr)
-		currentAutomationData->asyncListeners.removeListener(*this);
+	{
+		IF_OLD_AUTOMATION_DISPATCH(currentAutomationData->asyncListeners.removeListener(*this));
+		IF_NEW_AUTOMATION_DISPATCH(currentAutomationData->dispatcher.removeValueListener(&automationListener));
+	}
+		
 }
 
 void ScriptingApi::Content::ScriptComponent::handleDefaultDeactivatedProperties()
@@ -4084,6 +4094,10 @@ void ScriptingApi::Content::ScriptPanel::init()
 	ADD_API_METHOD_1(setAnimationFrame);
 	ADD_API_METHOD_3(startExternalFileDrag);
 	ADD_API_METHOD_1(startInternalDrag);
+
+#if PERFETTO
+	setWantsCurrentLocation(true);
+#endif
 }
 
 
@@ -4121,11 +4135,16 @@ ScriptCreatedComponentWrapper * ScriptingApi::Content::ScriptPanel::createCompon
 
 void ScriptingApi::Content::ScriptPanel::repaint()
 {
+#if PERFETTO
+	auto newId = getScriptProcessor()->getMainController_()->getRootDispatcher().bumpFlowCounter();
+	flowManager.openFlow(newId, "repaint ", getName(), getCurrentLocationInFunctionCall().toGotoString());
+#endif
+
 	auto threadId = getScriptProcessor()->getMainController_()->getKillStateHandler().getCurrentThread();
 
-	if (threadId == MainController::KillStateHandler::SampleLoadingThread ||
-		threadId == MainController::KillStateHandler::ScriptingThread ||
-		threadId == MainController::KillStateHandler::MessageThread)
+	if (threadId == MainController::KillStateHandler::TargetThread::SampleLoadingThread ||
+		threadId == MainController::KillStateHandler::TargetThread::ScriptingThread ||
+		threadId == MainController::KillStateHandler::TargetThread::MessageThread)
 	{
 		internalRepaint(false);
 	}
@@ -4189,6 +4208,12 @@ bool ScriptingApi::Content::ScriptPanel::internalRepaintIdle(bool forceRepaint, 
 {
 	jassert_locked_script_thread(dynamic_cast<Processor*>(getScriptProcessor())->getMainController());
 
+	uint64_t lastId = 0;
+
+#if PERFETTO
+	lastId = flowManager.flushAllButLastOne("paint callback", getName());
+#endif
+
 	const bool parentHasMovedOn = !isChildPanel && !parent->hasComponent(this);
 
 	if (parentHasMovedOn || !parent->asyncFunctionsAllowed())
@@ -4230,7 +4255,7 @@ bool ScriptingApi::Content::ScriptPanel::internalRepaintIdle(bool forceRepaint, 
 		debugError(dynamic_cast<Processor*>(getScriptProcessor()), r.getErrorMessage());
 	}
 
-	graphics->getDrawHandler().flush();
+	graphics->getDrawHandler().flush(lastId);
 
 	return true;
 }
@@ -4245,6 +4270,7 @@ void ScriptingApi::Content::ScriptPanel::setLoadingCallback(var loadingCallback)
 		loadRoutine.incRefCount();
 		loadRoutine.setThisObject(this);
 		loadRoutine.setHighPriority();
+		loadRoutine.addAsSource(this, "loadingCallback");
 	}
     else
     {
@@ -4268,6 +4294,7 @@ void ScriptingApi::Content::ScriptPanel::setFileDropCallback(String callbackLeve
 	fileDropRoutine.incRefCount();
 	fileDropRoutine.setThisObject(this);
 	fileDropRoutine.setHighPriority();
+	fileDropRoutine.addAsSource(this, "fileDropCallback");
 
 }
 
@@ -4277,6 +4304,7 @@ void ScriptingApi::Content::ScriptPanel::setMouseCallback(var mouseCallbackFunct
 	mouseRoutine.incRefCount();
 	mouseRoutine.setThisObject(this);
 	mouseRoutine.setHighPriority();
+	mouseRoutine.addAsSource(this, "mouseCallback");
 }
 
 void ScriptingApi::Content::ScriptPanel::fileDropCallback(var fileInformation)
@@ -4306,6 +4334,7 @@ void ScriptingApi::Content::ScriptPanel::setTimerCallback(var timerCallback_)
 	timerRoutine = WeakCallbackHolder(getScriptProcessor(), this, timerCallback_, 0);
 	timerRoutine.incRefCount();
 	timerRoutine.setThisObject(this);
+	timerRoutine.addAsSource(this, "timerCallback");
 }
 
 
@@ -4521,7 +4550,7 @@ void ScriptingApi::Content::ScriptPanel::setImage(String imageName, int xOffset,
 	{
 		drawHandler->beginDrawing();
 		drawHandler->addDrawAction(new ScriptedDrawActions::drawImageWithin(img, b.toFloat()));
-		drawHandler->flush();
+		drawHandler->flush(0);
 	}
 }
 
@@ -4696,7 +4725,7 @@ void ScriptingApi::Content::ScriptPanel::repaintWrapped()
 {
 	auto mc = getScriptProcessor()->getMainController_();
 
-	if (mc->getKillStateHandler().getCurrentThread() != MainController::KillStateHandler::ScriptingThread)
+	if (mc->getKillStateHandler().getCurrentThread() != MainController::KillStateHandler::TargetThread::ScriptingThread)
 	{
 		auto jp = dynamic_cast<JavascriptProcessor*>(getProcessor());
 
@@ -4775,7 +4804,7 @@ void ScriptingApi::Content::ScriptPanel::setAnimationFrame(int numFrame)
 	{
 		animation->setFrame(numFrame);
 		updateAnimationData();
-		graphics->getDrawHandler().flush();
+		graphics->getDrawHandler().flush(0);
 	}
 #else
 	reportScriptError("RLottie is disabled. Compile with HISE_INCLUDE_RLOTTIE");
@@ -5184,6 +5213,8 @@ void ScriptingApi::Content::ScriptedViewport::setTableMode(var tableMetadata)
 	}
 
 	tableModel = new ScriptTableListModel(getScriptProcessor(), tableMetadata);
+
+	tableModel->setTooltip(getScriptObjectProperty(ScriptComponent::Properties::tooltip).toString());
 
 	if (tableModel->isMultiColumn())
 	{
@@ -6327,7 +6358,7 @@ void ScriptingApi::Content::restoreAllControlsFromPreset(const ValueTree &preset
 		}
 		else
 		{
-			getProcessor()->setAttribute(i, (float)v, sendNotification);
+			getProcessor()->setAttribute(i, (float)v, sendNotificationAsync);
 		}
 
 		const String macroName = components[i]->getScriptObjectProperty(ScriptComponent::macroControl).toString();
@@ -6472,6 +6503,8 @@ void ScriptingApi::Content::rebuildComponentListFromValueTree()
 
 	auto p = dynamic_cast<Processor*>(getScriptProcessor());
 
+	updateParameterSlots();
+
 	if (p->getMainController()->getScriptComponentEditBroadcaster()->isBeingEdited(p))
 	{
 		debugToConsole(p, "Updated Components");
@@ -6543,6 +6576,11 @@ void ScriptingApi::Content::addComponentsFromValueTree(const ValueTree& v)
 	{
 		debugError(getProcessor(), errorMessage);
 	}
+}
+
+void ScriptingApi::Content::updateParameterSlots()
+{
+	dynamic_cast<Processor*>(getScriptProcessor())->updateParameterSlots();
 }
 
 void ScriptingApi::Content::restoreSavedValue(const Identifier& controlId)

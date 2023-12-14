@@ -30,6 +30,9 @@
 *   ===========================================================================
 */
 
+#include "PatchBrowser.h"
+#include "PatchBrowser.h"
+
 namespace hise { using namespace juce;
 
 // ====================================================================================================================
@@ -81,7 +84,7 @@ PatchBrowser::~PatchBrowser()
 }
 
 
-
+#if 0
 bool PatchBrowser::isInterestedInDragSource(const SourceDetails& dragSourceDetails)
 {
 	return !dragSourceDetails.description.isUndefined();
@@ -105,78 +108,14 @@ void PatchBrowser::itemDragExit(const SourceDetails& /*dragSourceDetails*/)
 
 void PatchBrowser::itemDragMove(const SourceDetails& dragSourceDetails)
 {
-	ModuleDragTarget *dragTarget = dynamic_cast<ModuleDragTarget*>(getComponentAt(dragSourceDetails.localPosition));
-
-	if (dragTarget == nullptr) return;
-
-	if (lastTarget != nullptr && dynamic_cast<ModuleDragTarget*>(lastTarget.getComponent()) != dragTarget)
-	{
-		dynamic_cast<ModuleDragTarget*>(lastTarget.getComponent())->setDraggingOver(false);
-	}
-
-	dragTarget->setDraggingOver(true);
-	lastTarget = dynamic_cast<Component*>(dragTarget);
+	
 }
 
 void PatchBrowser::itemDropped(const SourceDetails& dragSourceDetails)
 {
-	ModuleDragTarget *dragTarget = dynamic_cast<ModuleDragTarget*>(getComponentAt(dragSourceDetails.localPosition));
-
-	if (dragTarget != nullptr && dragTarget->getDragState() == ModuleDragTarget::DragState::Allowed)
-	{
-		Chain *c = dynamic_cast<Chain*>(dragTarget->getProcessor());
-
-		if (c != nullptr)
-		{
-			Identifier type = Identifier(dragSourceDetails.description.toString().upToFirstOccurrenceOf("::", false, true));
-			String name = dragSourceDetails.description.toString().fromLastOccurrenceOf("::", false, true);
-
-			Processor *newProcessor = MainController::createProcessor(c->getFactoryType(), type, name);
-
-			c->getHandler()->add(newProcessor, nullptr);
-
-			dynamic_cast<Processor*>(c)->setEditorState(Processor::EditorState::Visible, true, sendNotification);
-
-
-			ProcessorEditorContainer *rootContainer = GET_BACKEND_ROOT_WINDOW(this)->getMainPanel()->getRootContainer();
-
-			jassert(rootContainer != nullptr);
-
-			ProcessorEditor *editorOfParent = nullptr;
-			ProcessorEditor *editorOfChain = nullptr;
-
-			if (ProcessorHelpers::is<ModulatorSynth>(dragTarget->getProcessor()))
-			{
-				editorOfParent = rootContainer->getFirstEditorOf(dragTarget->getProcessor());
-				editorOfChain = editorOfParent;
-			}
-			else
-			{
-				editorOfParent = rootContainer->getFirstEditorOf(ProcessorHelpers::findParentProcessor(dragTarget->getProcessor(), true));
-				editorOfChain = rootContainer->getFirstEditorOf(dragTarget->getProcessor());
-			}
-
-
-			if (editorOfParent != nullptr)
-			{
-				editorOfParent->getChainBar()->refreshPanel();
-				editorOfParent->sendResizedMessage();
-				editorOfChain->changeListenerCallback(editorOfChain->getProcessor());
-				editorOfChain->childEditorAmountChanged();
-			}
-
-			GET_BACKEND_ROOT_WINDOW(this)->sendRootContainerRebuildMessage(false);
-		}
-	}
-
-	for (int i = 0; i < getNumCollections(); i++)
-	{
-		dynamic_cast<ModuleDragTarget*>(getCollection(i))->resetDragState();
-	}
-
-	rebuildModuleList(true);
+	
 }
-
+#endif
 
 
 void PatchBrowser::refreshBypassState()
@@ -760,6 +699,8 @@ void PatchBrowser::toggleFoldAll()
 
 void PatchBrowser::toggleShowChains()
 {
+	SUSPEND_GLOBAL_DISPATCH(rootWindow->getBackendProcessor(), "toggle patch browser edit mode");
+
 	showChains = !showChains;
 	rebuildModuleList(true);
     repaint();
@@ -837,13 +778,17 @@ void PatchBrowser::rebuilt()
 // ====================================================================================================================
 
 PatchBrowser::ModuleDragTarget::ModuleDragTarget(Processor* p_) :
+BypassListener(p_->getMainController()->getRootDispatcher()),
 p(p_),
 peak(p_),
 dragState(DragState::Inactive),
 closeButton("close", nullptr, f),
 createButton("create", nullptr, f),
-isOver(false)
+isOver(false),
+idUpdater(p->getMainController()->getRootDispatcher(), *this, BIND_MEMBER_FUNCTION_1(ModuleDragTarget::onNameOrColourUpdate))
 {
+	p->addBypassListener(this, dispatch::sendNotificationAsync);
+
 	createButton.onClick = [this]()
 	{
 		auto p = getProcessor();
@@ -916,6 +861,14 @@ isOver(false)
 	idLabel.addListener(this);
     
 	bypassed = getProcessor()->isBypassed();
+
+	getProcessor()->addNameAndColourListener(&idUpdater, dispatch::sendNotificationAsync);
+}
+
+PatchBrowser::ModuleDragTarget::~ModuleDragTarget()
+{
+	getProcessor()->removeBypassListener(this);
+	getProcessor()->removeNameAndColourListener(&idUpdater);
 }
 
 void PatchBrowser::ModuleDragTarget::buttonClicked(Button *b)
@@ -933,7 +886,6 @@ void PatchBrowser::ModuleDragTarget::buttonClicked(Button *b)
 		const bool isHidden = getProcessor()->getEditorState(Processor::EditorState::Visible);
 
 		getProcessor()->setEditorState(Processor::Visible, !isHidden, sendNotification);
-		getProcessor()->sendChangeMessage();
 
 		mainEditor->getRootContainer()->refreshSize(false);
 		
@@ -947,6 +899,60 @@ void PatchBrowser::ModuleDragTarget::refreshAllButtonStates()
 	refreshButtonState(hideButton, getProcessor()->getEditorState(Processor::EditorState::Visible));
 }
 
+bool PatchBrowser::ModuleDragTarget::startDrag(const MouseEvent& e)
+{
+	if(e.mods.isRightButtonDown() || e.mods.isAnyModifierKeyDown() || dragging)
+		return false;
+
+	auto pb = e.eventComponent->findParentComponentOfClass<PatchBrowser>();
+
+	if(!pb->showChains)
+		return false;
+
+	if(canBeDragged())
+	{
+		String path;
+		path << getProcessor()->getType() << "::" << getProcessor()->getId();
+
+		Image img2(Image::PixelFormat::ARGB, 200, jmin(32, dynamic_cast<Component*>(this)->getHeight()), true);
+
+		Graphics g(img2);
+
+		auto b = img2.getBounds().toFloat();
+
+		g.setColour(Colour(0xFF282828).withAlpha(0.7f));
+		g.fillRoundedRectangle(b.reduced(1), 2.0);
+		g.setColour(Colours::white.withAlpha(0.7f));
+		g.drawRoundedRectangle(b.reduced(1.0f), 2.0f, 1.0f);
+		auto ib = b.removeFromLeft(b.getHeight()).reduced(3.0f);
+		b.removeFromLeft(10);
+		g.setFont(GLOBAL_BOLD_FONT());
+		g.drawText(getProcessor()->getId(), b, Justification::left);
+		g.setColour(getProcessor()->getColour());
+		g.fillRoundedRectangle(ib, 2.0f);
+
+		Path p;
+		p.loadPathFromData(EditorIcons::resizeIcon, SIZE_OF_PATH(EditorIcons::resizeIcon));
+		PathFactory::scalePath(p, ib.reduced(4.0f));
+		g.setColour(Colours::white);
+		g.fillPath(p);
+
+		auto sf = UnblurryGraphics::getScaleFactorForComponent(dynamic_cast<Component*>(this), false);
+
+		juce::ScaledImage img(img2, sf);
+
+		dragging = true;
+
+		PatchBrowser::showProcessorInPopup(e.eventComponent, e, getProcessor());
+
+		pb->startDragging(var(path), e.eventComponent, img);
+		e.eventComponent->repaint();
+		return true;
+	}
+
+	return false;
+}
+
 void PatchBrowser::ModuleDragTarget::refreshButtonState(ShapeButton *button, bool on)
 {
 	if (on)
@@ -958,19 +964,63 @@ void PatchBrowser::ModuleDragTarget::refreshButtonState(ShapeButton *button, boo
 void PatchBrowser::ModuleDragTarget::setDraggingOver(bool shouldBeOver)
 {
 	isOver = shouldBeOver;
+	resetDragState();
 	
 	dynamic_cast<Component*>(this)->repaint();
 }
 
 void PatchBrowser::ModuleDragTarget::checkDragState(const SourceDetails& dragSourceDetails)
 {
-	if (ProcessorHelpers::is<Chain>(getProcessor()))
+	auto c = dynamic_cast<Chain*>(getProcessor());
+
+	if(c == nullptr)
+		c = dynamic_cast<Chain*>(getProcessor()->getParentProcessor(false));
+
+	if (c != nullptr)
 	{
+		auto sourceProcessor = dynamic_cast<ModuleDragTarget*>(dragSourceDetails.sourceComponent.get())->getProcessor();
+		auto targetProcessor = dynamic_cast<Processor*>(c);
+		
 		Identifier t = Identifier(dragSourceDetails.description.toString().upToFirstOccurrenceOf("::", false, true));
 
-		const bool allowed = dynamic_cast<const Chain*>(getProcessor())->getFactoryType()->allowType(t);
+		const bool allowed = c->getFactoryType()->allowType(t);
 
 		setDragState(allowed ? DragState::Allowed : DragState::Forbidden);
+
+		// Modulators can't change their Mode so you can't drag a modulator eg. from a pitch chain to a gain chain...
+		if(auto mc = dynamic_cast<ModulatorChain*>(c))
+		{
+			auto mod = dynamic_cast<Modulation*>(sourceProcessor);
+			
+			if(mod != nullptr && mc->getMode() != mod->getMode())
+				setDragState(DragState::Forbidden);
+		}
+
+		// Check that you don't drag a parent into its child...
+		auto newParent = targetProcessor;
+
+		while(newParent != nullptr)
+		{
+			if(newParent == sourceProcessor)
+			{
+				setDragState(DragState::Forbidden);
+				break;
+			}
+			newParent = newParent->getParentProcessor(false, false);
+		}
+
+		auto pb = dynamic_cast<Component*>(this)->findParentComponentOfClass<PatchBrowser>();
+
+		if(allowed)
+		{
+			pb->insertHover = getProcessor();
+		}
+		else
+		{
+			pb->insertHover = nullptr;
+		}
+
+		pb->repaint();
 
 		dynamic_cast<Component*>(this)->repaint();
 	}
@@ -985,6 +1035,82 @@ void PatchBrowser::ModuleDragTarget::resetDragState()
 {
 	dragState = DragState::Inactive;
 	dynamic_cast<Component*>(this)->repaint();
+}
+
+bool PatchBrowser::ModuleDragTarget::isInterestedInDragSource(const SourceDetails& dragSourceDetails)
+{
+	return dynamic_cast<const ModuleDragTarget*>(dragSourceDetails.sourceComponent.get()) != nullptr;
+}
+
+
+
+void PatchBrowser::ModuleDragTarget::itemDropped(const SourceDetails& dragSourceDetails)
+{
+	auto pb = dynamic_cast<Component*>(this)->findParentComponentOfClass<PatchBrowser>();
+	pb->insertHover = nullptr;
+	pb->repaint();
+
+	if(getDragState() == DragState::Forbidden)
+	{
+		resetDragState();
+		return;
+	}
+
+	if(dragSourceDetails.sourceComponent == dynamic_cast<Component*>(this))
+	{
+		resetDragState();
+		return;
+	}
+
+	Chain *c = dynamic_cast<Chain*>(getProcessor());
+
+	auto p = dynamic_cast<ModuleDragTarget*>(dragSourceDetails.sourceComponent.get())->getProcessor();
+
+	auto oldChain = dynamic_cast<Chain*>(p->getParentProcessor(false));
+
+	if(p->getParentProcessor(false) == getProcessor())
+	{
+		resetDragState();
+		return;
+	}
+
+	if(c == nullptr)
+		c = dynamic_cast<Chain*>(getProcessor()->getParentProcessor(false));
+
+	if (c != nullptr)
+	{
+		Identifier type = Identifier(dragSourceDetails.description.toString().upToFirstOccurrenceOf("::", false, true));
+		String name = dragSourceDetails.description.toString().fromLastOccurrenceOf("::", false, true);
+
+		int index = -1;
+
+		for(int i = 0; i < c->getHandler()->getNumProcessors(); i++)
+		{
+			if(c->getHandler()->getProcessor(i) == p)
+			{
+				index = i;
+				break;
+			}
+		}
+
+		p->getMainController()->allNotesOff();
+
+		auto sibling = index == -1 ? nullptr : c->getHandler()->getProcessor(index);
+
+		oldChain->getHandler()->remove(p, false);
+
+		c->getHandler()->add(p, sibling);
+
+		//if(index != -1)
+		//	c->getHandler()->moveProcessor(p, -1);
+
+		auto root = p->getMainController()->getMainSynthChain();
+		root->prepareToPlay(root->getSampleRate(), root->getLargestBlockSize());
+
+		resetDragState();
+		pb->rebuildModuleList(true);
+		pb->repaint();
+	}
 }
 
 void PatchBrowser::ModuleDragTarget::handleRightClick(bool isInEditMode)
@@ -1031,7 +1157,6 @@ PatchBrowser::PatchCollection::PatchCollection(ModulatorSynth *synth, int hierar
 ModuleDragTarget(synth),
 hierarchy(hierarchy_)
 {
-	synth->addBypassListener(this);
 	addAndMakeVisible(peak);
 	addAndMakeVisible(idLabel);
 	addAndMakeVisible(foldButton = new ShapeButton("Fold Overview", Colour(0xFF222222), Colours::white.withAlpha(0.4f), Colour(0xFF222222)));
@@ -1113,8 +1238,7 @@ hierarchy(hierarchy_)
 
 PatchBrowser::PatchCollection::~PatchCollection()
 {
-	if(getProcessor() != nullptr)
-		getProcessor()->removeBypassListener(this);
+	
 }
 
 void PatchBrowser::PatchCollection::mouseDown(const MouseEvent& e)
@@ -1148,8 +1272,6 @@ void PatchBrowser::PatchCollection::mouseDown(const MouseEvent& e)
 		else if (getProcessor() != nullptr)
 			PatchBrowser::showProcessorInPopup(this, e, getProcessor());
     }
-
-	
 }
 
 void PatchBrowser::PatchCollection::paint(Graphics &g)
@@ -1245,6 +1367,19 @@ void PatchBrowser::PatchCollection::paint(Graphics &g)
         }
         
     }
+
+	auto ds = getDragState();
+
+	if(ds != DragState::Inactive)
+	{
+		g.setColour(Colour(ds == DragState::Forbidden ? HISE_ERROR_COLOUR : HISE_OK_COLOUR).withAlpha(0.4f));
+		g.fillRoundedRectangle(b, 2.0f);
+	}
+	else if (dragging)
+	{
+		g.setColour(Colour(HISE_WARNING_COLOUR).withAlpha(0.2f));
+		g.fillRoundedRectangle(b, 2.0f);
+	}
 }
 
 
@@ -1346,21 +1481,13 @@ Point<int> PatchBrowser::PatchCollection::getPointForTreeGraph(bool getStartPoin
 void PatchBrowser::PatchCollection::checkDragState(const SourceDetails& dragSourceDetails)
 {
 	ModuleDragTarget::checkDragState(dragSourceDetails);
-
-	for (int i = 0; i < items.size(); i++)
-	{
-		dynamic_cast<ModuleDragTarget*>(items[i])->checkDragState(dragSourceDetails);
-	}
+	
 }
 
 void PatchBrowser::PatchCollection::resetDragState()
 {
 	ModuleDragTarget::resetDragState();
-
-	for (int i = 0; i < items.size(); i++)
-	{
-		dynamic_cast<ModuleDragTarget*>(items[i])->resetDragState();
-	}
+	
 }
 
 void PatchBrowser::PatchCollection::toggleShowChains()
@@ -1381,7 +1508,6 @@ lastMouseDown(0)
     
 	addAndMakeVisible(closeButton);
 	addAndMakeVisible(createButton);
-	p->addBypassListener(this);
 
     addAndMakeVisible(idLabel);
 	addAndMakeVisible(gotoWorkspace);
@@ -1416,8 +1542,6 @@ lastMouseDown(0)
 
 PatchBrowser::PatchItem::~PatchItem()
 {
-	if(getProcessor() != nullptr)
-		getProcessor()->removeBypassListener(this);
 }
 
 
@@ -1472,7 +1596,6 @@ void PatchBrowser::PatchItem::popupCallback(int menuIndex)
 		break;
 	case PatchBrowser::ModuleDragTarget::ViewSettings::Visible:
 		getProcessor()->toggleEditorState(Processor::Visible, sendNotification);
-		getProcessor()->sendChangeMessage();
 		mainEditor->getRootContainer()->refreshSize(false);	
 		break;
 	case PatchBrowser::ModuleDragTarget::ViewSettings::Solo:
@@ -1485,7 +1608,6 @@ void PatchBrowser::PatchItem::popupCallback(int menuIndex)
 		break;
 	case PatchBrowser::ModuleDragTarget::ViewSettings::Bypassed:
 		getProcessor()->setBypassed(!getProcessor()->isBypassed());
-		getProcessor()->sendChangeMessage();
 		break;
 	case PatchBrowser::ModuleDragTarget::ViewSettings::Copy:
 		PresetHandler::copyProcessorToClipboard(getProcessor());
@@ -1524,7 +1646,7 @@ void PatchBrowser::PatchItem::popupCallback(int menuIndex)
 		{
 			editorOfParent->getChainBar()->refreshPanel();
 			editorOfParent->sendResizedMessage();
-			editorOfChain->changeListenerCallback(editorOfChain->getProcessor());
+			editorOfChain->otherChange(editorOfChain->getProcessor());
 			editorOfChain->childEditorAmountChanged();
 		}
 
@@ -1590,13 +1712,10 @@ void PatchBrowser::PatchItem::applyLayout()
 	auto peakBounds = b.removeFromLeft(peak.getPreferredWidth()).toNearestInt();
     peak.setBounds(peakBounds);
 
-    
-
     auto canBeDeleted = dynamic_cast<Chain*>(getProcessor()) == nullptr;
     canBeDeleted |= dynamic_cast<ModulatorSynth*>(getProcessor()) != nullptr;
     canBeDeleted &= getProcessor() != getProcessor()->getMainController()->getMainSynthChain();
     canBeDeleted &= dynamic_cast<SlotFX*>(getProcessor()->getParentProcessor(false, true)) == nullptr;
-    
     
     closeButton.setVisible(canBeDeleted && findParentComponentOfClass<PatchBrowser>()->showChains);
     
@@ -1605,8 +1724,6 @@ void PatchBrowser::PatchItem::applyLayout()
         closeButton.setBorderSize(BorderSize<int>(2));
         closeButton.setBounds(b.removeFromRight(getHeight()));
     }
-   
-        
         
     if (dynamic_cast<Chain*>(getProcessor()) != nullptr)
     {
@@ -1688,6 +1805,20 @@ void PatchBrowser::PatchItem::paint(Graphics& g)
 	g.drawRoundedRectangle(iconSpace, 2.0f, 2.0f);
 
 	g.setColour(ProcessorHelpers::is<Chain>(p.get()) ? Colours::black.withAlpha(0.6f) : Colours::black);
+
+	auto ds = getDragState();
+
+	if(ds != DragState::Inactive)
+	{
+		g.setColour(Colour(ds == DragState::Forbidden ? HISE_ERROR_COLOUR : HISE_OK_COLOUR).withAlpha(0.4f));
+		g.fillRoundedRectangle(b, 2.0f);
+	}
+	else if (dragging)
+	{
+		g.setColour(Colour(HISE_WARNING_COLOUR).withAlpha(0.2f));
+		g.fillRoundedRectangle(b, 2.0f);
+	}
+
 }
 
 void PatchBrowser::PatchItem::resized()
@@ -1704,6 +1835,7 @@ struct PlotterPopup: public Component
 {
 	PlotterPopup(Processor* m_):
 		m(m_),
+		p(m_->getMainController()->getGlobalUIUpdater()),
 		resizer(this, nullptr)
 	{
 		dynamic_cast<Modulation*>(m.get())->setPlotter(&p);
@@ -2087,7 +2219,7 @@ AutomationDataBrowser::AutomationCollection::ConnectionItem::ConnectionItem(Auto
 	if (auto pc = dynamic_cast<AutomationData::ProcessorConnection*>(c.get()))
 	{
 		if (pc->connectedProcessor != nullptr)
-			pc->connectedProcessor->addChangeListener(this);
+			updater = new Updater(*this, pc->connectedProcessor);
 	}
 
 	setSize(380 - 16, ITEM_HEIGHT);
@@ -2095,11 +2227,7 @@ AutomationDataBrowser::AutomationCollection::ConnectionItem::ConnectionItem(Auto
 
 AutomationDataBrowser::AutomationCollection::ConnectionItem::~ConnectionItem()
 {
-	if (auto pc = dynamic_cast<AutomationData::ProcessorConnection*>(c.get()))
-	{
-		if (pc->connectedProcessor != nullptr)
-			pc->connectedProcessor->removeChangeListener(this);
-	}
+	updater = nullptr;
 }
 
 void AutomationDataBrowser::AutomationCollection::ConnectionItem::paint(Graphics& g)
@@ -2182,6 +2310,7 @@ AutomationDataBrowser::AutomationCollection::AutomationCollection(MainController
 	SimpleTimer(mc->getGlobalUIUpdater()),
 	Collection(),
 	data(data_),
+	NEW_AUTOMATION_WITH_COMMA(listener(mc->getRootDispatcher(), *this, [this](int, double){ this->repaint();}))
 	index(index_)
 {
 	for (auto c_ : data->connectionList)
@@ -2191,10 +2320,14 @@ AutomationDataBrowser::AutomationCollection::AutomationCollection(MainController
 		addAndMakeVisible(items.getLast());
 	}
 
+#if USE_OLD_AUTOMATION_DISPATCH
 	data->asyncListeners.addListener(*this, [](AutomationCollection& c, int index, float v)
 	{
 		c.repaint();
 	}, false);
+#endif
+
+	IF_NEW_AUTOMATION_DISPATCH(data->dispatcher.addValueListener(&listener, true, dispatch::DispatchType::sendNotificationAsync));
 
 	checkIfChanged(false);
 }
@@ -2207,6 +2340,10 @@ void AutomationDataBrowser::AutomationCollection::checkIfChanged(bool rebuildIfC
 	if (hasComponentConnection != hasComponentConnectionNow ||
 		hasMidiConnection != hasMidiConnectionNow)
 	{
+		hasComponentConnection = hasComponentConnectionNow;
+		hasMidiConnection = hasMidiConnectionNow;
+		repaint();
+
 		if (rebuildIfChanged)
 		{
 			if (auto p = findParentComponentOfClass<AutomationDataBrowser>())
@@ -2223,10 +2360,6 @@ void AutomationDataBrowser::AutomationCollection::checkIfChanged(bool rebuildIfC
 
 			return;
 		}
-		
-		hasComponentConnection = hasComponentConnectionNow;
-		hasMidiConnection = hasMidiConnectionNow;
-		repaint();
 	}
 }
 

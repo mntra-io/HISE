@@ -44,6 +44,9 @@ MainController::MainController() :
 
 	sampleManager(new SampleManager(this)),
 	javascriptThreadPool(new JavascriptThreadPool(this)),
+	rootDispatcher(getGlobalUIUpdater()),
+	processorHandler(rootDispatcher),
+	customAutomationSourceManager(rootDispatcher),
 	expansionHandler(this),
 	allNotesOffFlag(false),
 	processingBufferSize(-1),
@@ -106,10 +109,9 @@ MainController::MainController() :
 	hostInfo = new DynamicObject();
     
 	startTimer(HISE_UNDO_INTERVAL);
-    
-#if PERFETTO
-    MelatoninPerfetto::get().beginSession();
-#endif
+
+	javascriptThreadPool->startThread(8);
+	getKillStateHandler().setScriptingThreadId(javascriptThreadPool->getThreadId());
 };
 
 
@@ -131,10 +133,6 @@ MainController::~MainController()
 
 	sampleManager = nullptr;
 	javascriptThreadPool = nullptr;
-    
-#if PERFETTO
-    MelatoninPerfetto::get().endSession();
-#endif
 }
 
 
@@ -233,13 +231,17 @@ void MainController::clearPreset()
 {
 	Processor::Iterator<Processor> iter(getMainSynthChain(), false);
 
-    
+	auto isMessageThread = MessageManager::getInstance()->isThisTheMessageThread();
+
+	getProcessorChangeHandler().sendProcessorChangeMessage(getMainSynthChain(), ProcessorChangeHandler::EventType::ClearBeforeRebuild, isMessageThread);
+
 	while (auto p = iter.getNextProcessor())
 		p->cleanRebuildFlagForThisAndParents();
 
 	auto f = [](Processor* p)
 	{
 		auto mc = p->getMainController();
+		SUSPEND_GLOBAL_DISPATCH(mc, "reset main controller");
 		LockHelpers::freeToGo(mc);
 
 		mc->getMacroManager().getMidiControlAutomationHandler()->getMPEData().clear();
@@ -247,8 +249,11 @@ void MainController::clearPreset()
 		mc->getControlUndoManager()->clearUndoHistory();
         mc->getLocationUndoManager()->clearUndoHistory();
         mc->getMasterClock().reset();
-		mc->customTypeFaces.clear();
-		mc->customTypeFaceData.removeAllChildren(nullptr);
+				
+		#if USE_BACKEND
+			mc->customTypeFaces.clear();
+			mc->customTypeFaceData.removeAllChildren(nullptr);	
+		#endif
 
         mc->clearWebResources();
 		mc->setGlobalRoutingManager(nullptr);
@@ -267,21 +272,23 @@ void MainController::clearPreset()
 		mc->changed = false;
         
         mc->prepareToPlay(mc->processingSampleRate, mc->numSamplesThisBlock);
-        
+
+		mc->getProcessorChangeHandler().sendProcessorChangeMessage(mc->getMainSynthChain(), ProcessorChangeHandler::EventType::RebuildModuleList, false);
+
 		return SafeFunctionCall::OK;
 	};
 
 	if (isBeingDeleted())
 		f(getMainSynthChain());
 	else
-		getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::SampleLoadingThread);
+		getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::TargetThread::SampleLoadingThread);
 }
 
 void MainController::loadPresetFromValueTree(const ValueTree &v, Component* /*mainEditor*/)
 {
 #if USE_BACKEND
     const bool isCommandLine = CompileExporter::isExportingFromCommandLine();
-    const bool isSampleLoadingThread = killStateHandler.getCurrentThread() == KillStateHandler::SampleLoadingThread;
+    const bool isSampleLoadingThread = killStateHandler.getCurrentThread() == KillStateHandler::TargetThread::SampleLoadingThread;
     
 	jassert(isCommandLine || isSampleLoadingThread || !isInitialised());
     ignoreUnused(isCommandLine, isSampleLoadingThread);
@@ -319,7 +326,7 @@ void MainController::loadPresetInternal(const ValueTree& v)
 
 #if USE_BACKEND
 			const bool isCommandLine = CompileExporter::isExportingFromCommandLine();
-			const bool isSampleLoadingThread = killStateHandler.getCurrentThread() == KillStateHandler::SampleLoadingThread;
+			const bool isSampleLoadingThread = killStateHandler.getCurrentThread() == KillStateHandler::TargetThread::SampleLoadingThread;
 
 			jassert(!isInitialised() || isCommandLine || isSampleLoadingThread);
 			ignoreUnused(isCommandLine, isSampleLoadingThread);
@@ -418,7 +425,7 @@ void MainController::loadPresetInternal(const ValueTree& v)
 		return SafeFunctionCall::OK;
 	};
 	
-	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::SampleLoadingThread);
+	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::TargetThread::SampleLoadingThread);
 }
 
 
@@ -499,6 +506,8 @@ void MainController::stopCpuBenchmark()
 	
 	const float lastUsage = usagePercent.load();
 	
+	TRACE_COUNTER("dsp", perfetto::CounterTrack("Audio Thread CPU usage", "%").set_is_incremental(false), thisUsage);
+
 	if (thisUsage > lastUsage)
 	{
 		usagePercent.store(thisUsage);
@@ -511,12 +520,12 @@ void MainController::stopCpuBenchmark()
 
 void MainController::killAndCallOnAudioThread(const ProcessorFunction& f)
 {
-	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::AudioThread);
+	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::TargetThread::AudioThread);
 }
 
 void MainController::killAndCallOnLoadingThread(const ProcessorFunction& f)
 {
-	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::SampleLoadingThread);
+	getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::TargetThread::SampleLoadingThread);
 }
 
 void MainController::sendToMidiOut(const HiseEvent& e)
@@ -564,7 +573,7 @@ bool MainController::refreshOversampling()
 		};
 
 		allNotesOff(false);
-		getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::SampleLoadingThread);
+		getKillStateHandler().killVoicesAndCall(getMainSynthChain(), f, KillStateHandler::TargetThread::SampleLoadingThread);
 
 		return true;
 	}
@@ -688,7 +697,7 @@ void MainController::stopBufferToPlay()
 		bool sendToListeners = true;
 
 		{
-			LockHelpers::SafeLock sl(this, LockHelpers::AudioLock);
+			LockHelpers::SafeLock sl(this, LockHelpers::Type::AudioLock);
 
 			previewFunction = {};
 
@@ -712,7 +721,7 @@ void MainController::stopBufferToPlay()
 
 void MainController::setBufferToPlay(const AudioSampleBuffer& buffer, double bufferSampleRate, const std::function<void(int)>& pf)
 {
-	if (buffer.getNumSamples() > 400000 && getKillStateHandler().getCurrentThread() != KillStateHandler::SampleLoadingThread)
+	if (buffer.getNumSamples() > 400000 && getKillStateHandler().getCurrentThread() != KillStateHandler::TargetThread::SampleLoadingThread)
 	{
 		AudioSampleBuffer copy;
 		copy.makeCopyOf(buffer);
@@ -731,7 +740,7 @@ void MainController::setBufferToPlay(const AudioSampleBuffer& buffer, double buf
         copy.makeCopyOf(buffer);
         
 		{
-			LockHelpers::SafeLock sl(this, LockHelpers::AudioLock);
+			LockHelpers::SafeLock sl(this, LockHelpers::Type::AudioLock);
 
 			previewBufferIndex = 0;
 			std::swap(previewBuffer, copy);
@@ -817,6 +826,8 @@ hise::RLottieManager::Ptr MainController::getRLottieManager()
 
 void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &midiMessages)
 {
+	PerfettoHelpers::setCurrentThreadName("Audio Thread");
+	
     if (getKillStateHandler().getStateLoadFlag())
 		return;
 
@@ -1459,8 +1470,8 @@ void MainController::prepareToPlay(double sampleRate_, int samplesPerBlock)
 	AudioThreadGuard::Suspender suspender;
 	ignoreUnused(suspender);
 
-	LockHelpers::SafeLock itLock(this, LockHelpers::IteratorLock);
-	LockHelpers::SafeLock audioLock(this, LockHelpers::AudioLock);
+	LockHelpers::SafeLock itLock(this, LockHelpers::Type::IteratorLock);
+	LockHelpers::SafeLock audioLock(this, LockHelpers::Type::AudioLock);
 
 	getMainSynthChain()->setIsOnAir(true);
 
@@ -1573,7 +1584,7 @@ void MainController::handleTransportCallbacks(const AudioPlayHead::CurrentPositi
 void MainController::addTempoListener(TempoListener *t)
 {
 	{
-		LockHelpers::SafeLock sl(this, LockHelpers::AudioLock);
+		LockHelpers::SafeLock sl(this, LockHelpers::Type::AudioLock);
 		tempoListeners.addIfNotAlreadyThere(t);
 	}
 	
@@ -1584,19 +1595,19 @@ void MainController::addTempoListener(TempoListener *t)
 
 void MainController::removeTempoListener(TempoListener *t)
 {
-	LockHelpers::SafeLock sl(this, LockHelpers::AudioLock);
+	LockHelpers::SafeLock sl(this, LockHelpers::Type::AudioLock);
 	tempoListeners.removeAllInstancesOf(t);
 }
 
 void MainController::addMusicalUpdateListener(TempoListener* t)
 {
-	LockHelpers::SafeLock sl(this, LockHelpers::AudioLock);
+	LockHelpers::SafeLock sl(this, LockHelpers::Type::AudioLock);
 	pulseListener.addIfNotAlreadyThere(t);
 }
 
 void MainController::removeMusicalUpdateListener(TempoListener* t)
 {
-	LockHelpers::SafeLock sl(this, LockHelpers::AudioLock);
+	LockHelpers::SafeLock sl(this, LockHelpers::Type::AudioLock);
 	pulseListener.removeAllInstancesOf(t);
 }
 
@@ -1620,7 +1631,7 @@ float MainController::getStringWidthFromEmbeddedFont(const String& text, const S
 	{
 		auto nameToUse = tf.id.isValid() ? tf.id.toString() : tf.typeface->getName();
 
-		if (nameToUse == fontName)
+		if (nameToUse == fontName || tf.typeface->getName() == fontName)
 			return tf.getStringWidthFloat(text, fontSize, kerningFactor);
 	}
 
@@ -1729,7 +1740,7 @@ void MainController::loadTypeFace(const String& fileName, const void* fontData, 
 
 int MainController::getBufferSizeForCurrentBlock() const noexcept
 {
-	jassert(getKillStateHandler().getCurrentThread() == KillStateHandler::AudioThread);
+	jassert(getKillStateHandler().getCurrentThread() == KillStateHandler::TargetThread::AudioThread);
 
 	return numSamplesThisBlock;
 }
@@ -2001,7 +2012,7 @@ void MainController::SampleManager::handleNonRealtimeState()
 	{
 		Processor::Iterator<NonRealtimeProcessor> iter(mc->getMainSynthChain());
 
-		LockHelpers::SafeLock sl(mc, LockHelpers::AudioLock);
+		LockHelpers::SafeLock sl(mc, LockHelpers::Type::AudioLock);
 
 		while (auto nrt = iter.getNextProcessor())
 			nrt->nonRealtimeModeChanged(isNonRealtime());

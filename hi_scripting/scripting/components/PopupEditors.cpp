@@ -104,6 +104,9 @@ PopupIncludeEditor::PopupIncludeEditor(JavascriptProcessor *s, const File &fileT
 	callback(Identifier()),
 	tokeniser(new JavascriptTokeniser())
 {
+	tokeniser->setUseScopeStatements(true);
+	
+
 	Processor *p = dynamic_cast<Processor*>(jp.get());
 	externalFile = p->getMainController()->getExternalScriptFile(fileToEdit);
 
@@ -143,6 +146,7 @@ PopupIncludeEditor::PopupIncludeEditor(JavascriptProcessor* s, const Identifier 
 	callback(callback_),
 	tokeniser(new JavascriptTokeniser())
 {
+	tokeniser->setUseScopeStatements(true);
 	
 	auto& d = *jp->getSnippet(callback_);
 	addEditor(d, true);
@@ -167,12 +171,12 @@ struct JavascriptLanguageManager : public mcl::LanguageManager
 
 	CodeTokeniser* createCodeTokeniser() override 
 	{
-        
-        
-		return new JavascriptTokeniser();
+        auto js = new JavascriptTokeniser();
+		js->setUseScopeStatements(true);
+		return js;
 	}
 
-    
+    Identifier getLanguageId() const override { return mcl::LanguageIds::HiseScript; }
     
     bool getInplaceDebugValues(Array<InplaceDebugValue>& values) const override
     {
@@ -214,9 +218,17 @@ struct GLSLLanguageManager : public mcl::LanguageManager
 		
 	}
 
+	Identifier getLanguageId() const override { return mcl::LanguageIds::GLSL; }
+
 	void addTokenProviders(mcl::TokenCollection* t)
 	{
 		t->addTokenProvider(new GLSLKeywordProvider());
+	}
+
+	void setupEditor(mcl::TextEditor* e) override
+	{
+		e->tokenCollection = new mcl::TokenCollection(getLanguageId());
+		addTokenProviders(e->tokenCollection.get());
 	}
 };
 
@@ -476,7 +488,17 @@ void PopupIncludeEditor::compileInternal()
 		externalFile->getFileDocument().setSavePoint();
 	}
 
-	jp->compileScript(BIND_MEMBER_FUNCTION_1(PopupIncludeEditor::refreshAfterCompilation));
+    Component::SafePointer<PopupIncludeEditor> safeP(this);
+    
+    auto f = [safeP](const JavascriptProcessor::SnippetResult& r)
+    {
+        if(safeP.getComponent() != nullptr)
+        {
+            safeP->refreshAfterCompilation(r);
+        }
+    };
+    
+	jp->compileScript(f);
 
 	if (auto asmcl = dynamic_cast<mcl::TextEditor*>(editor.get()))
 	{

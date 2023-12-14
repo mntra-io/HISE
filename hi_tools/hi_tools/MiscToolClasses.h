@@ -967,6 +967,53 @@ private:
 
 struct SimpleReadWriteLock
 {
+	struct ScopedMultiWriteLock
+	{
+		ScopedMultiWriteLock(SimpleReadWriteLock& l, bool tryToAcquireLock=true):
+			lock(l)
+		{
+			auto thisId = std::this_thread::get_id();
+            auto i = std::thread::id();
+
+			if (!tryToAcquireLock)
+				lock.fakeWriteLock = true;
+
+			auto wantsLock = tryToAcquireLock && lock.enabled;
+
+			if(wantsLock)
+			{
+				// If this hits, then you're using a reentrant lock. Consider the ScopedWriteLock instead...
+				jassert(thisId != lock.writer.load());
+
+				lock.mutex.lock();
+				lock.writer.store(thisId);
+				holdsLock = true;
+			}
+		}
+
+		~ScopedMultiWriteLock()
+		{
+			lock.fakeWriteLock = false;
+
+			unlock();
+		}
+
+		void unlock()
+		{
+			if (holdsLock)
+			{
+				lock.writer.store(std::thread::id());
+				lock.mutex.unlock();
+				holdsLock = false;
+			}
+		}
+
+	private:
+
+		bool holdsLock = false;
+		SimpleReadWriteLock& lock;
+	};
+
 	struct ScopedWriteLock
 	{
 		ScopedWriteLock(SimpleReadWriteLock& l, bool tryToAcquireLock=true):
@@ -977,6 +1024,9 @@ struct SimpleReadWriteLock
 
 			if (!tryToAcquireLock)
 				lock.fakeWriteLock = true;
+
+			// if this hits, you're using multiple writer threads. consider the ScopedMultiWriteLock instead
+			jassert(lock.writer == thisId || lock.writer == i);
 
 			holdsLock = tryToAcquireLock && lock.enabled && lock.writer.compare_exchange_weak(i, thisId);
 
@@ -1129,7 +1179,7 @@ struct SimpleReadWriteLock
 
 	LockType mutex;
 
-	std::atomic<std::thread::id> writer;
+    std::atomic<std::thread::id> writer = {};
 	bool enabled = true;
 	bool fakeWriteLock = false;
 };

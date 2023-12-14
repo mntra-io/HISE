@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="jUHBuI" name="HISE Standalone" projectType="guiapp" version="3.6.2"
               bundleIdentifier="com.hartinstruments.HISEStandalone" includeBinaryInAppConfig="1"
@@ -20,31 +20,16 @@
       <FILE id="rNV4cu" name="infoQuestion.png" compile="0" resource="1"
             file="../../hi_core/hi_images/infoQuestion.png"/>
       <FILE id="X7hemd" name="infoWarning.png" compile="0" resource="1" file="../../hi_core/hi_images/infoWarning.png"/>
-      <FILE id="EfOrgJ" name="FrontendKnob_Bipolar.png" compile="0" resource="1"
-            file="../../hi_core/hi_images/FrontendKnob_Bipolar.png"/>
-      <FILE id="hJJvHU" name="FrontendKnob_Unipolar.png" compile="0" resource="1"
-            file="../../hi_core/hi_images/FrontendKnob_Unipolar.png"/>
-      <FILE id="BPrHyu" name="balanceKnob_200.png" compile="0" resource="1"
-            file="../../hi_core/hi_images/balanceKnob_200.png"/>
-      <FILE id="OSpRCj" name="knobEmpty_200.png" compile="0" resource="1"
-            file="../../hi_core/hi_images/knobEmpty_200.png"/>
-      <FILE id="u4ioUB" name="knobModulated_200.png" compile="0" resource="1"
-            file="../../hi_core/hi_images/knobModulated_200.png"/>
-      <FILE id="R0Hdz6" name="knobUnmodulated_200.png" compile="0" resource="1"
-            file="../../hi_core/hi_images/knobUnmodulated_200.png"/>
-      <FILE id="hSh2fs" name="toggle_200.png" compile="0" resource="1" file="../../hi_core/hi_images/toggle_200.png"/>
       <FILE id="OAAVOx" name="MainComponent.cpp" compile="1" resource="0"
             file="Source/MainComponent.cpp"/>
       <FILE id="h7HW4R" name="MainComponent.h" compile="0" resource="0" file="Source/MainComponent.h"/>
       <FILE id="btXzOW" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
     </GROUP>
-    <FILE id="OLb0nc" name="knob_without_arrow.png" compile="0" resource="1"
-          file="../../hi_core/hi_images/knob_without_arrow.png"/>
   </MAINGROUP>
   <EXPORTFORMATS>
     <XCODE_MAC targetFolder="Builds/MacOSX" smallIcon="ho3qQy" bigIcon="ho3qQy"
                customPList="&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;&#10;&lt;!DOCTYPE plist PUBLIC &quot;-//Apple//DTD PLIST 1.0//EN&quot; &quot;http://www.apple.com/DTDs/PropertyList-1.0.dtd&quot;&gt;&#10;&lt;plist version=&quot;1.0&quot;&gt;&#10;&lt;dict&gt;&#10;&lt;key&gt;NSAppTransportSecurity&lt;/key&gt; &#10;&lt;dict&gt; &#10;&lt;key&gt;NSAllowsArbitraryLoads&lt;/key&gt;&lt;true/&gt;&#10;&lt;/dict&gt;&#10;&lt;/dict&gt;&#10;&lt;/plist&gt;"
-               extraDefs="USE_IPP=0&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=50000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6&#10;HISE_USE_MOUSE_WHEEL_FOR_TABLE_CURVE=1"
+               extraDefs="USE_IPP=0&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=50000&#10;HISE_USE_OPENGL_FOR_PLUGIN=0&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6&#10;HISE_USE_MOUSE_WHEEL_FOR_TABLE_CURVE=1"
                extraCompilerFlags="-Wno-reorder -Wno-inconsistent-missing-override -faligned-allocation -Wno-switch"
                xcodeValidArchs="x86_64" extraLinkerFlags="-rpath $(SRCROOT)/../../../../tools/faust/lib "
                externalLibraries="faust">
@@ -107,8 +92,8 @@
     </XCODE_MAC>
     <VS2017 targetFolder="Builds/VisualStudio2017" smallIcon="ho3qQy" bigIcon="ho3qQy"
             useIPP="Sequential" IPPLibrary="Sequential" windowsTargetPlatformVersion="10.0.16299.0"
-            extraDefs="USE_IPP=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_USE_VS2022=0&#10;HISE_ENABLE_EXPANSIONS=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=50000&#10;HISE_USE_OPENGL_FOR_PLUGIN=1&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6&#10;HISE_USE_MOUSE_WHEEL_FOR_TABLE_CURVE=1"
-            extraCompilerFlags="/bigobj  /cgthreads8 /wd&quot;4100&quot; /wd&quot;4661&quot; /wd&quot;4456&quot; /wd&quot;4244&quot; /wd&quot;4457&quot; /wd&quot;4458&quot; /wd&quot;4127&quot;&#10;&#10; "
+            extraDefs="HISE_SCRIPT_SERVER_TIMEOUT=50000&#10;HISE_USE_VS2022=0&#10;PERFETTO=1&#10;NOMINMAX=1 &#10;WIN32_LEAN_AND_MEAN=1&#10;USE_IPP=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_USE_OPENGL_FOR_PLUGIN=0&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6&#10;HISE_USE_MOUSE_WHEEL_FOR_TABLE_CURVE=1"
+            extraCompilerFlags="/bigobj  /cgthreads8 /wd&quot;4100&quot; /wd&quot;4661&quot; /wd&quot;4456&quot; /wd&quot;4244&quot; /wd&quot;4457&quot; /wd&quot;4458&quot; /wd&quot;4127&quot; /Zc:__cplusplus /permissive- /vmg&#10;&#10; "
             IPP1ALibrary="true">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" generateManifest="1" winArchitecture="x64" isDebug="1"
@@ -172,8 +157,8 @@
       </MODULEPATHS>
     </VS2017>
     <VS2022 targetFolder="Builds/VisualStudio2022" smallIcon="ho3qQy" bigIcon="ho3qQy"
-            useIPP="Sequential" IPPLibrary="Sequential" extraDefs="USE_IPP=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=50000&#10;HISE_USE_VS2022=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_USE_OPENGL_FOR_PLUGIN=1&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6&#10;HISE_USE_MOUSE_WHEEL_FOR_TABLE_CURVE=1"
-            extraCompilerFlags="/bigobj /wd&quot;4100&quot; /wd&quot;4661&quot; /wd&quot;4456&quot; /wd&quot;4244&quot; /wd&quot;4457&quot; /wd&quot;4458&quot; /wd&quot;4127&quot;&#10;&#10; "
+            useIPP="Sequential" IPPLibrary="Sequential" extraDefs="USE_IPP=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_USE_VS2022=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=50000&#10;HISE_USE_OPENGL_FOR_PLUGIN=0&#10;PERFETTO=1&#10;NOMINMAX=1 &#10;WIN32_LEAN_AND_MEAN=1&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6&#10;HISE_USE_MOUSE_WHEEL_FOR_TABLE_CURVE=1"
+            extraCompilerFlags="/bigobj /wd&quot;4100&quot; /wd&quot;4661&quot; /wd&quot;4456&quot; /wd&quot;4244&quot; /wd&quot;4457&quot; /wd&quot;4458&quot; /wd&quot;4127&quot; /Zc:__cplusplus /permissive- /vmg&#10;&#10; "
             IPP1ALibrary="true">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" generateManifest="1" winArchitecture="x64" isDebug="1"
@@ -197,6 +182,13 @@
                        defines="HISE_INCLUDE_FAUST=1&#10;HISE_FAUST_USE_LLVM_JIT=1&#10;HISE_INCLUDE_FAUST_JIT=1"/>
         <CONFIGURATION name="Release with Faust" generateManifest="1" winArchitecture="x64"
                        isDebug="0" targetName="HISE" headerPath="../../../../tools/SDK/ASIOSDK2.3/common&#10;C:\Program Files\Faust\include"
+                       useRuntimeLibDLL="0" enableIncrementalLinking="1" alwaysGenerateDebugSymbols="1"
+                       debugInformationFormat="ProgramDatabase" enablePluginBinaryCopyStep="0"
+                       linkTimeOptimisation="1" libraryPath="C:\Program Files\Faust\lib"
+                       postbuildCommand="copy /Y &quot;C:\Program Files\Faust\lib\faust.dll&quot;  &quot;$(TargetDir)faust.dll&quot;"
+                       defines="HISE_INCLUDE_FAUST=1&#10;HISE_FAUST_USE_LLVM_JIT=1&#10;HISE_INCLUDE_FAUST_JIT=1"/>
+        <CONFIGURATION name="Release Perfetto" generateManifest="1" winArchitecture="x64"
+                       isDebug="0" targetName="HISE" headerPath="../../../../tools/SDK/ASIOSDK2.3/common&#10;../../../../tools/SDK/perfetto&#10;C:\Program Files\Faust\include"
                        useRuntimeLibDLL="0" enableIncrementalLinking="1" alwaysGenerateDebugSymbols="1"
                        debugInformationFormat="ProgramDatabase" enablePluginBinaryCopyStep="0"
                        linkTimeOptimisation="1" libraryPath="C:\Program Files\Faust\lib"
@@ -285,9 +277,9 @@
         <MODULEPATH id="hi_faust_types" path="../../"/>
       </MODULEPATHS>
     </LINUX_MAKE>
-    <LINUX_MAKE targetFolder="Builds/LinuxMakefile" extraDefs="USE_IPP=0&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;HISE_SCRIPT_SERVER_TIMEOUT=20000&#10;"
+    <LINUX_MAKE targetFolder="Builds/LinuxMakefile" extraDefs="USE_IPP=0&#10;HISE_USE_EXTENDED_TEMPO_VALUES=1&#10;HI_ENABLE_EXPANSION_EDITING=1&#10;HISE_ENABLE_EXPANSIONS=1&#10;AUDIOFFT_FFTW3=1&#10;HISE_ENABLE_FULL_CONTROL_RATE_PITCH_MOD=1&#10;HISE_USE_OPENGL_FOR_PLUGIN=1&#10;HISE_DEACTIVATE_OVERLAY=1&#10;NUM_HARDCODED_FX_MODS=6&#10;USE_LATO_AS_DEFAULT=0&#10;USE_LINUX_FONT_HANDLER=0 HISE_USE_MOUSE_WHEEL_FOR_TABLE_CURVE=1"
                 smallIcon="bfBEgJ" bigIcon="bfBEgJ" linuxExtraPkgConfig="x11 xinerama xext"
-                extraLinkerFlags="-no-pie&#10;" extraCompilerFlags="-fpermissive">
+                extraLinkerFlags="-no-pie&#10;-flto=auto&#10;-fuse-ld=gold" extraCompilerFlags="-fpermissive">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="HISE Standalone"/>
         <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="HISE Standalone"
@@ -367,11 +359,10 @@
                JUCE_LOAD_CURL_SYMBOLS_LAZILY="1" HI_SUPPORT_FULL_DYNAMICS_HLAC="1"
                ENABLE_PLOTTER="1" ENABLE_SCRIPTING_SAFE_CHECKS="1" ENABLE_SCRIPTING_BREAKPOINTS="1"
                ENABLE_ALL_PEAK_METERS="1" JUCE_ASIO="1" JUCE_DIRECTSOUND="1"
-               JUCE_USE_DIRECTWRITE="1" JUCE_JACK="0" HISE_ENABLE_EXPANSIONS="1"
+               JUCE_USE_DIRECTWRITE="1" JUCE_JACK="1" HISE_ENABLE_EXPANSIONS="1"
                HISE_ENABLE_MIDI_INPUT_FOR_FX="1" JUCE_STRICT_REFCOUNTEDPOINTER="1"
                HISE_INCLUDE_RLOTTiE="1" HISE_INCLUDE_SNEX="1" JUCE_DSP_USE_SHARED_FFTW="0"
-               JUCE_ENABLE_LIVE_CONSTANT_EDITOR="0" JUCE_USE_ANDROID_OBOE="0"
-               FAUST_NO_WARNING_MESSAGES="1" HISE_DEFAULT_OPENGL_VALUE="0"/>
+               JUCE_ENABLE_AUDIO_GUARD="1" FAUST_NO_WARNING_MESSAGES="1" HISE_DEFAULT_OPENGL_VALUE="0"/>
   <LIVE_SETTINGS>
     <OSX/>
     <WINDOWS/>

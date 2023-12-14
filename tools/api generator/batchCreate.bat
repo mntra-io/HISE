@@ -18,6 +18,8 @@ xcopy "xml\classhise_1_1_scripting_api_1_1_message.xml" "xml\selection"
 xcopy "xml\classhise_1_1_scripting_api_1_1_synth.xml" "xml\selection"
 xcopy "xml\classhise_1_1_scripting_api_1_1_sampler.xml" "xml\selection"
 xcopy "xml\classhise_1_1_scripting_api_1_1_transport_handler.xml" "xml\selection"
+xcopy "xml\classhise_1_1_scripting_api_1_1_threads.xml" "xml\selection"
+xcopy "xml\classhise_1_1_scripting_api_1_1_date.xml" "xml\selection"
 
 xcopy "xml\structhise_1_1fixobj_1_1_array.xml" "xml\selection"
 xcopy "xml\structhise_1_1fixobj_1_1_factory.xml" "xml\selection"
@@ -127,6 +129,7 @@ ren "xml\selection\classhise_1_1_scripting_api_1_1_message.xml" "Message.xml"
 ren "xml\selection\classhise_1_1_scripting_api_1_1_synth.xml" "Synth.xml"
 ren "xml\selection\classhise_1_1_scripting_api_1_1_sampler.xml" "Sampler.xml"
 ren "xml\selection\classhise_1_1_scripting_api_1_1_transport_handler.xml" "TransportHandler.xml"
+ren "xml\selection\classhise_1_1_scripting_api_1_1_threads.xml" "Threads.xml"
 ren "xml\selection\classhise_1_1_scripting_api_1_1_module_ids.xml" "ModuleIds.xml"
 ren "xml\selection\classhise_1_1_dsp_instance.xml" "DspModule.xml"
 ren "xml\selection\classhise_1_1_doxygen_string_functions.xml" "String.xml"
@@ -219,6 +222,7 @@ ren "xml\selection\classhise_1_1_scripting_objects_1_1_script_ring_buffer.xml" "
 
 ren "xml\selection\structhise_1_1_script_unlocker_1_1_ref_object.xml" "Unlocker.xml"
 ren "xml\selection\classhise_1_1_beatport_manager.xml" "BeatportManager.xml"
+ren "xml\selection\classhise_1_1_scripting_api_1_1_date.xml" "Date.xml"
 
 ApiExtractor.exe xml\selection xml\selection
 

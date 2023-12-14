@@ -54,7 +54,7 @@ X(rightShiftUnsigned, ">>>") X(rightShiftEquals, ">>=") X(rightShift,   ">>")   
     X(function, "function") X(return_, "return") X(true_,  "true")   X(false_,    "false")    X(new_,      "new") \
     X(typeof_,  "typeof")	X(switch_, "switch") X(case_, "case")	 X(default_,  "default")  X(register_var, "reg") \
 	X(in, 		"in")		X(inline_, "inline") X(const_, "const")	 X(global_,   "global")	  X(local_,	   "local") \
-	X(include_,  "include") X(rLock_,   "readLock") X(wLock_,"writeLock") 	X(extern_, "extern") X(namespace_, "namespace") \
+	X(include_,  "include") X(extern_, "extern") X(namespace_, "namespace") \
 	X(isDefined_, "isDefined");
 
 namespace TokenTypes
@@ -1785,14 +1785,20 @@ struct TokenHelpers
 	}
 };
 
-
-
+bool HiseJavascriptEngine::TokenProvider::shouldAbortTokenRebuild(Thread* t) const
+{
+    return (t != nullptr && t->threadShouldExit()) ||
+           (jp == nullptr) ||
+           (jp != nullptr && jp->shouldReleaseDebugLock());
+}
 
 
 void HiseJavascriptEngine::TokenProvider::addTokens(mcl::TokenCollection::List& tokens)
 {
 	if (jp != nullptr)
 	{
+		LockHelpers::SafeLock ssl(dynamic_cast<Processor*>(jp.get())->getMainController(), LockHelpers::Type::ScriptLock);
+
 		File scriptFolder = dynamic_cast<Processor*>(jp.get())->getMainController()->getCurrentFileHandler().getSubDirectory(FileHandlerBase::Scripts);
 		auto scriptFiles = scriptFolder.findChildFiles(File::findFiles, true, "*.js");
 
@@ -1824,7 +1830,7 @@ void HiseJavascriptEngine::TokenProvider::addTokens(mcl::TokenCollection::List& 
 		}
 		
 
-		ScopedReadLock sl(jp->getDebugLock());
+		//ScopedReadLock sl(jp->getDebugLock());
 
 		auto holder = dynamic_cast<ApiProviderBase::Holder*>(jp.get());
 
@@ -1869,7 +1875,7 @@ void HiseJavascriptEngine::TokenProvider::addTokens(mcl::TokenCollection::List& 
 
 			for (int i = 0; i < numObjects; i++)
 			{
-				if (Thread::currentThreadShouldExit() || jp->shouldReleaseDebugLock())
+				if (shouldAbortTokenRebuild(Thread::getCurrentThread()))
 					return;
 
 				if (e == nullptr)
@@ -1902,7 +1908,7 @@ void HiseJavascriptEngine::TokenProvider::addTokens(mcl::TokenCollection::List& 
 
 						for (auto methodTree : classTree)
 						{
-							if (Thread::currentThreadShouldExit() || jp->shouldReleaseDebugLock())
+							if (shouldAbortTokenRebuild(Thread::getCurrentThread()))
 								return;
 
 							tokens.add(new ApiToken(cid, methodTree));

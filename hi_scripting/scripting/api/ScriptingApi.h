@@ -823,6 +823,15 @@ public:
 		/** Changes the sample folder. */
 		void setSampleFolder(var sampleFolder);
 
+		/** Starts the perfetto profile recording. */
+		void startPerfettoTracing();
+
+		/** Stops the perfetto profile recording and dumps the data to the given file. */
+		void stopPerfettoTracing(var traceFileToUse);
+
+		/** Calls abort to terminate the program. You can use this to check your crash reporting workflow. */
+		void crashAndBurn();
+
 		// ============================================================================================================
 
 	private:
@@ -860,14 +869,23 @@ public:
 		/** Enables the group with the given index (one-based). Works only with samplers and `enableRoundRobin(false)`. */
 		void setActiveGroup(int activeGroupIndex);
 
+		/** Enables the group with the given index (one-based) for the given event ID. Works only with samplers and `enableRoundRobin(false)`. */
+		void setActiveGroupForEventId(int eventId, int activeGroupIndex);
+
 		/** Enables the group with the given index (one-based). Allows multiple groups to be active. */
 		void setMultiGroupIndex(var groupIndex, bool enabled);
+
+		/** Enables the group with the given index (one-based) for the given event id. Allows multiple groups to be active. */
+		void setMultiGroupIndexForEventId(int eventId, var groupIndex, bool enabled);
 
 		/** Sets the volume of a particular group (use -1 for active group). Only works with disabled crossfade tables. */
 		void setRRGroupVolume(int groupIndex, int gainInDecibels);
 
 		/** Returns the currently (single) active RR group. */
 		int getActiveRRGroup();
+
+		/** Returns the RR group that is associated with the event ID. */
+		int getActiveRRGroupForEventId(int eventId);
 
 		/** Returns the number of currently active groups. */
 		int getNumActiveGroups() const;
@@ -1360,14 +1378,12 @@ public:
 			lineNumber = lineNumber_;
 		}
 
-	private:
+private:
 
 		Identifier id;
 		int lineNumber;
 
 		double startTime;
-
-
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Console)
 	};
@@ -1709,6 +1725,63 @@ public:
 
 	};
 
+    class Threads: public ApiClass,
+				   public ScriptingObject
+    {
+    public:
+
+        Threads(ProcessorWithScriptingContent* p);
+
+        Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("Threads"); }
+
+		// API METHODS ===============================================================================
+
+		/** Returns the thread ID of the thread that is calling this method. */
+        int getCurrentThread() const;
+
+		/** Returns true if the audio callback is running or false if it's suspended during a load operation. */
+        bool isAudioRunning() const;
+
+		/** Returns true if the audio exporter is currently rendering the audio on a background thread. */
+		bool isCurrentlyExporting() const;
+
+		/** Returns true if the given thread is currently locked by the current thread. */
+        bool isLockedByCurrentThread(int thread) const;
+
+		/** Returns the thread ID of the thread the locks the given thread ID. */
+        int getLockerThread(int threadThatIsLocked) const;
+
+		/** Returns true if the given thread is currently locked. */
+        bool isLocked(int thread) const;
+
+		/** Returns the name of the given string (for debugging purposes only!). */
+		String toString(int thread) const;
+
+		/** Returns the name of the current thread (for debugging purposes only!). */
+        String getCurrentThreadName() const
+        {
+			return toString(getCurrentThread());
+        }
+
+        /** Kills all voices, suspends the audio processing and calls the given function on the loading thread. Returns true if the function was executed synchronously. */
+        bool killVoicesAndCall(const var& functionToExecute);
+
+    private:
+
+		using TargetThreadId = MainController::KillStateHandler::TargetThread;
+		using LockId = LockHelpers::Type;
+
+        static TargetThreadId getAsThreadId(int x);
+        static LockId getAsLockId(int x);
+
+        MainController::KillStateHandler& getKillStateHandler();
+        const MainController::KillStateHandler& getKillStateHandler() const;
+
+        struct Wrapper;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Threads);
+    };
+
 	class Colours: public ApiClass
 	{
 	public:
@@ -1776,14 +1849,14 @@ public:
 		void setIntensity(var newValue)
 		{
 			m->setIntensity((float)newValue);
-			BACKEND_ONLY(mod->sendChangeMessage());
+			BACKEND_ONLY(mod->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Intensity, dispatch::sendNotificationAsync););
 		}
 
 		/** Bypasses the modulator. */
 		void setBypassed(var newValue)
 		{
 			mod->setBypassed((bool)newValue);
-			BACKEND_ONLY(mod->sendChangeMessage());
+			BACKEND_ONLY(mod->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Bypassed, dispatch::sendNotificationAsync););
 		}
 
 	private:
