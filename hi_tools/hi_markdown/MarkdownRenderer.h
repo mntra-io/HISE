@@ -115,10 +115,10 @@ public:
 		JUCE_DECLARE_WEAK_REFERENCEABLE(Listener);
 	};
 
-	MarkdownRenderer(const String& text, LayoutCache* c = nullptr) :
-		MarkdownParser(text),
+	MarkdownRenderer(const String& text, const MarkdownLayout::StringWidthFunction& f={}, LayoutCache* c = nullptr) :
+		MarkdownParser(text, f),
 		layoutCache(c),
-		uncachedLayout({}, 0.0f)
+		uncachedLayout({}, 0.0f, f)
 	{
 		history.add(markdownCode);
 		historyIndex = 0;
@@ -648,5 +648,71 @@ public:
 	int currentViewOptions = (int)ViewOptions::Everything;
 };
 
+
+class MarkdownHelpButton : public ShapeButton,
+    public ButtonListener,
+    public ComponentListener
+{
+public:
+
+    enum AttachmentType
+    {
+        Overlay,
+        OverlayLeft,
+        OverlayRight,
+        TopRight,
+        Left,
+        numAttachmentTypes
+    };
+
+    MarkdownHelpButton();
+    ~MarkdownHelpButton() override;
+
+    void setup();
+
+    MarkdownParser* getParser() { return parser; }
+
+    void addImageProvider(MarkdownParser::ImageProvider* newImageProvider);
+
+    template <class ProviderType = MarkdownParser::ImageProvider> void setHelpText(const String& markdownText)
+    {
+        if (parser == nullptr)
+            setup();
+
+        parser->setNewText(markdownText);
+        parser->setImageProvider(new ProviderType(parser));
+        parser->setStyleData(sd);
+        parser->parse();
+    }
+
+    void setPopupWidth(int newPopupWidth);
+
+    void setFontSize(float fontSize);
+    void buttonClicked(Button* b) override;
+    void attachTo(Component* componentToAttach, AttachmentType attachmentType_);
+    void componentMovedOrResized(Component& c, bool /*wasMoved*/, bool /*wasResized*/) override;
+    void componentVisibilityChanged(Component& c) override;
+    void setIgnoreKeyStrokes(bool shouldIgnoreKeyStrokes);
+    static MarkdownHelpButton* createAndAddToComponent(Component* c, const String& s, int popupWidth = 400);
+    void componentBeingDeleted(Component& component) override;
+    void setStyleData(const MarkdownLayout::StyleData& newStyleData);
+
+    static Path getPath();
+
+private:
+
+    MarkdownLayout::StyleData sd;
+
+    bool ignoreKeyStrokes = false;
+    float fontSizeToUse = 17.0f;
+    Component::SafePointer<CallOutBox> currentPopup;
+    ScopedPointer<MarkdownRenderer> parser;
+    int popupWidth = 400;
+    Component::SafePointer<Component> ownerComponent;
+    AttachmentType attachmentType;
+    struct MarkdownHelp;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MarkdownHelpButton);
+};
 
 }

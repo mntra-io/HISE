@@ -38,6 +38,9 @@ callbackLevels(getCallbackLevels()),
 constrainer(new RectangleConstrainer())
 {
 	initMacroControl(dontSendNotification);
+
+	for(int i = 0; i < (int)Action::Nothing; i++)
+		clickInformation[i] = new DynamicObject();
 }
 
 
@@ -574,11 +577,16 @@ void MouseCallbackComponent::sendFileMessage(Action a, const String& f, Point<in
 
 
 
-juce::var MouseCallbackComponent::getMouseCallbackObject(Component* c, const MouseEvent& event, CallbackLevel callbackLevel, Action action, EnterState state)
+void MouseCallbackComponent::fillMouseCallbackObject(var& clickInformation, Component* c, const MouseEvent& event, CallbackLevel callbackLevel, Action action, EnterState state)
 {
-	auto e = new DynamicObject();
-	var clickInformation(e);
+	auto e = clickInformation.getDynamicObject();
 
+	if(e == nullptr)
+	{
+		auto e = new DynamicObject();
+		clickInformation = var(e);
+	}
+	
 	static const Identifier x("x");
 	static const Identifier y("y");
 	static const Identifier clicked("clicked");
@@ -630,8 +638,6 @@ juce::var MouseCallbackComponent::getMouseCallbackObject(Component* c, const Mou
 		e->setProperty(dragX, event.getDistanceFromDragStartX());
 		e->setProperty(dragY, event.getDistanceFromDragStartY());
 	}
-
-	return clickInformation;
 }
 
 void MouseCallbackComponent::sendMessage(const MouseEvent &e, Action action, EnterState state)
@@ -639,7 +645,15 @@ void MouseCallbackComponent::sendMessage(const MouseEvent &e, Action action, Ent
 	if (callbackLevel == CallbackLevel::NoCallbacks) 
 		return;
 
-	sendToListeners(getMouseCallbackObject(this, e, callbackLevel, action, state));
+	dispatch::StringBuilder n;
+
+	n << "panel mouse callback for " << Component::getName() << ": [" << getCallbackLevelAsIdentifier(callbackLevel) << ", " << getActionAsIdentifier(action) << "]";
+	
+	TRACE_EVENT("component", DYNAMIC_STRING_BUILDER(n));
+
+	fillMouseCallbackObject(clickInformation[(int)action], this, e, callbackLevel, action, state);
+
+	sendToListeners(clickInformation[(int)action]);
 }
 
 void MouseCallbackComponent::sendToListeners(var clickInformation)
@@ -676,8 +690,8 @@ void DrawActions::ActionBase::setCachedImage(Image& actionImage_, Image& mainIma
 void DrawActions::ActionBase::setScaleFactor(float sf)
 { scaleFactor = sf; }
 
-DrawActions::MarkdownAction::MarkdownAction():
-	renderer("")
+DrawActions::MarkdownAction::MarkdownAction(const MarkdownLayout::StringWidthFunction& f):
+	renderer("", f)
 {}
 
 void DrawActions::MarkdownAction::perform(Graphics& g)
@@ -774,17 +788,25 @@ void DrawActions::NoiseMapManager::drawNoiseMap(Graphics& g, Rectangle<int> area
 {
 	auto originalArea = area;
 
+    //scale *= scaleFactor;
+    
 	if(scale != 1.0f)
 		area = area.transformed(AffineTransform::scale(scale));
 
 	const auto& m = getNoiseMap(area, monochrom);
 
+    g.saveState();
+    
 	g.setColour(Colours::black.withAlpha(alpha));
 
+    g.setImageResamplingQuality(Graphics::ResamplingQuality::lowResamplingQuality);
+    
 	if (scale != 1.0f)
 		g.drawImageWithin(m.img, originalArea.getX(), originalArea.getY(), originalArea.getWidth(), originalArea.getHeight(), RectanglePlacement::stretchToFit);
 	else
 		g.drawImageAt(m.img, area.getX(), area.getY());
+    
+    g.restoreState();
 }
 
 DrawActions::NoiseMapManager::NoiseMap& DrawActions::NoiseMapManager::getNoiseMap(Rectangle<int> area, bool monochrom)
@@ -800,6 +822,11 @@ DrawActions::NoiseMapManager::NoiseMap& DrawActions::NoiseMapManager::getNoiseMa
 		}
 	}
 
+    dispatch::StringBuilder n;
+    n << "create noisemap [" << area.getWidth() << ", " << area.getHeight() << "]";
+    
+    TRACE_EVENT("drawactions", DYNAMIC_STRING_BUILDER(n));
+    
 	maps.add(new NoiseMap(area, monochrom));
 
 	return *maps.getLast();
@@ -882,7 +909,7 @@ void DrawActions::Handler::addDrawAction(ActionBase* newDrawAction)
 		currentActions.add(newDrawAction);
 }
 
-void DrawActions::Handler::flush()
+void DrawActions::Handler::flush(uint64_t perfettoTrackId)
 {
 	{
 		SpinLock::ScopedLockType sl(lock);
@@ -891,6 +918,9 @@ void DrawActions::Handler::flush()
 		currentActions.clear();
 		layerStack.clear();
 	}
+
+	if(perfettoTrackId != 0)
+		flowManager.continueFlow(perfettoTrackId, "flush draw handler");
 
 	triggerAsyncUpdate();
 }
@@ -925,10 +955,12 @@ DrawActions::NoiseMapManager* DrawActions::Handler::getNoiseMapManager()
 
 void DrawActions::Handler::handleAsyncUpdate()
 {
+	auto x = flowManager.flushAllButLastOne("flush draw handler", {});
+
 	for (auto l : listeners)
 	{
 		if (l != nullptr)
-			l->newPaintActionsAvailable();
+			l->newPaintActionsAvailable(x);
 	}
 }
 
@@ -1022,8 +1054,11 @@ void BorderPanel::openGLContextClosing()
 {
 }
 
-void BorderPanel::newPaintActionsAvailable()
-{ repaint(); }
+void BorderPanel::newPaintActionsAvailable(uint64_t flowId)
+{
+	flowManager.continueFlow(flowId, "repaint request");
+	repaint();
+}
 
 void BorderPanel::registerToTopLevelComponent()
 {
@@ -1100,9 +1135,20 @@ struct GraphicHelpers
 
 void BorderPanel::paint(Graphics &g)
 {
+
+	dispatch::StringBuilder n;
+
+	bool hasOpenGL = false;
+
+	if(auto c = TopLevelWindowWithOptionalOpenGL::findRoot(this))
+		hasOpenGL = dynamic_cast<TopLevelWindowWithOptionalOpenGL*>(c)->isOpenGLEnabled();
 	
+	n << Component::getName() << "::paint()";
+	TRACE_EVENT("component", DYNAMIC_STRING_BUILDER(n));
+	PerfettoHelpers::setCurrentThreadName(!hasOpenGL ? "UI Render Thread (Software)" : "UI Render Thread (Open GL)");
 
-
+	flowManager.flushAll("juce::Component paint routine");
+	
 	registerToTopLevelComponent();
 
 	
@@ -1110,6 +1156,7 @@ void BorderPanel::paint(Graphics &g)
 #if HISE_INCLUDE_RLOTTIE
 	if (animation != nullptr)
 	{
+		TRACE_EVENT("component", "rendering lottie");
 		animation->render(g, { 0, 0 });
 		return;
 	}
@@ -1117,6 +1164,8 @@ void BorderPanel::paint(Graphics &g)
 
 	if (isUsingCustomImage)
 	{
+		TRACE_EVENT("component", "rendering script draw actions");
+
         SET_IMAGE_RESAMPLING_QUALITY();
 		
 		if (isOpaque())
@@ -1463,6 +1512,11 @@ void DrawActions::Handler::Iterator::render(Graphics& g, Component* c)
 
 	handler->setGlobalBounds(gb, tc->getLocalBounds(), sf);
 
+    auto zoomFactor = UnblurryGraphics::getScaleFactorForComponent(c, false);
+    
+    handler->getNoiseMapManager()->setScaleFactor(zoomFactor);
+
+    
 	if (wantsCachedImage())
 	{
 		// We are creating one master image before the loop
@@ -1485,6 +1539,12 @@ void DrawActions::Handler::Iterator::render(Graphics& g, Component* c)
 
 		while (auto action = getNextAction())
 		{
+#if PERFETTO
+			dispatch::StringBuilder b;
+			b << "g." << action->getDispatchId() << "()";
+			TRACE_EVENT("drawactions", DYNAMIC_STRING_BUILDER(b));
+#endif
+
 			if (action->wantsCachedImage())
 			{
 				Image actionImage;
@@ -1517,7 +1577,16 @@ void DrawActions::Handler::Iterator::render(Graphics& g, Component* c)
 	else
 	{
 		while (auto action = getNextAction())
+		{
+#if PERFETTO
+			dispatch::StringBuilder b;
+			b << "g." << action->getDispatchId() << "()";
+			TRACE_EVENT("drawactions", DYNAMIC_STRING_BUILDER(b));
+#endif
+
 			action->perform(g);
+		}
+			
 	}
 }
 

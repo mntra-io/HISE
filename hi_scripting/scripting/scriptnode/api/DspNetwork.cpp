@@ -1339,6 +1339,9 @@ void DspNetwork::Holder::setActiveNetwork(DspNetwork* n)
 {
 	SimpleReadWriteLock::ScopedWriteLock l(getNetworkLock());
 	activeNetwork = n;
+
+	if(auto p = dynamic_cast<Processor*>(this))
+		p->updateParameterSlots();
 }
 
 ScriptParameterHandler* DspNetwork::Holder::getCurrentNetworkParameterHandler(
@@ -1871,8 +1874,8 @@ bool DspNetwork::CodeManager::SnexSourceCompileHandler::triggerCompilation()
 
 	auto currentThread = getMainController()->getKillStateHandler().getCurrentThread();
 
-	if (currentThread == MainController::KillStateHandler::SampleLoadingThread ||
-		currentThread == MainController::KillStateHandler::ScriptingThread)
+	if (currentThread == MainController::KillStateHandler::TargetThread::SampleLoadingThread ||
+		currentThread == MainController::KillStateHandler::TargetThread::ScriptingThread)
 	{
 		getParent()->handleCompilation();
 		return true;
@@ -2634,7 +2637,7 @@ void DspNetwork::FaustManager::sendCompileMessage(const File& f, NotificationTyp
 	
 
 	processor->getMainController()->getKillStateHandler().killVoicesAndCall(processor, pf, 
-		MainController::KillStateHandler::SampleLoadingThread);
+		MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 }
 
 

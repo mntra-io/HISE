@@ -102,6 +102,9 @@ void FloatingTileContent::Factory::registerAllPanelTypes()
 
 	registerType<ScriptingObjects::ScriptBroadcasterPanel>(PopupMenuOptions::ScriptBroadcasterMap);
 
+	registerType<GenericPanel<ProjectManagement::TableComponent>>(PopupMenuOptions::ProjectManagementTable);
+	registerType<GenericPanel<PerfettoWebviewer>>(PopupMenuOptions::PerfettoViewer);
+
 #endif
 
 	registerFrontendPanelTypes();
@@ -133,7 +136,7 @@ void FloatingTileContent::Factory::registerAllPanelTypes()
 	registerType<TableEditorPanel>(PopupMenuOptions::TablePanel);
 	registerType<SliderPackPanel>(PopupMenuOptions::SliderPackPanel);
 	
-	registerType<PlotterPanel>(PopupMenuOptions::Plotter);
+	
 	
 #if USE_BACKEND
 	registerType<ScriptComponentEditPanel::Panel>(PopupMenuOptions::ScriptComponentEditPanel);
@@ -158,6 +161,7 @@ void FloatingTileContent::Factory::registerFrontendPanelTypes()
 	registerType<TooltipPanel>(PopupMenuOptions::TooltipPanel);
 	registerType<MidiLearnPanel>(PopupMenuOptions::MidiLearnPanel);
 	registerType<FrontendMacroPanel>(PopupMenuOptions::FrontendMacroPanel);
+	registerType<PlotterPanel>(PopupMenuOptions::Plotter);
 	registerType<AudioAnalyserComponent::Panel>(PopupMenuOptions::AudioAnalyser);
 	registerType<WaveformComponent::Panel>(PopupMenuOptions::WavetablePreview);
 	registerType<FilterGraph::Panel>(PopupMenuOptions::FilterGraphPanel);
@@ -623,6 +627,8 @@ void FloatingTileContent::Factory::handlePopupMenu(PopupMenu& m, FloatingTile* p
 			addToPopupMenu(m, PopupMenuOptions::SliderPackPanel, "Array Editor");
 			addToPopupMenu(m, PopupMenuOptions::MidiKeyboard, "Virtual Keyboard");
 			addToPopupMenu(m, PopupMenuOptions::PopoutButton, "Popout Button");
+			addToPopupMenu(m, PopupMenuOptions::ProjectManagementTable, "Project Management Tracker");
+			addToPopupMenu(m, PopupMenuOptions::PerfettoViewer, "Perfetto Viewer");
 
 			addToPopupMenu(m, PopupMenuOptions::Note, "Note");
 			addToPopupMenu(m, PopupMenuOptions::AudioFileTable, "Audio File Pool Table");
@@ -755,6 +761,7 @@ void FloatingTileContent::Factory::handlePopupMenu(PopupMenu& m, FloatingTile* p
 	case PopupMenuOptions::PopoutButton:		parent->setNewContent(GET_PANEL_NAME(PopoutButtonPanel)); break;
 	case PopupMenuOptions::ActivityLed:		    parent->setNewContent(GET_PANEL_NAME(ActivityLedPanel)); break;
 	case PopupMenuOptions::PluginSettings:		parent->setNewContent(GET_PANEL_NAME(CustomSettingsWindowPanel)); break;
+	case PopupMenuOptions::ProjectManagementTable: parent->setNewContent(GET_PANEL_NAME(GenericPanel<ProjectManagement::TableComponent>)); break;
 	case PopupMenuOptions::PerformanceStatistics: parent->setNewContent(GET_PANEL_NAME(PerformanceLabelPanel)); break;
 	case PopupMenuOptions::MidiSourceList:		parent->setNewContent(GET_PANEL_NAME(MidiSourcePanel)); break;
 	case PopupMenuOptions::MidiChannelList:		parent->setNewContent(GET_PANEL_NAME(MidiChannelPanel)); break;
@@ -780,6 +787,7 @@ void FloatingTileContent::Factory::handlePopupMenu(PopupMenu& m, FloatingTile* p
 	case PopupMenuOptions::RLottieDevPanel:		parent->setNewContent(GET_PANEL_NAME(RLottieFloatingTile));
 		break;
 #endif
+    case PopupMenuOptions::PerfettoViewer:      parent->setNewContent(GET_PANEL_NAME(GenericPanel<PerfettoWebviewer>)); break;
 	case PopupMenuOptions::AudioFileTable:		parent->setNewContent(GET_PANEL_NAME(PoolTableSubTypes::AudioFilePoolTable)); break;
 	case PopupMenuOptions::SampleMapPoolTable:  parent->setNewContent(GET_PANEL_NAME(PoolTableSubTypes::SampleMapPoolTable)); break;
 	case PopupMenuOptions::ImageTable:			parent->setNewContent(GET_PANEL_NAME(PoolTableSubTypes::ImageFilePoolTable)); break;

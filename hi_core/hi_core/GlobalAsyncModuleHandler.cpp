@@ -53,7 +53,7 @@ void MainController::GlobalAsyncModuleHandler::removeAsync(Processor* p, const S
 		if (synchronous)
 			f(p);
 		else
-			mc->getKillStateHandler().killVoicesAndCall(p, f, KillStateHandler::SampleLoadingThread);
+			mc->getKillStateHandler().killVoicesAndCall(p, f, KillStateHandler::TargetThread::SampleLoadingThread);
 	}
 	else
 	{
@@ -72,7 +72,7 @@ void MainController::GlobalAsyncModuleHandler::addAsync(Processor* p, const Safe
 		return result;
 	};
 
-	if (mc->getKillStateHandler().getCurrentThread() == KillStateHandler::ScriptingThread)
+	if (mc->getKillStateHandler().getCurrentThread() == KillStateHandler::TargetThread::ScriptingThread)
 	{
 		LockHelpers::freeToGo(mc);
 
@@ -80,7 +80,7 @@ void MainController::GlobalAsyncModuleHandler::addAsync(Processor* p, const Safe
 	}
 	else
 	{
-		mc->getKillStateHandler().killVoicesAndCall(p, f, KillStateHandler::SampleLoadingThread);
+		mc->getKillStateHandler().killVoicesAndCall(p, f, KillStateHandler::TargetThread::SampleLoadingThread);
 	}
 
 	
@@ -164,6 +164,8 @@ void MainController::ProcessorChangeHandler::sendProcessorChangeMessage(Processo
 
 void MainController::ProcessorChangeHandler::handleAsyncUpdate()
 {
+	SUSPEND_GLOBAL_DISPATCH(mc, "processor added / removed");
+
 	if (tempProcessor == nullptr)
 		return;
 

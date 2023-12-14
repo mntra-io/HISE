@@ -150,8 +150,8 @@ bool SlotFX::swap(HotswappableProcessor* otherSwap)
 		wrappedEffect.get()->sendRebuildMessage(true);
 		otherSlot->wrappedEffect.get()->sendRebuildMessage(true);
 
-		sendChangeMessage();
-		otherSlot->sendChangeMessage();
+		sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Any);
+		otherSlot->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Any);
 
 		return true;
 	}
@@ -552,6 +552,8 @@ bool HardcodedSwappableEffect::setEffect(const String& factoryId, bool /*unused*
 				}
 			}
 		}
+
+		asProcessor().updateParameterSlots();
 
 		effectUpdater.sendMessage(sendNotificationAsync, currentEffect, somethingChanged, opaqueNode->numParameters);
 

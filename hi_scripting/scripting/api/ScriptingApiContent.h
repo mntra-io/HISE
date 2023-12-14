@@ -210,6 +210,7 @@ public:
 		public ConstScriptingObject,
 		public AssignableObject,
 		public SafeChangeBroadcaster,
+		NEW_AUTOMATION_WITH_COMMA(dispatch::ListenerOwner)
 		public UpdateDispatcher::Listener
 	{
 		using Ptr = ReferenceCountedObjectPtr<ScriptComponent>;
@@ -379,8 +380,11 @@ public:
 		var getNonDefaultScriptObjectProperties() const;
 
 		String getScriptObjectPropertiesAsJSON() const;
-		
-		
+
+		void updateAutomation(int, float newValue)
+		{
+			setValue(newValue);
+		}
 
 		bool isPropertyDeactivated(Identifier &id) const;
 		bool hasProperty(const Identifier& id) const;
@@ -775,6 +779,8 @@ public:
 		ValueTree propertyTree;
 
 		Array<Identifier> scriptChangedProperties;
+
+		IF_NEW_AUTOMATION_DISPATCH(dispatch::library::CustomAutomationSource::Listener automationListener);
 
         struct SubComponentNotifier: public AsyncUpdater
         {
@@ -1785,6 +1791,8 @@ public:
 		String fileDropExtension;
 		String fileDropLevel;
 
+		dispatch::AccumulatedFlowManager flowManager;
+
 	private:
 
 #if HISE_INCLUDE_RLOTTIE
@@ -2435,6 +2443,8 @@ public:
 
 		asyncRebuildBroadcaster.notify();
 
+		updateParameterSlots();
+
 		return newComponent;
 	}
 
@@ -2528,13 +2538,14 @@ private:
 
 		components.add(t);
 
+		updateParameterSlots();
+		
 		restoreSavedValue(name);
-
 		
 		return t;
 	}
 
-	
+	void updateParameterSlots();
 
 	void restoreSavedValue(const Identifier& id);
 

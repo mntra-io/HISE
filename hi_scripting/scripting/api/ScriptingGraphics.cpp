@@ -1463,7 +1463,7 @@ struct ScriptingObjects::MarkdownObject::Wrapper
 
 ScriptingObjects::MarkdownObject::MarkdownObject(ProcessorWithScriptingContent* pwsc) :
 	ConstScriptingObject(pwsc, 0),
-	obj(new DrawActions::MarkdownAction())
+	obj(new DrawActions::MarkdownAction(std::bind(&MainController::getStringWidthFloat, pwsc->getMainController_(), std::placeholders::_1, std::placeholders::_2)))
 {
 	ADD_API_METHOD_1(setText);
 	ADD_API_METHOD_1(setStyleData);
@@ -1555,6 +1555,7 @@ struct ScriptingObjects::GraphicsObject::Wrapper
 	API_VOID_METHOD_WRAPPER_2(GraphicsObject, drawEllipse);
 	API_VOID_METHOD_WRAPPER_1(GraphicsObject, fillEllipse);
 	API_VOID_METHOD_WRAPPER_4(GraphicsObject, drawImage);
+	API_VOID_METHOD_WRAPPER_1(GraphicsObject, drawRepaintMarker);
 	API_VOID_METHOD_WRAPPER_3(GraphicsObject, drawDropShadow);
 	API_VOID_METHOD_WRAPPER_5(GraphicsObject, drawDropShadowFromPath);
 	API_VOID_METHOD_WRAPPER_2(GraphicsObject, addDropShadowFromAlpha);
@@ -1638,6 +1639,7 @@ ScriptingObjects::GraphicsObject::GraphicsObject(ProcessorWithScriptingContent *
 	ADD_API_METHOD_0(endLayer);
 	ADD_API_METHOD_2(beginBlendLayer);
 	ADD_API_METHOD_1(getStringWidth);
+	ADD_API_METHOD_1(drawRepaintMarker);
 
 	WeakReference<Processor> safeP(dynamic_cast<Processor*>(p));
 
@@ -1926,6 +1928,9 @@ void ScriptingObjects::GraphicsObject::setFont(String fontName, float fontSize)
 	MainController *mc = getScriptProcessor()->getMainController_();
 	auto f = mc->getFontFromString(fontName, SANITIZED(fontSize));
 	currentFont = f;
+	currentFontName = fontName;
+	currentKerningFactor = 0.0f;
+	currentFontHeight = fontSize;
 	drawActionHandler.addDrawAction(new ScriptedDrawActions::setFont(f));
 }
 
@@ -1936,6 +1941,9 @@ void ScriptingObjects::GraphicsObject::setFontWithSpacing(String fontName, float
 
 	f.setExtraKerningFactor(spacing);
 	currentFont = f;
+	currentFontName = fontName;
+	currentFontHeight = fontSize;
+	currentKerningFactor = spacing;
 	drawActionHandler.addDrawAction(new ScriptedDrawActions::setFont(f));
 }
 
@@ -2170,6 +2178,11 @@ void ScriptingObjects::GraphicsObject::addDropShadowFromAlpha(var colour, int ra
 	drawActionHandler.addDrawAction(new ScriptedDrawActions::addDropShadowFromAlpha(shadow));
 }
 
+void ScriptingObjects::GraphicsObject::drawRepaintMarker(const String& label)
+{
+	drawActionHandler.addDrawAction(new ScriptedDrawActions::drawRepaintMarker(label));
+}
+
 bool ScriptingObjects::GraphicsObject::applyShader(var shader, var area)
 {
 	if (auto obj = dynamic_cast<ScriptingObjects::ScriptShader*>(shader.getObject()))
@@ -2184,7 +2197,8 @@ bool ScriptingObjects::GraphicsObject::applyShader(var shader, var area)
 
 float ScriptingObjects::GraphicsObject::getStringWidth(String text)
 {
-	return currentFont.getStringWidthFloat(text);
+	auto mc = getScriptProcessor()->getMainController_();
+	return mc->getStringWidthFromEmbeddedFont(text, currentFontName, currentFontHeight, currentKerningFactor);
 }
 
 void ScriptingObjects::GraphicsObject::fillPath(var path, var area)
@@ -2409,13 +2423,25 @@ Array<Identifier> ScriptingObjects::ScriptedLookAndFeel::getAllFunctionNames()
 
 bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const Identifier& functionname, var argsObject, Component* c)
 {
+#if PERFETTO
+
+	dispatch::StringBuilder n;
+
+	if(c != nullptr)
+		n << c->getName() << ".";
+
+	n << functionname << "()";
+
+	TRACE_SCRIPTING(DYNAMIC_STRING_BUILDER(n));
+
+#endif
+
     // If this hits, you need to add that id to the array above.
 	jassert(getAllFunctionNames().contains(functionname));
 
+
 	if (!lastResult.wasOk())
 		return false;
-
-    
     
 	auto f = functions.getProperty(functionname, {});
 
@@ -2454,6 +2480,8 @@ bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const
 		{
 			if (auto sl = SimpleReadWriteLock::ScopedTryReadLock(getScriptProcessor()->getMainController_()->getJavascriptThreadPool().getLookAndFeelRenderLock()))
 			{
+				TRACE_SCRIPTING("executing script function");
+
 				if (c != nullptr && c->getParentComponent() != nullptr)
 				{
 					var n = c->getParentComponent()->getName();
@@ -2492,11 +2520,13 @@ bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const
 				engine->callExternalFunction(f, arg, &lastResult, true);
 
 				if (lastResult.wasOk())
-					g->getDrawHandler().flush();
+					g->getDrawHandler().flush(0);
 				else
 					debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), lastResult.getErrorMessage());
 			}
 		}
+
+		TRACE_SCRIPTING("rendering draw actions");
 
 		DrawActions::Handler::Iterator it(&g->getDrawHandler());
 
@@ -2507,7 +2537,16 @@ bool ScriptingObjects::ScriptedLookAndFeel::callWithGraphics(Graphics& g_, const
 		else
 		{
 			while (auto action = it.getNextAction())
+			{
+#if PERFETTO
+			dispatch::StringBuilder b;
+			b << "g." << action->getDispatchId() << "()";
+			TRACE_EVENT("drawactions", DYNAMIC_STRING_BUILDER(b));
+#endif
+
 				action->perform(g_);
+			}
+				
 		}
         
 		return true;
@@ -3277,7 +3316,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawButtonBackground(Graphics& 
 		GlobalHiseLookAndFeel::drawButtonBackground(g_, button, bg, isMouseOverButton, isButtonDown);
 }
 
-void ScriptingObjects::ScriptedLookAndFeel::Laf::drawNumberTag(Graphics& g_, Colour& c, Rectangle<int> area, int offset, int size, int number)
+void ScriptingObjects::ScriptedLookAndFeel::Laf::drawNumberTag(Graphics& g_, Component& comp, Colour& c, Rectangle<int> area, int offset, int size, int number)
 {
 	if (auto l = get())
 	{
@@ -3287,12 +3326,17 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawNumberTag(Graphics& g_, Col
 			obj->setProperty("area", ApiHelpers::getVarRectangle(area.toFloat()));
 			obj->setProperty("macroIndex", number - 1);
 
+            setColourOrBlack(obj, "bgColour",    comp, HiseColourScheme::ComponentOutlineColourId);
+            setColourOrBlack(obj, "itemColour1", comp, HiseColourScheme::ComponentFillTopColourId);
+            setColourOrBlack(obj, "itemColour2", comp, HiseColourScheme::ComponentFillBottomColourId);
+            setColourOrBlack(obj, "textColour",  comp, HiseColourScheme::ComponentTextColourId);
+            
 			if (l->callWithGraphics(g_, "drawNumberTag", var(obj), nullptr))
 				return;
 		}
 	}
 
-	NumberTag::LookAndFeelMethods::drawNumberTag(g_, c, area, offset, size, number);
+	NumberTag::LookAndFeelMethods::drawNumberTag(g_, comp, c, area, offset, size, number);
 }
 
 juce::Path ScriptingObjects::ScriptedLookAndFeel::Laf::createPresetBrowserIcons(const String& id)

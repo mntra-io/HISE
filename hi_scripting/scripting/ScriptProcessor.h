@@ -69,6 +69,11 @@ public:
 
 	Identifier getContentParameterIdentifier(int parameterIndex) const;
 
+	int getContentParameterAmount() const
+	{
+		return content->getNumComponents();
+	}
+
 	int getContentParameterIdentifierIndex(const Identifier& id) const;
 
 	void setControlValue(int index, float newValue);
@@ -654,6 +659,11 @@ struct JavascriptSleepListener
 class JavascriptThreadPool : public Thread,
 							 public ControlledObject
 {
+	static constexpr uint64_t ScriptTrackId = 8999;
+	static constexpr uint64_t CompilationTrackId = 9000;
+	static constexpr uint64_t HighPriorityTrackId = 9001;
+	static constexpr uint64_t LowPriorityTrackId = 9002;
+	
 public:
 
 	using SleepListener = JavascriptSleepListener;
@@ -672,6 +682,7 @@ public:
 		{
 			Compilation,
             ReplEvaluation,
+            HiPriorityDispatchQueue,
 			HiPriorityCallbackExecution,
 			LowPriorityCallbackExecution,
 			DeferredPanelRepaintJob,
@@ -745,6 +756,20 @@ public:
 	bool  isCurrentlySleeping() const;;
 
 private:
+
+	void clearCounter(Task::Type t)
+	{
+		numTasks[t] = 0;
+		TRACE_COUNTER("dispatch", perfetto::CounterTrack(taskNames[t].get()), numTasks[t]);
+	}
+
+	void bumpCounter(Task::Type t)
+	{
+		TRACE_COUNTER("dispatch", perfetto::CounterTrack(taskNames[t].get()), ++numTasks[t]);
+	}
+
+	uint16 numTasks[(int)Task::numTypes];
+	dispatch::HashedCharPtr taskNames[(int)Task::numTypes];
 
 	Array<WeakReference<SleepListener>> sleepListeners;
 

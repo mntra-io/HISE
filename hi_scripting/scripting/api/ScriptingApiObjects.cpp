@@ -1090,7 +1090,7 @@ void ScriptingObjects::ScriptFile::extractZipFile(var targetDirectory, bool over
 
 	auto p = dynamic_cast<Processor*>(getScriptProcessor());
 
-	getScriptProcessor()->getMainController_()->getKillStateHandler().killVoicesAndCall(p, cb, MainController::KillStateHandler::SampleLoadingThread);
+	getScriptProcessor()->getMainController_()->getKillStateHandler().killVoicesAndCall(p, cb, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 }
 
 int ScriptingObjects::ScriptFile::getNumZippedItems()
@@ -2818,7 +2818,7 @@ void ScriptingObjects::ScriptingModulator::setBypassed(bool shouldBeBypassed)
 	if (checkValidObject())
 	{
 		mod->setBypassed(shouldBeBypassed, sendNotification);
-		mod->sendChangeMessage();
+		mod->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Bypassed);
 	}
 }
 
@@ -2854,8 +2854,7 @@ void ScriptingObjects::ScriptingModulator::setIntensity(float newIntensity)
 		{
 			const float value = jlimit<float>(0.0f, 1.0f, newIntensity);
 			m->setIntensity(value);
-
-			mod.get()->sendChangeMessage();
+			mod.get()->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Intensity, dispatch::sendNotificationAsync);
 		}
 		else if(mode == Modulation::PitchMode)
 		{
@@ -2863,16 +2862,14 @@ void ScriptingObjects::ScriptingModulator::setIntensity(float newIntensity)
 			const float pitchFactor = value / 12.0f;
 
 			m->setIntensity(pitchFactor);
-
-			mod.get()->sendChangeMessage();
+			mod.get()->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Intensity, dispatch::sendNotificationAsync);
 		}
 		else
 		{
 			const float value = jlimit<float>(-1.0f, 1.0f, newIntensity);
 
 			m->setIntensity(value);
-
-			mod.get()->sendChangeMessage();
+			mod.get()->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Intensity, dispatch::sendNotificationAsync);
 		}
 	}
 };
@@ -3198,7 +3195,7 @@ void ScriptingObjects::ScriptingEffect::setBypassed(bool shouldBeBypassed)
 	if (checkValidObject())
 	{
 		effect->setBypassed(shouldBeBypassed, sendNotification);
-		effect->sendChangeMessage();
+		effect->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Bypassed, dispatch::sendNotificationAsync);
 	}
 }
 
@@ -3930,7 +3927,7 @@ void ScriptingObjects::ScriptingSynth::setBypassed(bool shouldBeBypassed)
 	if (checkValidObject())
 	{
 		synth->setBypassed(shouldBeBypassed, sendNotification);
-		synth->sendChangeMessage();
+		synth->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Bypassed);
 	}
 }
 
@@ -4256,7 +4253,7 @@ void ScriptingObjects::ScriptingMidiProcessor::setBypassed(bool shouldBeBypassed
 	if (checkValidObject())
 	{
 		mp->setBypassed(shouldBeBypassed, sendNotification);
-		mp->sendChangeMessage();
+		mp->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Bypassed);
 	}
 }
 
@@ -4439,7 +4436,7 @@ void ScriptingObjects::ScriptingAudioSampleProcessor::setBypassed(bool shouldBeB
 	if (checkValidObject())
 	{
 		audioSampleProcessor->setBypassed(shouldBeBypassed, sendNotification);
-		audioSampleProcessor->sendChangeMessage();
+		audioSampleProcessor->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Bypassed);
 	}
 }
 
@@ -4801,6 +4798,13 @@ struct ScriptingObjects::ScriptingMessageHolder::Wrapper
 	API_METHOD_WRAPPER_0(ScriptingMessageHolder, getChannel);
 	API_VOID_METHOD_WRAPPER_1(ScriptingMessageHolder, setType);
 	API_VOID_METHOD_WRAPPER_1(ScriptingMessageHolder, setChannel);
+	API_METHOD_WRAPPER_0(ScriptingMessageHolder, isMonophonicAfterTouch);
+	API_METHOD_WRAPPER_0(ScriptingMessageHolder, getMonophonicAftertouchPressure);
+	API_VOID_METHOD_WRAPPER_1(ScriptingMessageHolder, setMonophonicAfterTouchPressure);
+	API_METHOD_WRAPPER_0(ScriptingMessageHolder, isPolyAftertouch);
+	API_METHOD_WRAPPER_0(ScriptingMessageHolder, getPolyAfterTouchNoteNumber);
+	API_METHOD_WRAPPER_0(ScriptingMessageHolder, getPolyAfterTouchPressureValue);
+	API_VOID_METHOD_WRAPPER_2(ScriptingMessageHolder, setPolyAfterTouchNoteNumberAndPressureValue);
 	API_VOID_METHOD_WRAPPER_1(ScriptingMessageHolder, setTransposeAmount);
 	API_METHOD_WRAPPER_0(ScriptingMessageHolder, getTransposeAmount);
 	API_VOID_METHOD_WRAPPER_1(ScriptingMessageHolder, setCoarseDetune);
@@ -4843,6 +4847,15 @@ ScriptingObjects::ScriptingMessageHolder::ScriptingMessageHolder(ProcessorWithSc
 	ADD_API_METHOD_0(getEventId);
 	ADD_API_METHOD_0(getChannel);
 	ADD_API_METHOD_0(getGain);
+
+	ADD_API_METHOD_0(isMonophonicAfterTouch);
+	ADD_API_METHOD_0(getMonophonicAftertouchPressure);
+	ADD_API_METHOD_1(setMonophonicAfterTouchPressure);
+	ADD_API_METHOD_0(isPolyAftertouch);
+	ADD_API_METHOD_0(getPolyAfterTouchNoteNumber);
+	ADD_API_METHOD_0(getPolyAfterTouchPressureValue);
+	ADD_API_METHOD_2(setPolyAfterTouchNoteNumberAndPressureValue);
+
 	ADD_API_METHOD_0(getTransposeAmount);
 	ADD_API_METHOD_0(getCoarseDetune);
 	ADD_API_METHOD_0(getFineDetune);
@@ -4925,6 +4938,15 @@ juce::var ScriptingObjects::ScriptingMessageHolder::clone()
 }
 
 int ScriptingObjects::ScriptingMessageHolder::getTransposeAmount() const { return (int)e.getTransposeAmount(); }
+
+bool ScriptingObjects::ScriptingMessageHolder::isMonophonicAfterTouch() const{ return e.isChannelPressure(); }
+int ScriptingObjects::ScriptingMessageHolder::getMonophonicAftertouchPressure() const{ return e.getChannelPressureValue(); }
+void ScriptingObjects::ScriptingMessageHolder::setMonophonicAfterTouchPressure(int pressure){ e.setChannelPressureValue((uint8)pressure); }
+bool ScriptingObjects::ScriptingMessageHolder::isPolyAftertouch() const{ return e.isAftertouch(); }
+int ScriptingObjects::ScriptingMessageHolder::getPolyAfterTouchNoteNumber() const{ return e.getAfterTouchNumber(); }
+int ScriptingObjects::ScriptingMessageHolder::getPolyAfterTouchPressureValue() const{ return e.getAfterTouchValue(); }
+void ScriptingObjects::ScriptingMessageHolder::setPolyAfterTouchNoteNumberAndPressureValue(int noteNumber, int aftertouchAmount) { e.setAfterTouchValue(noteNumber, aftertouchAmount); }
+
 void ScriptingObjects::ScriptingMessageHolder::setCoarseDetune(int semiToneDetune) { e.setCoarseDetune(semiToneDetune); }
 int ScriptingObjects::ScriptingMessageHolder::getCoarseDetune() const { return (int)e.getCoarseDetune(); }
 void ScriptingObjects::ScriptingMessageHolder::setFineDetune(int cents) { e.setFineDetune(cents); }
@@ -4995,7 +5017,7 @@ bool ApiHelpers::ModuleHandler::removeModule(Processor* p)
 	if (p == nullptr)
 		return true;
 
-	if (p->getMainController()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::AudioThread)
+	if (p->getMainController()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::AudioThread)
 	{
 		throw String("Effects can't be removed from the audio thread!");
 	}
@@ -5125,7 +5147,7 @@ hise::Modulator* ApiHelpers::ModuleHandler::addAndConnectToGlobalModulator(Chain
 		auto returnMod = dynamic_cast<Modulator*>(m);
 
 #if USE_BACKEND
-		returnMod->sendChangeMessage();
+		returnMod->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Children, dispatch::sendNotificationAsync);
 #endif
 
 		return returnMod;
@@ -5496,7 +5518,7 @@ void ScriptingObjects::ScriptedMidiPlayer::flushMessageListToSequence(var messag
 	}
 	else
 	{
-		reportScriptError("Can't find sequence with one based index " + sequenceIndex);
+		reportScriptError("Can't find sequence with one based index " + String(sequenceIndex));
 	}
 }
 
@@ -5504,7 +5526,7 @@ void ScriptingObjects::ScriptedMidiPlayer::flushMessageList(var messageList)
 {
 	auto currentSequenceIndex = getPlayer()->getAttribute(MidiPlayer::SpecialParameters::CurrentSequence);
 
-	flushMessageListToSequence(messageList, -1);
+	flushMessageListToSequence(messageList, currentSequenceIndex);
 }
 
 void ScriptingObjects::ScriptedMidiPlayer::setUseTimestampInTicks(bool shouldUseTimestamps)
@@ -5655,13 +5677,13 @@ var ScriptingObjects::ScriptedMidiPlayer::getMidiFileList()
 void ScriptingObjects::ScriptedMidiPlayer::setTrack(int trackIndex)
 {
 	if (auto pl = getPlayer())
-		pl->setAttribute(MidiPlayer::CurrentTrack, (float)trackIndex, sendNotification);
+		pl->setAttribute(MidiPlayer::CurrentTrack, (float)trackIndex, sendNotificationAsync);
 }
 
 void ScriptingObjects::ScriptedMidiPlayer::setSequence(int sequenceIndex)
 {
 	if (auto pl = getPlayer())
-		pl->setAttribute(MidiPlayer::CurrentSequence, (float)sequenceIndex, sendNotification);
+		pl->setAttribute(MidiPlayer::CurrentSequence, (float)sequenceIndex, sendNotificationAsync);
 }
 
 int ScriptingObjects::ScriptedMidiPlayer::getNumSequences()
@@ -6441,6 +6463,10 @@ ScriptingObjects::ScriptBackgroundTask::ScriptBackgroundTask(ProcessorWithScript
 	currentTask(p, this, var(), 1),
 	finishCallback(p, this, var(), 2)
 {
+	String s;
+	s << getThreadName() << "abort checks";
+	abortId = Identifier(s);
+	
 	dynamic_cast<JavascriptProcessor*>(p)->getScriptEngine()->preCompileListeners.addListener(*this, recompiled, false);
 
 	ADD_API_METHOD_1(sendAbortSignal);
@@ -6493,6 +6519,28 @@ void ScriptingObjects::ScriptBackgroundTask::sendAbortSignal(bool blockUntilStop
 
 bool ScriptingObjects::ScriptBackgroundTask::shouldAbort()
 {
+#if PERFETTO
+	perfetto::CounterTrack ct(abortId.getCharPointer().getAddress());
+	TRACE_COUNTER("scripting", ct, ++numAbortChecks);
+#endif
+
+#if USE_BACKEND
+	auto now = Time::getCurrentTime();
+	auto delta = now.getMilliseconds() - lastAbortCheck.getMilliseconds();
+
+	if(delta > timeOut)
+	{
+		String errorMessage;
+		errorMessage << "WARNING: time between abort checks " << String(delta) << " ms) is above timeout (" << String(timeOut) << " ms).";
+		errorMessage << "\ngoto ";
+		auto loc = getCurrentLocationInFunctionCall();
+		errorMessage << loc.fileName << "@" << loc.charNumber;
+		debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), errorMessage);
+	}
+
+	lastAbortCheck = now;
+#endif
+
 	if (auto engine = dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine())
 	{
 		engine->extendTimeout(timeOut + 10);
@@ -6571,7 +6619,7 @@ bool ScriptingObjects::ScriptBackgroundTask::killVoicesAndCall(var loadingFuncti
 			return SafeFunctionCall::OK;
 		};
 
-		return getScriptProcessor()->getMainController_()->getKillStateHandler().killVoicesAndCall(dynamic_cast<Processor*>(getScriptProcessor()), f, MainController::KillStateHandler::SampleLoadingThread);
+		return getScriptProcessor()->getMainController_()->getKillStateHandler().killVoicesAndCall(dynamic_cast<Processor*>(getScriptProcessor()), f, MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 	}
 
 	return false;
@@ -6718,6 +6766,17 @@ void ScriptingObjects::ScriptBackgroundTask::setStatusMessage(String m)
 
 void ScriptingObjects::ScriptBackgroundTask::run()
 {
+#if PERFETTO
+	Identifier threadId(getThreadName());
+	PerfettoHelpers::setCurrentThreadName(threadId.getCharPointer().getAddress());
+
+	TRACE_SCRIPTING("Performing background task");
+
+	perfetto::CounterTrack ct(abortId.getCharPointer().getAddress());
+	numAbortChecks = 0;
+	TRACE_COUNTER("scripting", ct, numAbortChecks);
+#endif
+
 	if (currentTask || childProcessData)
 	{
 		if (forwardToLoadingThread)
@@ -7921,6 +7980,7 @@ ScriptingObjects::ScriptedMidiPlayer::PlaybackUpdater::PlaybackUpdater(ScriptedM
 
 	playbackCallback.incRefCount();
 	playbackCallback.setThisObject(&parent);
+	playbackCallback.addAsSource(&parent, "onPlaybackChange");
 }
 
 ScriptingObjects::ScriptedMidiPlayer::PlaybackUpdater::~PlaybackUpdater()
@@ -7982,41 +8042,8 @@ void ScriptingObjects::ScriptedMacroHandler::macroConnectionChanged(int macroInd
 
 var ScriptingObjects::ScriptedMacroHandler::getMacroDataObject()
 {
-	auto& mm = getScriptProcessor()->getMainController_()->getMacroManager();
-
 	Array<var> list;
-
-#if 0
-	for(int i = 0; i < HISE_NUM_MACROS; i++)
-	{
-		auto md = mm.getMacroChain()->getMacroControlData(i);
-
-		ScopedPointer<XmlElement> xml = md->exportAsXml();
-
-		auto v = ValueTree::fromXml(*xml);
-
-		auto nv = valuetree::Helpers::valueTreeToJSON(v);
-
-		if(auto obj = nv.getDynamicObject())
-		{
-			if(nv.hasProperty("Children"))
-			{
-				obj->removeProperty("ChildId");
-				obj->setProperty("ControlledParameters", nv["Children"]);
-				obj->removeProperty("Children");
-			}
-			else
-			{
-				obj->setProperty("ControlledParameters", var(Array<var>()));
-			}
-			
-			obj->removeProperty("midi_cc");
-
-			list.add(nv);
-		}
-	}
-#endif
-
+	
 	for (int i = 0; i < HISE_NUM_MACROS; i++)
 	{
 		auto md = getScriptProcessor()->getMainController_()->getMacroManager().getMacroChain()->getMacroControlData(i);
@@ -8629,14 +8656,14 @@ void ScriptingObjects::ScriptBuilder::setAttributes(int buildIndex, var attribut
 				}
 			}
 
-			p->sendPooledChangeMessage();
+			p->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Attribute, dispatch::sendNotificationAsync);
 		}
 	}
 }
 
 void ScriptingObjects::ScriptBuilder::clear()
 {
-	if (getScriptProcessor()->getMainController_()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::SampleLoadingThread)
+	if (getScriptProcessor()->getMainController_()->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::SampleLoadingThread)
 	{
 		debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), "skipping Builder.clear() on project load");
 		return;
@@ -8645,9 +8672,14 @@ void ScriptingObjects::ScriptBuilder::clear()
 	auto thisAsP = dynamic_cast<Processor*>(getScriptProcessor());
 
     auto mc = getScriptProcessor()->getMainController_();
-    
+    SUSPEND_GLOBAL_DISPATCH(mc, "clear from builder");
     MainController::ScopedBadBabysitter sb(mc);
-    
+
+	mc->getProcessorChangeHandler().sendProcessorChangeMessage(mc->getMainSynthChain(), MainController::ProcessorChangeHandler::EventType::ClearBeforeRebuild, false);
+
+	Thread::getCurrentThread()->wait(500);
+	dynamic_cast<JavascriptProcessor*>(getScriptProcessor())->getScriptEngine()->extendTimeout(500);
+
 	raw::Builder b(mc);
 
 	auto synthChain = getScriptProcessor()->getMainController_()->getMainSynthChain();

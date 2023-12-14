@@ -66,7 +66,7 @@ bool ModulatorSynthGroupVoice::canPlaySound(SynthesiserSound *)
 
 void ModulatorSynthGroupVoice::addChildSynth(ModulatorSynth *childSynth)
 {
-	LockHelpers::SafeLock sl(ownerSynth->getMainController(), LockHelpers::AudioLock);
+	LockHelpers::SafeLock sl(ownerSynth->getMainController(), LockHelpers::Type::AudioLock);
 
 	childSynths.add(ChildSynth(childSynth));
 }
@@ -76,7 +76,7 @@ void ModulatorSynthGroupVoice::removeChildSynth(ModulatorSynth *childSynth)
 {
 	LOCK_PROCESSING_CHAIN(ownerSynth);
 
-	//LockHelpers::SafeLock sl(ownerSynth->getMainController(), LockHelpers::AudioLock, getOwnerSynth()->isOnAir());
+	//LockHelpers::SafeLock sl(ownerSynth->getMainController(), LockHelpers::Type::AudioLock, getOwnerSynth()->isOnAir());
 
 	jassert(childSynth != nullptr);
 	jassert(childSynths.indexOf(childSynth) != -1);
@@ -859,6 +859,8 @@ ModulatorSynthGroup::ModulatorSynthGroup(MainController *mc, const String &id, i
 	parameterNames.add("ForceMono");
 	parameterNames.add("KillSecondVoices");
 
+	updateParameterSlots();
+
 	allowStates.clear();
 
 	for (int i = 0; i < numVoices; i++) addVoice(new ModulatorSynthGroupVoice(this));
@@ -1438,7 +1440,7 @@ void ModulatorSynthGroup::checkFmState()
 		MainController::KillStateHandler::TargetThread::SampleLoadingThread);
 
 
-	sendChangeMessage();
+	sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Custom);
 }
 
 
@@ -1446,7 +1448,7 @@ void ModulatorSynthGroup::checkFmState()
 void ModulatorSynthGroup::checkFMStateInternally()
 {
 	LockHelpers::freeToGo(getMainController());
-	LockHelpers::SafeLock l(getMainController(), LockHelpers::AudioLock, isOnAir());
+	LockHelpers::SafeLock l(getMainController(), LockHelpers::Type::AudioLock, isOnAir());
 
 	auto offset = (int)ModulatorSynthGroup::InternalChains::numInternalChains;
 
@@ -1543,7 +1545,7 @@ void ModulatorSynthGroup::ModulatorSynthGroupHandler::add(Processor *newProcesso
 		group->checkFmState();
 	}
 
-	group->sendChangeMessage();
+	group->sendOtherChangeMessage(dispatch::library::ProcessorChangeEvent::Custom);
 
 	notifyListeners(Listener::ProcessorAdded, newProcessor);
 }

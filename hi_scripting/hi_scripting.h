@@ -78,7 +78,7 @@ compile / debug cycle and don't need all nodes in scriptnode you might want to t
     Be aware that this is just a temporar solution and I'll remove this sometime in the future.
 */
 #ifndef HISE_WARN_UNDEFINED_PARAMETER_CALLS
-#define HISE_WARN_UNDEFINED_PARAMETER_CALLS 0
+#define HISE_WARN_UNDEFINED_PARAMETER_CALLS 1
 #endif
 
 #define MAX_SCRIPT_HEIGHT 700
@@ -128,7 +128,7 @@ compile / debug cycle and don't need all nodes in scriptnode you might want to t
 
 #include "scripting/ScriptProcessor.h"
 #include "scripting/ScriptProcessorModules.h"
-
+#include "scripting/HardcodedScriptProcessor.h"
 
 #include "scripting/api/ScriptComponentWrappers.h"
 #include "scripting/components/ScriptingContentComponent.h"

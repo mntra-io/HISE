@@ -130,6 +130,7 @@ private:
 *	
 */
 class MacroControlledObject: public MacroControlBroadcaster::MacroConnectionListener,
+							 public dispatch::ListenerOwner,
 						     public Learnable
 {
 public:
@@ -226,7 +227,12 @@ public:
 
 	void setModulationData(ModulationPopupData::Ptr modData);
 
+
+	void onAttributeChange(dispatch::library::Processor* p, uint8 index);
+
 protected:
+
+	ScopedPointer<dispatch::library::Processor::AttributeListener> valueListener;
 
     friend class SliderWithShiftTextBox;
     
@@ -444,8 +450,8 @@ public:
             {
                 case Action::TextInput:
                     return ModifierKeys::shiftModifier;
-                case Action::ResetToDefault:
-                    return doubleClickModifier;
+            case Action::ResetToDefault:
+                    return doubleClickModifier | ModifierKeys::altModifier;
                 case Action::FineTune:
                     return  ModifierKeys::commandModifier |
                             ModifierKeys::ctrlModifier |
@@ -524,7 +530,8 @@ public:
         
         if(a == ModifierObject::Action::TextInput)
         {
-            return onShiftClick(e);
+            onShiftClick(e);
+			return true;
         }
         if(a == ModifierObject::Action::ResetToDefault)
         {

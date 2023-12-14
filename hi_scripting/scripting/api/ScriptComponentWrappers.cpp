@@ -51,6 +51,9 @@ struct ScriptCreatedComponentWrapper::AdditionalMouseCallback: public MouseListe
 		component(c),
 		data(cd)
 	{
+		for(int i = 0; i < (int)MouseCallbackComponent::Action::Nothing; i++)
+			eventObject[i] = var(new DynamicObject());
+
 		component->addMouseListener(this, true);
 	};
 
@@ -193,6 +196,14 @@ struct ScriptCreatedComponentWrapper::AdditionalMouseCallback: public MouseListe
 
 	void sendMessageOrAsync(const MouseEvent& event, MouseCallbackComponent::Action action, MouseCallbackComponent::EnterState state, int popupMenuIndex = -1)
 	{
+		dispatch::StringBuilder n;
+
+		n << "mouse callback for " << scriptComponent->getName() << ": [";
+		n << MouseCallbackComponent::getCallbackLevelAsIdentifier(data.mouseCallbackLevel);
+		n << ", " << MouseCallbackComponent::getActionAsIdentifier(action) << "]";
+	
+		TRACE_EVENT("component", DYNAMIC_STRING_BUILDER(n));
+
 		if (data.delayMilliseconds == 0)
 			sendMessage(event, action, state, popupMenuIndex);
 		else
@@ -211,28 +222,39 @@ struct ScriptCreatedComponentWrapper::AdditionalMouseCallback: public MouseListe
 
 	void sendMessage(const MouseEvent& event, MouseCallbackComponent::Action action, MouseCallbackComponent::EnterState state, int popupMenuIndex = -1)
 	{
-		if (data.listener != nullptr)
-		{
-			var arguments[2];
+        auto mc = scriptComponent->getScriptProcessor()->getMainController_();
 
-			arguments[0] = var(scriptComponent.get());
+        SimpleReadWriteLock::ScopedTryReadLock  sl(mc->getJavascriptThreadPool().getLookAndFeelRenderLock());
+        
+        if(sl)
+        {
+            LockHelpers::SafeLock sl(mc, LockHelpers::Type::ScriptLock);
 
-			if (data.mouseCallbackLevel != MouseCallbackComponent::CallbackLevel::PopupMenuOnly)
+            if (data.listener != nullptr)
             {
-				arguments[1] = MouseCallbackComponent::getMouseCallbackObject(component.getComponent(), event, data.mouseCallbackLevel, action, state);
-                ComponentWithAdditionalMouseProperties::attachMousePropertyFromParent(event, arguments[1]);
-            }
-			else
-				arguments[1] = var(popupMenuIndex);
+                var arguments[2];
 
-			var::NativeFunctionArgs args({}, arguments, 2);
-			auto ok = data.listener->call(nullptr, args, nullptr);
-		}
+                arguments[0] = var(scriptComponent.get());
+
+                if (data.mouseCallbackLevel != MouseCallbackComponent::CallbackLevel::PopupMenuOnly)
+                {
+                    MouseCallbackComponent::fillMouseCallbackObject(eventObject[(int)action], component.getComponent(), event, data.mouseCallbackLevel, action, state);
+                    arguments[1] = eventObject[(int)action];
+                    ComponentWithAdditionalMouseProperties::attachMousePropertyFromParent(event, arguments[1]);
+                }
+                else
+                    arguments[1] = var(popupMenuIndex);
+
+                var::NativeFunctionArgs args({}, arguments, 2);
+                auto ok = data.listener->call(nullptr, args, nullptr);
+            }
+        }
 	}
 
 	Component::SafePointer<Component> component;
 	WeakReference<ScriptComponent> scriptComponent;
 	ScriptComponent::MouseListenerData data;
+	var eventObject[(int)MouseCallbackComponent::Action::Nothing];
 
 	JUCE_DECLARE_WEAK_REFERENCEABLE(AdditionalMouseCallback);
 };
@@ -585,7 +607,7 @@ void ScriptCreatedComponentWrappers::SliderWrapper::updateSliderRange(ScriptingA
 
 	if (defaultValue >= min && defaultValue <= max)
 	{
-		s->setDoubleClickReturnValue(true, defaultValue);
+		s->setDoubleClickReturnValue(true, defaultValue, ModifierKeys());
 	}
 }
 
@@ -1780,6 +1802,8 @@ void ScriptCreatedComponentWrappers::ViewportWrapper::updateComponent(int proper
 
 	if (mode != Mode::Viewport)
 	{
+		auto lb = dynamic_cast<ListBox*>(getComponent());
+
 		switch (propertyIndex)
 		{
 			PROPERTY_CASE::ScriptedViewport::Properties::FontName:
@@ -1790,9 +1814,10 @@ void ScriptCreatedComponentWrappers::ViewportWrapper::updateComponent(int proper
 			PROPERTY_CASE::ScriptComponent::itemColour :
 			PROPERTY_CASE::ScriptComponent::itemColour2 :
 			PROPERTY_CASE::ScriptComponent::textColour : updateColours(); break;
+			PROPERTY_CASE::ScriptComponent::tooltip :        lb->setTooltip(GET_SCRIPT_PROPERTY(tooltip)); break;
 			PROPERTY_CASE::ScriptedViewport::Properties::Items: updateItems(vpc); break;
 			PROPERTY_CASE::ScriptedViewport::Properties::scrollbarThickness: 
-				dynamic_cast<ListBox*>(getComponent())->getViewport()->setScrollBarThickness(newValue); break;
+				lb->getViewport()->setScrollBarThickness(newValue); break;
 		}
 	}
 	else
@@ -2422,6 +2447,7 @@ void ScriptCreatedComponentWrappers::SliderPackWrapper::updateComponent(int prop
 		PROPERTY_CASE::ScriptComponent::itemColour :
 		PROPERTY_CASE::ScriptComponent::itemColour2 :
 		PROPERTY_CASE::ScriptComponent::textColour : updateColours(sp); break;
+		PROPERTY_CASE::ScriptComponent::tooltip :    sp->setTooltip(GET_SCRIPT_PROPERTY(tooltip)); break;
 		PROPERTY_CASE::ScriptSliderPack::Properties::FlashActive: sp->setFlashActive(newValue); break;
 		PROPERTY_CASE::ScriptSliderPack::Properties::ShowValueOverlay : sp->setShowValueOverlay(newValue); break;
 		PROPERTY_CASE::ScriptSliderPack::Properties::StepSize:
@@ -2485,19 +2511,19 @@ void ScriptCreatedComponentWrappers::SliderPackWrapper::updateValue(var newValue
 #endif
 }
 
-class ScriptCreatedComponentWrappers::AudioWaveformWrapper::SamplerListener : public SafeChangeListener,
+class ScriptCreatedComponentWrappers::AudioWaveformWrapper::SamplerListener : public Processor::OtherListener,
 																			  public SampleMap::Listener,
 																			  public AudioDisplayComponent::Listener
 {
 public:
 
 	SamplerListener(ModulatorSampler* s_, SamplerSoundWaveform* waveform_) :
+	    OtherListener(s_, dispatch::library::ProcessorChangeEvent::Custom),
 		s(s_),
 		samplemap(s->getSampleMap()),
 		waveform(waveform_)
 	{
 		samplemap->addListener(this);
-		s->addChangeListener(this);
 
 		if(waveform->getSampleArea(0)->isAreaEnabled())
 			waveform->addAreaListener(this);
@@ -2509,9 +2535,6 @@ public:
 	~SamplerListener()
 	{
 		lastSound = nullptr;
-
-		if (s != nullptr)
-			s->removeChangeListener(this);
 
 		if (waveform != nullptr)
 			waveform->removeAreaListener(this);
@@ -2597,7 +2620,7 @@ public:
 	active = shouldBeActive;
 	}
 
-	void changeListenerCallback(SafeChangeBroadcaster* /*b*/) override
+	void otherChange(Processor* p) override
 	{
 		if (!active)
 			return;
@@ -2702,6 +2725,8 @@ void ScriptCreatedComponentWrappers::AudioWaveformWrapper::updateComponent(int p
 			PROPERTY_CASE::ScriptComponent::itemColour2 :
 			PROPERTY_CASE::ScriptComponent::bgColour :
 			PROPERTY_CASE::ScriptComponent::textColour : updateColours(adc); break;
+            PROPERTY_CASE::ScriptComponent::tooltip :        adc->setTooltip(GET_SCRIPT_PROPERTY(tooltip)); break;
+
 			PROPERTY_CASE::ScriptAudioWaveform::Properties::showLines: adc->getThumbnail()->setDrawHorizontalLines((bool)newValue); break;
 			PROPERTY_CASE::ScriptAudioWaveform::Properties::enableRange:
 			{
@@ -3139,7 +3164,7 @@ void ScriptedControlAudioParameter::setParameterNotifyingHost(int index, float n
 {
 	auto mc = dynamic_cast<MainController*>(parentProcessor);
 
-	if (mc->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::AudioThread)
+	if (mc->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::AudioThread)
 	{
 		indexForHost = index;
 		valueForHost = newValue;

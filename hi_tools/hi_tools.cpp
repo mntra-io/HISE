@@ -62,7 +62,7 @@
 #include "hi_tools/HiseEventBuffer.cpp"
 
 #include "hi_tools/MiscToolClasses.cpp"
-
+#include "hi_dispatch/hi_dispatch.cpp"
 
 #include "hi_tools/PathFactory.cpp"
 #include "hi_tools/HI_LookAndFeels.cpp"
@@ -118,6 +118,9 @@
 
 #if !HISE_NO_GUI_TOOLS
 #include "hi_standalone_components/ZoomableViewport.cpp"
+#if USE_BACKEND
+#include "hi_standalone_components/PerfettoWebViewer.cpp"
+#endif
 #endif
 
 #include "hi_standalone_components/SampleDisplayComponent.cpp"

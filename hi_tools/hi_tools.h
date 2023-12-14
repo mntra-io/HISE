@@ -52,7 +52,6 @@ END_JUCE_MODULE_DECLARATION
 
 #pragma once
 
-#include "AppConfig.h"
 
 
 
@@ -211,6 +210,8 @@ will break compatibility with older projects / presets because the tempo indexes
 #include "hi_tools/PathFactory.h"
 #include "hi_tools/HI_LookAndFeels.h"
 
+#include "hi_dispatch/hi_dispatch.h"
+
 #if USE_BACKEND || HISE_ENABLE_LORIS_ON_FRONTEND
 #include "hi_tools/LorisManager.h"
 #endif
@@ -260,6 +261,9 @@ will break compatibility with older projects / presets because the tempo indexes
 #include "hi_standalone_components/ScriptWatchTable.h"
 #include "hi_standalone_components/ComponentWithPreferredSize.h"
 #include "hi_standalone_components/ZoomableViewport.h"
+#if USE_BACKEND
+#include "hi_standalone_components/PerfettoWebViewer.h"
+#endif
 #else
 using ComponentWithMiddleMouseDrag = juce::Component;
 #define CHECK_MIDDLE_MOUSE_DOWN(e) ignoreUnused(e);
@@ -274,9 +278,10 @@ using ComponentWithMiddleMouseDrag = juce::Component;
 #include "hi_standalone_components/RLottieDevComponent.h"
 #endif
 
-#include "hi_standalone_components/Plotter.h"
+
 
 #include "hi_standalone_components/RingBuffer.h"
+#include "hi_standalone_components/Plotter.h"
 
 #include "hi_standalone_components/SliderPack.h"
 #include "hi_standalone_components/TableEditor.h"

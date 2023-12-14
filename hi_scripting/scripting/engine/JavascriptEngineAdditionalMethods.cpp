@@ -269,6 +269,7 @@ hiseSpecialData(this)
 
     // These are not constants so if you're evil you can change them...
     setProperty("AsyncNotification", ApiHelpers::AsyncMagicNumber);
+	setProperty("AsyncHiPriorityNotification", ApiHelpers::AsyncHiPriorityMagicNumber);
     setProperty("SyncNotification", ApiHelpers::SyncMagicNumber);
 }
 
@@ -279,40 +280,6 @@ hiseSpecialData(this)
 #endif
 
 
-HiseJavascriptEngine::RootObject::Statement::ResultCode HiseJavascriptEngine::RootObject::LockStatement::perform(const Scope& /*s*/, var*) const
-{
-	if (RegisterName* r = dynamic_cast<RegisterName*>(lockedObj.get()))
-	{
-		currentLock = &r->rootRegister->getLock(r->indexInRegister);
-		return ResultCode::ok;
-	}
-	else if (ConstReference* cr = dynamic_cast<ConstReference*>(lockedObj.get()))
-	{
-		var* constObj = cr->ns->constObjects.getVarPointerAt(cr->index);
-
-		if (ApiClass* api = dynamic_cast<ApiClass*>(constObj->getObject()))
-		{
-			currentLock = &api->apiClassLock;
-			return ResultCode::ok;
-		}
-		else
-		{
-			currentLock = nullptr;
-			location.throwError("Can't lock this object");
-			return Statement::ok;
-		}
-	}
-	else
-	{
-		currentLock = nullptr;
-		location.throwError("Can't lock this object");
-		return Statement::ok;
-	}
-}
-
-#if JUCE_MSVC
-#pragma warning (pop)
-#endif
 
 
 
@@ -433,9 +400,16 @@ var HiseJavascriptEngine::RootObject::FunctionCall::getResult(const Scope& s) co
                     if(parameters[i].isUndefined() || parameters[i].isVoid())
                     {
                         auto p = dynamic_cast<Processor*>(c->getScriptProcessor());
-                        String errorMessage = "Warning: undefined parameter " + String(i);
-                        auto e = Error::fromLocation(location, errorMessage);
-                        debugError(p, errorMessage + "\n:\t\t\t" + e.toString(p));
+                        
+                        auto warn = (bool)GET_HISE_SETTING(p, HiseSettings::Scripting::WarnIfUndefinedParameters);
+                        
+                        if(warn)
+                        {
+                            String errorMessage = "Warning: undefined parameter " + String(i);
+                            auto e = Error::fromLocation(location, errorMessage);
+                            debugError(p, errorMessage + "\n:\t\t\t" + e.toString(p));
+                        }
+                        
                         continue;
                     }
 #endif

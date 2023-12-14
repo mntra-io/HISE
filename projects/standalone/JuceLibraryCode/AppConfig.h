@@ -45,7 +45,7 @@
 
 #define JUCE_USE_DARK_SPLASH_SCREEN 1
 
-#define JUCE_PROJUCER_VERSION 0x60104
+#define JUCE_PROJUCER_VERSION 0x60103
 
 //==============================================================================
 #define JUCE_MODULE_AVAILABLE_hi_backend                  1
@@ -442,7 +442,7 @@
 #endif
 
 #ifndef    JUCE_JACK
- #define   JUCE_JACK 0
+ #define   JUCE_JACK 1
 #endif
 
 #ifndef    JUCE_BELA
@@ -450,7 +450,7 @@
 #endif
 
 #ifndef    JUCE_USE_ANDROID_OBOE
- #define   JUCE_USE_ANDROID_OBOE 0
+ //#define JUCE_USE_ANDROID_OBOE 1
 #endif
 
 #ifndef    JUCE_USE_OBOE_STABILIZED_CALLBACK
@@ -530,7 +530,7 @@
 #endif
 
 #ifndef    JUCE_ENABLE_AUDIO_GUARD
- //#define JUCE_ENABLE_AUDIO_GUARD 0
+ #define   JUCE_ENABLE_AUDIO_GUARD 1
 #endif
 
 #ifndef    JUCE_LOG_ASSERTIONS
@@ -661,7 +661,7 @@
 #endif
 
 #ifndef    JUCE_ENABLE_LIVE_CONSTANT_EDITOR
- #define   JUCE_ENABLE_LIVE_CONSTANT_EDITOR 0
+ //#define JUCE_ENABLE_LIVE_CONSTANT_EDITOR 0
 #endif
 
 //==============================================================================
