@@ -5157,10 +5157,12 @@ struct ScriptingApi::Synth::Wrapper
 	API_METHOD_WRAPPER_1(Synth, getAttribute);
 	API_METHOD_WRAPPER_4(Synth, addNoteOn);
 	API_VOID_METHOD_WRAPPER_3(Synth, addNoteOff);
+	API_VOID_METHOD_WRAPPER_1(Synth, setFixNoteOnAfterNoteOff);
 	API_VOID_METHOD_WRAPPER_3(Synth, addVolumeFade);
 	API_VOID_METHOD_WRAPPER_4(Synth, addPitchFade);
 	API_VOID_METHOD_WRAPPER_4(Synth, addController);
 	API_METHOD_WRAPPER_1(Synth, addMessageFromHolder);
+	API_METHOD_WRAPPER_2(Synth, attachNote);
 	API_VOID_METHOD_WRAPPER_2(Synth, setVoiceGainValue);
 	API_VOID_METHOD_WRAPPER_2(Synth, setVoicePitchValue);
 	API_VOID_METHOD_WRAPPER_1(Synth, startTimer);
@@ -5230,7 +5232,9 @@ ScriptingApi::Synth::Synth(ProcessorWithScriptingContent *p, Message* messageObj
 	ADD_API_METHOD_2(playNote);
 	ADD_API_METHOD_4(playNoteWithStartOffset);
     ADD_API_METHOD_3(playNoteFromUI);
+	ADD_API_METHOD_2(attachNote);
     ADD_API_METHOD_2(noteOffFromUI);
+	ADD_API_METHOD_1(setFixNoteOnAfterNoteOff);
 	ADD_API_METHOD_2(setAttribute);
 	ADD_API_METHOD_1(getAttribute);
 	ADD_API_METHOD_4(addNoteOn);
@@ -5407,6 +5411,25 @@ int ScriptingApi::Synth::playNoteWithStartOffset(int channel, int number, int ve
 	}
 
 	return internalAddNoteOn(channel, number, velocity, 0, offset); // the timestamp will be added from the current event
+}
+
+bool ScriptingApi::Synth::attachNote(int originalNoteId, int artificialNoteId)
+{
+	if (parentMidiProcessor != nullptr)
+	{
+		if(!owner->midiProcessorChain->hasAttachedNoteBuffer())
+			reportScriptError("You must call setFixNoteOnAfterNoteOff() before calling this method");
+
+		return owner->midiProcessorChain->attachNote(originalNoteId, artificialNoteId);
+	}
+
+	return false;
+}
+
+void ScriptingApi::Synth::setFixNoteOnAfterNoteOff(bool shouldBeFixed)
+{
+	if (parentMidiProcessor != nullptr)
+		owner->midiProcessorChain->setFixNoteOnAfterNoteOff(shouldBeFixed);
 }
 
 void ScriptingApi::Synth::addVolumeFade(int eventId, int fadeTimeMilliseconds, int targetVolume)
