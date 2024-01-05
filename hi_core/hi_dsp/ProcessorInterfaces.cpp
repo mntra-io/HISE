@@ -92,6 +92,14 @@ ComplexDataUIBase* ProcessorWithExternalData::createAndInit(ExternalData::DataTy
 	ComplexDataUIBase* d;
 
 	d = ExternalData::create(t);
+
+#if USE_BACKEND
+	if(auto af = dynamic_cast<SliderPackData*>(d))
+	{
+		// preallocate 128 sliders to avoid reallocating in the DLL heap
+		af->setUsePreallocatedLength(128);
+	}
+#endif
 		
 	if (auto af = dynamic_cast<MultiChannelAudioBuffer*>(d))
 		af->setProvider(new hise::PooledAudioFileDataProvider(mc_internal));
@@ -596,11 +604,27 @@ int FactoryType::fillPopupMenu(PopupMenu &m, int startIndex /*= 1*/)
 {
 	Array<ProcessorEntry> types = getAllowedTypes();
 
+	for(int i = 0; i < types.size(); i++)
+	{
+		types.getReference(i).index = i;
+	}
+
+	struct Sorter
+	{
+		static int compareElements(const ProcessorEntry& p1, const ProcessorEntry& p2)
+		{
+			return p1.name.compareNatural(p2.name);
+		}
+	} sorter;
+
+	types.sort(sorter);
+
 	int index = startIndex;
 
 	for (int i = 0; i < types.size(); i++)
 	{
-		m.addItem(i + startIndex, types[i].name);
+		
+		m.addItem(types[i].index + startIndex, types[i].name);
 
 		index++;
 	}
@@ -694,12 +718,7 @@ FactoryType::Constrainer * FactoryType::getConstrainer()
 	return ownedConstrainer.get() != nullptr ? ownedConstrainer.get() : constrainer;
 }
 
-FactoryType::ProcessorEntry::ProcessorEntry(const Identifier t, const String &n) :
-type(t),
-name(n)
-{
-	
-}
+
 
 AudioSampleProcessor::AudioSampleProcessor(MainController* mc):
 	ProcessorWithSingleStaticExternalData(mc, ExternalData::DataType::AudioFile, 1)

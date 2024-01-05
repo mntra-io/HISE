@@ -664,7 +664,8 @@ private:
 	mutable EventType lastChange = EventType::Idle;
 	mutable var lastValue;
 
-	Array<WeakReference<EventListener>> listeners;
+	static constexpr int NumListenerSlots = 128;
+	hise::UnorderedStack<WeakReference<EventListener>, NumListenerSlots> listeners;
 };
 
 
@@ -1434,7 +1435,12 @@ template <typename...Ps> struct LambdaBroadcaster final
     {
         lockFreeSendMessage = lockFreeListener;
     }
-    
+
+	bool hasListeners() const noexcept
+	{
+		return !listeners.isEmpty();
+	}
+
 private:
     
 	void sendMessageInternal(NotificationType n, const std::tuple<Ps...>& value)

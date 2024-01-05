@@ -253,18 +253,25 @@ void BackendCommandTarget::getCommandInfo(CommandID commandID, ApplicationComman
 		setCommandTarget(result, "Open Archive", true, false, 'X', false);
 		result.categoryName = "File";
 		break;
-	case MenuSaveFile:
-		setCommandTarget(result, "Save Archive", true, false, 'S');
+	case MenuSaveFile: {
+		setCommandTarget(result, "Save Archive", true, false, 'S', false);
+		auto k = TopLevelWindowWithKeyMappings::getFirstKeyPress(bpe, FloatingTileKeyPressIds::save_hip);
+		result.addDefaultKeypress(k.getKeyCode(), k.getModifiers());
 		result.categoryName = "File";
-		break;
+		break; }
 	case MenuSaveFileAs:
 		setCommandTarget(result, "Save As Archive", true, false, 'X', false);
+
 		result.categoryName = "File";
 		break;
-	case MenuSaveFileXmlBackup:
-	  	setCommandTarget(result, "Save XML", GET_PROJECT_HANDLER(bpe->getMainSynthChain()).isActive(), false, 'S', true, ModifierKeys::commandModifier | ModifierKeys::shiftModifier);
+	case MenuSaveFileXmlBackup: {
+	  	setCommandTarget(result, "Save XML", GET_PROJECT_HANDLER(bpe->getMainSynthChain()).isActive(), false, 'S', false);
+
+		auto k = TopLevelWindowWithKeyMappings::getFirstKeyPress(bpe, FloatingTileKeyPressIds::save_xml);
+		result.addDefaultKeypress(k.getKeyCode(), k.getModifiers());
+
 		result.categoryName = "File";
-		break;
+		break; }
 	case MenuSaveFileAsXmlBackup:
 		setCommandTarget(result, "Save as XML", GET_PROJECT_HANDLER(bpe->getMainSynthChain()).isActive(), false, 'X', false);
 		result.categoryName = "File";
@@ -2194,7 +2201,12 @@ Result checkPluginParameterComponent(ScriptingApi::Content* c, ScriptComponent* 
 	if (!sc->getScriptObjectProperty(ScriptComponent::isPluginParameter))
 	{
 		if (name.isEmpty())
-			return Result::ok();
+		{
+			if(sc->getScriptObjectProperty(ScriptingApi::Content::ScriptComponent::isMetaParameter))
+				return Result::fail(sc->getName() + " has the isMetaParameter flag set but is not a plugin parameter");
+			else
+				return Result::ok();
+		}
 		else
 			return Result::fail(sc->getName() + " has an non-empty plugin parameter ID but is not set as plugin parameter");
 	}

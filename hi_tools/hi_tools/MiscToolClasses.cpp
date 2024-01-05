@@ -1469,14 +1469,25 @@ ComplexDataUIUpdaterBase::~ComplexDataUIUpdaterBase()
 void ComplexDataUIUpdaterBase::addEventListener(EventListener* l)
 {
 	ScopedLock sl(updateLock);
-	listeners.addIfNotAlreadyThere(l);
+
+	jassert(isPositiveAndBelow(listeners.size(), NumListenerSlots));
+
+	for(int i = 0; i < listeners.size(); i++)
+	{
+		if(listeners[i] == nullptr)
+			listeners.removeElement(i--);
+	}
+
+	listeners.insert(l);
+	
 	updateUpdater();
 }
 
 void ComplexDataUIUpdaterBase::removeEventListener(EventListener* l)
 {
 	ScopedLock sl(updateLock);
-	listeners.removeAllInstancesOf(l);
+
+	listeners.remove(l);
 	updateUpdater();
 }
 
@@ -2370,12 +2381,11 @@ void Spectrum2D::draw(Graphics& g, const Image& img, Rectangle<int> area, Graphi
 	g.saveState();
 	g.setImageResamplingQuality(quality);
 
-	float offsetX = JUCE_LIVE_CONSTANT(0.0);
-	float offsetY = JUCE_LIVE_CONSTANT(0.0);
-
-
-	float scaleX = JUCE_LIVE_CONSTANT(0.0);
-	float scaleY = JUCE_LIVE_CONSTANT(0.0);
+	float offsetX = JUCE_LIVE_CONSTANT_OFF(0.0);
+	float offsetY = JUCE_LIVE_CONSTANT_OFF(0.0);
+	
+	float scaleX = JUCE_LIVE_CONSTANT_OFF(0.0);
+	float scaleY = JUCE_LIVE_CONSTANT_OFF(0.0);
 
 	auto t = AffineTransform::translation(-img.getWidth() / 2, -img.getHeight() / 2);
 

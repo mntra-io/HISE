@@ -948,8 +948,13 @@ void ScriptingApi::Content::ScriptComponent::sendValueListenerMessage()
 void ScriptingApi::Content::ScriptComponent::changed()
 {
 	if (!parent->asyncFunctionsAllowed())
+	{
+		debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), "Skipping changed() callback during onInit for " + getId());
 		return;
+	}
 
+	ScopedValueSetter<bool> svs(getScriptProcessor()->getMainController_()->getDeferNotifyHostFlag(), true);
+	
 	controlSender.sendControlCallbackMessage();
 	sendValueListenerMessage();
 
@@ -3437,6 +3442,7 @@ ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScr
 	
 	ADD_SCRIPT_PROPERTY(i05, "sampleIndex");
 	ADD_SCRIPT_PROPERTY(i06, "enableRange"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+	ADD_SCRIPT_PROPERTY(i07, "loadWithLeftClick"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 
 	setDefaultValue(ScriptComponent::Properties::x, x);
 	setDefaultValue(ScriptComponent::Properties::y, y);
@@ -3453,6 +3459,7 @@ ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScr
 	setDefaultValue(Properties::showFileName, true);
 	setDefaultValue(Properties::sampleIndex, 0);
 	setDefaultValue(Properties::enableRange, true);
+	setDefaultValue(Properties::loadWithLeftClick, false);
 
 	handleDefaultDeactivatedProperties();
 

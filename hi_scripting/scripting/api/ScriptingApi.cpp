@@ -1062,6 +1062,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_1(Engine, createDspNetwork);
 	API_METHOD_WRAPPER_0(Engine, createExpansionHandler);
 	API_METHOD_WRAPPER_0(Engine, createFFT);
+	API_METHOD_WRAPPER_1(Engine, createNeuralNetwork);
 	API_METHOD_WRAPPER_0(Engine, getExpansionList);
 	API_METHOD_WRAPPER_1(Engine, setCurrentExpansion);
 	API_METHOD_WRAPPER_0(Engine, createGlobalScriptLookAndFeel);
@@ -1179,6 +1180,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_0(createUnorderedStack);
 	ADD_API_METHOD_1(createBackgroundTask);
 	ADD_API_METHOD_0(createFFT);
+	ADD_API_METHOD_1(createNeuralNetwork);
 	ADD_API_METHOD_1(createBroadcaster);
 	ADD_API_METHOD_0(getPlayHead);
 	ADD_API_METHOD_2(dumpAsJSON);
@@ -3395,6 +3397,11 @@ ScriptingObjects::TimerObject* ScriptingApi::Engine::createTimerObject() { retur
 ScriptingObjects::ScriptingMessageHolder* ScriptingApi::Engine::createMessageHolder()
 {
 	return new ScriptingObjects::ScriptingMessageHolder(getScriptProcessor());
+}
+
+ScriptingObjects::ScriptNeuralNetwork* ScriptingApi::Engine::createNeuralNetwork(String id)
+{
+	return new ScriptingObjects::ScriptNeuralNetwork(getScriptProcessor(), id);
 }
 
 var ScriptingApi::Engine::createTransportHandler()
@@ -7798,6 +7805,7 @@ struct ScriptingApi::TransportHandler::Wrapper
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setOnGridChange);
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setOnSignatureChange);
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setOnTransportChange);
+	API_VOID_METHOD_WRAPPER_1(TransportHandler, setOnBypass);
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, setSyncMode);
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setEnableGrid);
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, startInternalClock);
@@ -7824,6 +7832,7 @@ ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* 
 	ADD_TYPED_API_METHOD_2(setOnGridChange, VarTypeChecker::Number, VarTypeChecker::Function);
 	ADD_TYPED_API_METHOD_2(setOnSignatureChange, VarTypeChecker::Number, VarTypeChecker::Function);
 	ADD_TYPED_API_METHOD_2(setOnTransportChange, VarTypeChecker::Number, VarTypeChecker::Function);
+	ADD_TYPED_API_METHOD_1(setOnBypass, VarTypeChecker::Function);
 	ADD_API_METHOD_1(setSyncMode);
 	ADD_API_METHOD_1(startInternalClock);
 	ADD_API_METHOD_1(stopInternalClock);
@@ -7835,6 +7844,7 @@ ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* 
 
 ScriptingApi::TransportHandler::~TransportHandler()
 {
+	getMainController()->getPluginBypassHandler().listeners.removeListener(*this);
 	getMainController()->removeTempoListener(this);
 	getMainController()->removeMusicalUpdateListener(this);
 }
@@ -8012,6 +8022,13 @@ void ScriptingApi::TransportHandler::setOnGridChange(var sync, var f)
 	}
 }
 
+void ScriptingApi::TransportHandler::setOnBypass(var f)
+{
+	bypassCallback = new Callback(this, "onGridChange", f, false, 1);
+
+	getMainController()->getPluginBypassHandler().listeners.addListener(*this, TransportHandler::onBypassUpdate, true);
+}
+
 void ScriptingApi::TransportHandler::setEnableGrid(bool shouldBeEnabled, int tempoFactor)
 {
 	if (isPositiveAndBelow(tempoFactor, (int)TempoSyncer::numTempos))
@@ -8050,4 +8067,9 @@ void ScriptingApi::TransportHandler::setLinkBpmToSyncMode(bool shouldPrefer)
 	getMainController()->getMasterClock().setLinkBpmToSyncMode(shouldPrefer);
 }
 
+void ScriptingApi::TransportHandler::onBypassUpdate(TransportHandler& handler, bool state)
+{
+	if(handler.bypassCallback != nullptr)
+		handler.bypassCallback->call(state, {}, {}, true);
+}
 } // namespace hise

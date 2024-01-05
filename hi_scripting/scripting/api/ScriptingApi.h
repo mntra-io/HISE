@@ -608,6 +608,9 @@ public:
 		/** Creates a storage object for Message events. */
 		ScriptingObjects::ScriptingMessageHolder* createMessageHolder();
 
+		/** Creates a neural network with the given ID. */
+		ScriptingObjects::ScriptNeuralNetwork* createNeuralNetwork(String id);
+
 		/** Creates an object that can listen to transport events. */
 		var createTransportHandler();
 
@@ -1471,6 +1474,9 @@ private:
 		/** Registers a callback to changes in the grid. */
 		void setOnGridChange(var sync, var f);
 
+		/** Registers a callback that will be executed asynchronously when the plugin's bypass state changes. */
+		void setOnBypass(var f);
+
 		/** Enables a high precision grid timer. */
 		void setEnableGrid(bool shouldBeEnabled, int tempoFactor);
 
@@ -1493,6 +1499,8 @@ private:
 		void setLinkBpmToSyncMode(bool shouldPrefer);
 
 	private:
+
+		static void onBypassUpdate(TransportHandler& handler, bool state);
 
 		void clearIf(ScopedPointer<Callback>& cb, const var& f)
 		{
@@ -1517,6 +1525,8 @@ private:
 		ScopedPointer<Callback> timeSignatureCallback;
 		ScopedPointer<Callback> beatCallback;
 		ScopedPointer<Callback> gridCallback;
+
+		ScopedPointer<Callback> bypassCallback;
 
 		ScopedPointer<Callback> tempoChangeCallbackAsync;
 		ScopedPointer<Callback> transportChangeCallbackAsync;

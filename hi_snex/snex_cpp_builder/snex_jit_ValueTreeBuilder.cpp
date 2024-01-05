@@ -482,7 +482,37 @@ Node::Ptr ValueTreeBuilder::parseFaustNode(Node::Ptr u)
 		DBG("Exporting faust scriptnode, class: " + faustClass);
 	}
 		
-	return parseRoutingNode(u);
+	return parseRuntimeTargetNode(u);
+}
+
+Node::Ptr ValueTreeBuilder::parseRuntimeTargetNode(Node::Ptr u)
+{
+    if(ValueTreeIterator::isRuntimeTargetNode(u->nodeTree))
+    {
+        NamespacedIdentifier indexClass;
+        
+        auto mid = getNodeId(u->nodeTree).getIdentifier().toString();
+
+        mid << "_index";
+        
+        if(CustomNodeProperties::nodeHasProperty(u->nodeTree, PropertyIds::IsFixRuntimeTarget))
+        {
+            indexClass = NamespacedIdentifier::fromString("runtime_target::indexers::fix_hash");
+            
+            auto hashCode = ValueTreeIterator::getFixRuntimeHash(u->nodeTree);
+            
+            UsingTemplate idx(*this, mid, indexClass);
+            
+            idx << hashCode;
+        
+            idx.flushIfNot();
+            
+            *u << idx;
+        }
+        
+    }
+    
+    return parseRoutingNode(u);
 }
 
 Node::Ptr ValueTreeBuilder::parseRoutingNode(Node::Ptr u)
@@ -720,6 +750,8 @@ Node::Ptr ValueTreeBuilder::parseContainer(Node::Ptr u)
 			pooledTypeDefinitions.add(childNode);
         }
 
+		
+
 		parseContainerParameters(u);
 		parseContainerChildren(u);
 
@@ -742,7 +774,7 @@ Node::Ptr ValueTreeBuilder::parseContainer(Node::Ptr u)
 		{
 			auto smoothingTime = (int)ValueTreeIterator::getNodeProperty(u->nodeTree, PropertyIds::SmoothingTime);
 
-			if (smoothingTime == 0)
+			if (smoothingTime == -1)
 				smoothingTime = 20;
 
 			u = wrapNode(u, NamespacedIdentifier::fromString("bypass::smoothed"), smoothingTime);
@@ -786,6 +818,11 @@ Node::Ptr ValueTreeBuilder::parseContainer(Node::Ptr u)
 		{
 			auto os = realPath.fromFirstOccurrenceOf("oversample", false, false).getIntValue();
 			u = wrapNode(u, NamespacedIdentifier::fromString("wrap::oversample"), os);
+		}
+		if(useSpecialWrapper && realPath.startsWith("repitch"))
+		{
+			u = wrapNode(u, NamespacedIdentifier::fromString("wrap::repitch"));
+			*u << "interpolators::dynamic";
 		}
 
         jassert(u->nodeTree.isValid());
@@ -1020,6 +1057,12 @@ void ValueTreeBuilder::parseContainerChildren(Node::Ptr container)
 
 void ValueTreeBuilder::parseContainerParameters(Node::Ptr c)
 {
+	if(ValueTreeIterator::isContainerWithFixedParameters(c->nodeTree))
+	{
+		*c << "parameter::empty";
+		return;
+	}
+	
 	addEmptyLine();
 
 	auto pTree = c->nodeTree.getChildWithName(PropertyIds::Parameters);
@@ -1671,11 +1714,16 @@ NamespacedIdentifier ValueTreeBuilder::getNodeVariable(const ValueTree& n)
 }
 
 
+bool ValueTreeIterator::fixCppIllegalCppKeyword(String& s)
+{
+	if (s == "switch")
+	{
+		s = "switcher";
+		return true;
+	}
 
-
-
-
-
+	return false;
+}
 
 bool ValueTreeIterator::needsModulationWrapper(ValueTree& v)
 {
@@ -1744,6 +1792,35 @@ juce::var ValueTreeIterator::getNodeProperty(const ValueTree& nodeTree, const Id
 
 	auto propTree = nodeTree.getChildWithName(PropertyIds::Properties);
 	return propTree.getChildWithProperty(PropertyIds::ID, id.toString())[PropertyIds::Value];
+}
+
+int ValueTreeIterator::getFixRuntimeHash(const ValueTree &nodeTree)
+{
+    auto path = getNodeFactoryPath(nodeTree);
+    
+    if(path == NamespacedIdentifier::fromString("routing::global_cable"))
+    {
+        auto c = getNodeProperty(nodeTree, PropertyIds::Connection).toString();
+        return c.hashCode();
+    }
+    if(path == NamespacedIdentifier::fromString("math::neural"))
+    {
+        auto c = getNodeProperty(nodeTree, PropertyIds::Model).toString();
+        return c.hashCode();
+    }
+    
+    jassertfalse;
+    return 0;
+    
+
+}
+
+bool ValueTreeIterator::isRuntimeTargetNode(const ValueTree& nodeTree)
+{
+    auto fix = CustomNodeProperties::nodeHasProperty(nodeTree, PropertyIds::IsFixRuntimeTarget);
+    auto dy = CustomNodeProperties::nodeHasProperty(nodeTree, PropertyIds::IsDynamicRuntimeTarget);
+    
+    return fix || dy;
 }
 
 bool ValueTreeIterator::isComplexDataNode(const ValueTree& nodeTree)
@@ -1853,8 +1930,9 @@ snex::NamespacedIdentifier ValueTreeIterator::getNodeFactoryPath(const ValueTree
 		auto isSplit = fId.id.toString() == "split";
 		auto isMulti = fId.id.toString() == "multi";
 		auto isClone = fId.id.toString() == "clone";
+		auto isBranch = fId.id.toString() == "branch";
 
-		if (!isSplit && !isMulti && !isClone)
+		if (!isSplit && !isMulti && !isClone && !isBranch)
 		{
 			return NamespacedIdentifier::fromString("container::chain");
 		}
@@ -1913,6 +1991,20 @@ int ValueTreeIterator::calculateChannelCount(const ValueTree& nodeTree, int numC
 		numCurrentChannels = 1;
 
 	return numCurrentChannels;
+}
+
+bool ValueTreeIterator::isContainerWithFixedParameters(const ValueTree& nodeTree)
+{
+	static const Array<Identifier> fixContainers =
+	{
+		"oversample",
+		"repitch",
+		"branch"
+	};
+
+	auto s = nodeTree[scriptnode::PropertyIds::FactoryPath].toString().replace(".", "::");
+	auto id = NamespacedIdentifier::fromString(s).id;
+	return fixContainers.contains(id);
 }
 
 bool ValueTreeIterator::hasChildNodeWithProperty(const ValueTree& nodeTree, Identifier propId)
@@ -1995,6 +2087,17 @@ snex::cppgen::Node::Ptr ValueTreeBuilder::RootContainerBuilder::parse()
 			addDefaultParameters();
 		}
 
+		if(hasComplexTypes())
+		{
+			String f; f << "~" << nodeClassId << "() override";
+			parent << f;
+			{
+				StatementBlock sb(parent);
+				parent.addComment("Cleanup external data references", Base::CommentType::FillTo80Light);
+				parent << "this->setExternalData({}, -1);";
+			}
+		}
+
 		if (hasPolyData)
 		{
 			parent.addEmptyLine();
@@ -2025,6 +2128,41 @@ snex::cppgen::Node::Ptr ValueTreeBuilder::RootContainerBuilder::parse()
 			parent << def;
 		}
 
+        if(hasRuntimeTargets())
+        {
+            parent.addEmptyLine();
+
+            parent << "void connectToRuntimeTarget(bool addConnection, const runtime_target::connection& c)";
+
+            stackVariables.clear();
+
+            StatementBlock sb(parent);
+
+            parent.addComment("Runtime target Connections", Base::CommentType::FillTo80Light);
+
+            ValueTreeIterator::forEach(root->nodeTree.getChildWithName(PropertyIds::Nodes), [&](ValueTree& childNode)
+            {
+                if (childNode.getType() == PropertyIds::Node)
+                {
+                    if (ValueTreeIterator::isRuntimeTargetNode(childNode))
+                    {
+                        auto sv = getChildNodeAsStackVariable(childNode);
+
+                        String def;
+
+                        def << sv->toExpression() << ".connectToRuntimeTarget(addConnection, c);";
+
+                        parent << def;
+
+                        auto type = parent.getNode(childNode, false);
+                        parent.addComment(type->toExpression(), Base::CommentType::AlignOnSameLine);
+                    }
+                }
+
+                return false;
+            });
+        }
+        
 		if (hasComplexTypes())
 		{
 
@@ -2113,11 +2251,22 @@ void ValueTreeBuilder::RootContainerBuilder::addDefaultParameters()
 				// call would reset it otherwise.
 				if (p[PropertyIds::ID] == PropertyIds::NumClones.toString())
 				{
-					parent << ";";
-					comment << "" << np.getChildId(p[PropertyIds::ID].toString()).toString();
-					comment << " is deactivated";
-					parent.addComment(comment, Base::CommentType::AlignOnSameLine);
-					continue;
+					// The only exception are clone modes that have a fixed amount of num clones
+					// that will not be updated not update 
+
+					auto mode = ValueTreeIterator::getNodeProperty(sv->nodeTree, PropertyIds::Mode).toString().toLowerCase();
+					jassert(mode.isNotEmpty());
+
+					auto shouldUpdate = duplilogic::Helpers::shouldUpdateNumClones(mode);
+
+					if(shouldUpdate)
+					{
+						parent << ";";
+						comment << "" << np.getChildId(p[PropertyIds::ID].toString()).toString();
+						comment << " is deactivated";
+						parent.addComment(comment, Base::CommentType::AlignOnSameLine);
+						continue;
+					}
 				}
 			}
 
@@ -2572,6 +2721,17 @@ bool ValueTreeBuilder::RootContainerBuilder::hasComplexTypes() const
 	});
 }
 
+bool ValueTreeBuilder::RootContainerBuilder::hasRuntimeTargets() const
+{
+    return ValueTreeIterator::forEach(root->nodeTree, [](ValueTree& v)
+    {
+        if(ValueTreeIterator::isRuntimeTargetNode(v))
+            return true;
+
+        return false;
+    });
+}
+
 PooledStackVariable::PooledStackVariable(Base& p, const ValueTree& nodeTree_) :
 	StackVariable(p, nodeTree_[PropertyIds::ID].toString(), TypeInfo(Types::ID::Dynamic, false, CloneHelpers::getCloneIndex(nodeTree_) == -1)),
 	nodeTree(nodeTree_)
@@ -2593,7 +2753,7 @@ Node::Ptr ValueTreeBuilder::ComplexDataBuilder::parse()
 	auto numTables = ValueTreeIterator::getNumDataTypes(n->nodeTree, ExternalData::DataType::Table);
 	auto numSliderPacks = ValueTreeIterator::getNumDataTypes(n->nodeTree, ExternalData::DataType::SliderPack);
 	auto numAudioFiles = ValueTreeIterator::getNumDataTypes(n->nodeTree, ExternalData::DataType::AudioFile);
-	auto numFilters = ValueTreeIterator::getMaxDataTypeIndex(n->nodeTree, ExternalData::DataType::FilterCoefficients);
+	auto numFilters = ValueTreeIterator::getNumDataTypes(n->nodeTree, ExternalData::DataType::FilterCoefficients);
 	auto numDisplayBuffers = ValueTreeIterator::getNumDataTypes(n->nodeTree, ExternalData::DataType::DisplayBuffer);
 
 	bool isSingleData = (numTables + numSliderPacks + numAudioFiles + numFilters + numDisplayBuffers) == 1;

@@ -40,7 +40,53 @@ namespace hise { using namespace juce;
 bool MainController::unitTestMode = false;
 #endif
 
-MainController::MainController() :
+	void MainController::PluginBypassHandler::timerCallback()
+	{
+		if(listeners.hasListeners())
+		{
+			auto thisTime = Time::getApproximateMillisecondCounter();
+
+			auto numSamples = (double)getMainController()->getOriginalBufferSize();
+			auto sampleRate = (double)getMainController()->getOriginalSamplerate();
+
+			if(sampleRate != 0.0)
+			{
+				auto blockLengthSeconds = numSamples / sampleRate;
+
+				// If there is no watchdog call for 10 buffers worth of time we assume that it's bypassed...
+				auto deltaForBypassDetection = roundToInt(1000.0 * 10.0 * blockLengthSeconds);
+
+				auto deltaSinceLastCall = (thisTime - lastProcessBlockTime);
+				auto noCallsLately = deltaSinceLastCall > deltaForBypassDetection;
+
+				if(reactivateOnNextCall)
+				{
+					lastBypassFlag = false;
+					reactivateOnNextCall = false;
+					listeners.sendMessage(sendNotificationSync, false);
+				}
+				else if(noCallsLately != lastBypassFlag)
+				{
+					lastBypassFlag = noCallsLately;
+					listeners.sendMessage(sendNotificationSync, lastBypassFlag);
+				}
+			}
+		}
+	}
+
+	void MainController::PluginBypassHandler::bumpWatchDog()
+	{
+		if(listeners.hasListeners())
+		{
+			if(lastBypassFlag)
+				reactivateOnNextCall = true;
+
+			lastBypassFlag = false;
+			lastProcessBlockTime = Time::getApproximateMillisecondCounter();
+		}
+	}
+
+	MainController::MainController() :
 
 	sampleManager(new SampleManager(this)),
 	javascriptThreadPool(new JavascriptThreadPool(this)),
@@ -81,6 +127,7 @@ MainController::MainController() :
 	processorChangeHandler(this),
 	killStateHandler(this),
 	debugLogger(this),
+	bypassHandler(this),
 	globalAsyncModuleHandler(this),
 	//presetLoadRampFlag(OldUserPresetHandler::Active),
 	controlUndoManager(new UndoManager()),
@@ -236,7 +283,12 @@ void MainController::clearPreset()
 	getProcessorChangeHandler().sendProcessorChangeMessage(getMainSynthChain(), ProcessorChangeHandler::EventType::ClearBeforeRebuild, isMessageThread);
 
 	while (auto p = iter.getNextProcessor())
-		p->cleanRebuildFlagForThisAndParents();
+    {
+        if(auto sp = dynamic_cast<HardcodedSwappableEffect*>(p))
+            sp->disconnectRuntimeTargets();
+        
+        p->cleanRebuildFlagForThisAndParents();
+    }
 
 	auto f = [](Processor* p)
 	{
@@ -408,6 +460,11 @@ void MainController::loadPresetInternal(const ValueTree& v)
 			allNotesOff(true);
             
 			getUserPresetHandler().initDefaultPresetManager({});
+            
+            Processor::Iterator<HardcodedSwappableEffect> rti(synthChain, false);
+            
+            while(auto m = rti.getNextProcessor())
+                m->connectRuntimeTargets();
 		}
 		catch (String& errorMessage)
 		{
@@ -824,8 +881,26 @@ hise::RLottieManager::Ptr MainController::getRLottieManager()
 }
 #endif
 
+void MainController::connectToRuntimeTargets(scriptnode::OpaqueNode& on, bool shouldAdd)
+{
+    if(auto rm = dynamic_cast<scriptnode::routing::GlobalRoutingManager*>(getGlobalRoutingManager()))
+    {
+        rm->connectToRuntimeTargets(on, shouldAdd);
+    }
+    
+    for(const auto& id: getNeuralNetworks().getIdList())
+    {
+        auto nn = getNeuralNetworks().getOrCreate(id);
+        
+        auto con = nn->createConnection();
+        on.connectToRuntimeTarget(shouldAdd, con);
+    }
+}
+
 void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &midiMessages)
 {
+	getPluginBypassHandler().bumpWatchDog();
+
 	PerfettoHelpers::setCurrentThreadName("Audio Thread");
 	
     if (getKillStateHandler().getStateLoadFlag())

@@ -593,9 +593,14 @@ namespace control
 		T value = false;
 	};
 
-	template <int NV> class transport : public transport_base<bool, NV>
+	template <int NV> class transport : public transport_base<bool, NV>,
+									    public polyphonic_base
 	{
 	public:
+
+		transport():
+		  polyphonic_base(getStaticId(), false)
+		{};
 
         static constexpr int NumVoices = NV;
         
@@ -609,13 +614,15 @@ namespace control
 		}
 	};
 
-	template <int NV> class ppq : public transport_base<double, NV>
+	template <int NV> class ppq : public transport_base<double, NV>,
+								  public polyphonic_base
 	{
 	public:
 
         static constexpr int NumVoices = NV;
         
-		ppq()
+		ppq():
+		  polyphonic_base(getStaticId(), false)
 		{
 			loopLengthQuarters = TempoSyncer::getTempoFactor(TempoSyncer::Tempo::Quarter);
 		}
@@ -1122,6 +1129,29 @@ namespace control
         ConverterClass obj;
     };
 
+	template <typename ParameterClass> struct random : public mothernode,
+                           public pimpl::parameter_node_base<ParameterClass>,
+                           public pimpl::no_processing
+    {
+        SN_NODE_ID("random");
+        SN_GET_SELF_AS_OBJECT(random);
+        SN_DESCRIPTION("creates a random value");
+
+        SN_ADD_SET_VALUE(random);
+
+		random() :
+			pimpl::parameter_node_base<ParameterClass>(getStaticId())
+		{};
+
+        void setValue(double)
+        {
+            if (this->getParameter().isConnected())
+                this->getParameter().call(r.nextDouble());
+        }
+
+		Random r;
+    };
+
 	template <typename ParameterClass> struct cable_table : public scriptnode::data::base,
 															public pimpl::parameter_node_base<ParameterClass>,
 															public pimpl::no_processing
@@ -1191,7 +1221,6 @@ namespace control
 			pimpl::parameter_node_base<ParameterType>(getStaticId())
 		{
 			cppgen::CustomNodeProperties::setPropertyForObject(*this, PropertyIds::IsCloneCableNode);
-            
             this->getParameter().setParentNumClonesListener(this);
 		};
 
@@ -1201,10 +1230,13 @@ namespace control
 			{
 				auto changedIndex = (int)data;
 
-				if (auto sp = dynamic_cast<SliderPackData*>(this->externalData.obj))
+				if(isPositiveAndBelow(changedIndex, numClones))
 				{
-					auto v = sp->getValue(changedIndex) * lastValue;
-					this->p.callEachClone(changedIndex, v);
+					if (auto sp = dynamic_cast<SliderPackData*>(this->externalData.obj))
+					{
+						auto v = sp->getValue(changedIndex) * lastValue;
+						this->p.callEachClone(changedIndex, v, false);
+					}
 				}
 			}
 		}
@@ -1212,27 +1244,27 @@ namespace control
 		void setExternalData(const snex::ExternalData& d, int index) override
 		{
 			if (auto existing = this->externalData.obj)
-				existing->getUpdater().addEventListener(this);
+				existing->getUpdater().removeEventListener(this);
 
 			base::setExternalData(d, index);
 
 			if (auto existing = this->externalData.obj)
 				existing->getUpdater().addEventListener(this);
-
+			
 			this->externalData.referBlockTo(sliderData, 0);
 
-			setSliderAmountToNumClones();
+			setValue(lastValue);
 		}
 
 		void setValue(double newValue)
 		{
 			lastValue = newValue;
-			jassert(numClones == sliderData.size());
+			auto numToIterate = jmin(sliderData.size(), numClones);
 
-			for (int i = 0; i < numClones; i++)
+			for (int i = 0; i < numToIterate; i++)
 			{
 				auto valueToSend = sliderData[i] * lastValue;
-				this->getParameter().callEachClone(i, valueToSend);
+				this->getParameter().callEachClone(i, valueToSend, false);
 			}
 		}
 
@@ -1241,20 +1273,20 @@ namespace control
             setNumClones(newSize);
         }
         
-		void setSliderAmountToNumClones()
-		{
-			if (auto sp = dynamic_cast<SliderPackData*>(this->externalData.obj))
-				sp->setNumSliders(numClones);
-
-			setValue(lastValue);
-		}
-
 		void setNumClones(double newNumClones)
 		{
 			if (numClones != newNumClones)
 			{
+				int oldNumClones = numClones;
+
 				numClones = jlimit(1, 128, (int)newNumClones);
-				setSliderAmountToNumClones();
+				auto numToIterate = jmin(numClones, sliderData.size());
+
+				for(int i = oldNumClones; i < numToIterate; i++)
+				{
+					auto v = sliderData[i] * lastValue;
+					this->p.callEachClone(i, v, false);
+				}
 			}
 		}
 
@@ -1277,8 +1309,6 @@ namespace control
 		double lastValue = 0.0;
 		block sliderData;
 		int numClones = 1;
-
-		
 	};
 		
 
@@ -1337,7 +1367,13 @@ namespace control
 
 		void numClonesChanged(int newNumClones) override
 		{
-			setNumClones(newNumClones);
+			if(shouldUpdateClones())
+				setNumClones(newNumClones);
+		}
+
+		bool shouldUpdateClones() const
+		{
+			return obj.shouldUpdateNumClones();
 		}
 
 		void handleHiseEvent(HiseEvent& e)
@@ -1371,7 +1407,7 @@ namespace control
 			for (int i = 0; i < numClones; i++)
 			{
 				auto valueToSend = obj.getValue(i, numClones, lastValue, lastGamma);
-				this->getParameter().callEachClone(i, valueToSend);
+				this->getParameter().callEachClone(i, valueToSend, !obj.shouldUpdateNumClones());
 			}
 		}
 
@@ -1636,6 +1672,66 @@ namespace control
 			double value = 0.5;
 			double scale = 0.0;
 			double gamma = 1.0;
+			mutable bool dirty = false;
+		};
+
+		struct blend
+		{
+			SN_NODE_ID("blend");
+			SN_DESCRIPTION("Blends the two input values based on the Alpha parameter.");
+
+			static constexpr bool isNormalisedModulation() { return false; }
+            static constexpr bool needsProcessing() { return false; }
+
+			bool operator==(const blend& other) const
+			{
+				return alpha == other.alpha && value1 == other.value1 && value2 == other.value2;
+			}
+
+			double getValue() const
+			{
+				dirty = false;
+				return Interpolator::interpolateLinear(value1, value2, alpha);
+			}
+
+			template <int P> void setParameter(double v)
+			{
+				if constexpr (P == 0)
+					alpha = v;
+				if constexpr (P == 1)
+					value1 = v;
+				if constexpr (P == 2)
+					value2 = v;
+
+				dirty = true;
+			}
+
+			template <typename NodeType> static void createParameters(ParameterDataList& data, NodeType& n)
+			{
+				{
+					parameter::data p("Alpha");
+					p.template setParameterCallbackWithIndex<NodeType, 0>(&n);
+					p.setDefaultValue(0.0);
+					data.add(std::move(p));
+				}
+				{
+					parameter::data p("Value1");
+					p.template setParameterCallbackWithIndex<NodeType, 1>(&n);
+					p.setDefaultValue(0.0);
+					data.add(std::move(p));
+				}
+				{
+					parameter::data p("Value2");
+					p.template setParameterCallbackWithIndex<NodeType, 2>(&n);
+					p.setDefaultValue(0.0);
+					data.add(std::move(p));
+				}
+			}
+
+			double alpha = 0.0;
+			double value1 = 0.0;
+			double value2 = 0.0;
+
 			mutable bool dirty = false;
 		};
 
@@ -2169,6 +2265,7 @@ namespace control
 	template <int NV, typename ParameterType> using bang = multi_parameter<NV, ParameterType, multilogic::bang>;
     template <int NV, typename ParameterType> using delay_cable = multi_parameter<NV, ParameterType, multilogic::delay_cable>;
 	template <int NV, typename ParameterType> using change = multi_parameter<NV, ParameterType, multilogic::change>;
+	template <int NV, typename ParameterType> using blend = multi_parameter<NV, ParameterType, multilogic::blend>;
 
 	struct smoothed_parameter_base: public mothernode
 	{
