@@ -1023,6 +1023,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_0(Engine, createMidiList);
 	API_METHOD_WRAPPER_0(Engine, createBeatportManager);
 	API_METHOD_WRAPPER_0(Engine, createUnorderedStack);
+	API_METHOD_WRAPPER_0(Engine, createThreadSafeStorage);
 	API_METHOD_WRAPPER_0(Engine, createTimerObject);
 	API_METHOD_WRAPPER_0(Engine, createMessageHolder);
 	API_METHOD_WRAPPER_0(Engine, createTransportHandler);
@@ -1149,6 +1150,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_0(getNumPluginChannels);
 	ADD_TYPED_API_METHOD_1(setMinimumSampleRate, VarTypeChecker::Number);
 	ADD_TYPED_API_METHOD_1(setMaximumBlockSize, VarTypeChecker::Number);
+	ADD_API_METHOD_0(createThreadSafeStorage);
 	ADD_API_METHOD_1(getMidiNoteName);
 	ADD_API_METHOD_1(getMidiNoteFromName);
 	ADD_API_METHOD_1(getMacroName);
@@ -1956,6 +1958,11 @@ int ScriptingApi::Engine::getNumPluginChannels() const
 var ScriptingApi::Engine::createFixObjectFactory(var layoutData)
 {
     return var(new fixobj::Factory(getScriptProcessor(), layoutData));
+}
+
+var ScriptingApi::Engine::createThreadSafeStorage()
+{
+	return var (new ScriptingObjects::ScriptThreadSafeStorage(getScriptProcessor()));
 }
 
 juce::var ScriptingApi::Engine::createLicenseUnlocker()
@@ -7119,7 +7126,13 @@ juce::var ScriptingApi::FileSystem::fromReferenceString(String referenceStringOr
 
 	PoolReference ref(getScriptProcessor()->getMainController_(), referenceStringOrFullPath, sub);
 
-	if (ref.isValid() && !ref.isEmbeddedReference())
+	// also return a file object for missing files...
+	if(ref.isAbsoluteFile())
+	{
+		return var(new ScriptingObjects::ScriptFile(getScriptProcessor(), File(referenceStringOrFullPath)));
+	}
+	
+	if ((ref.isValid()) && !ref.isEmbeddedReference())
 	{
 		auto f = ref.getFile();
 		return var(new ScriptingObjects::ScriptFile(getScriptProcessor(), File(f)));

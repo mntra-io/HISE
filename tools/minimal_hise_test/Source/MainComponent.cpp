@@ -8,665 +8,510 @@
 
 #include "MainComponent.h"
 
-struct MultiPageDialog: public Component
-{
-    enum ColourIds
-    {
-        backgroundColour = HiseColourScheme::ComponentBackgroundColour,
-        textColour = HiseColourScheme::ComponentTextColourId,
-        signalColour = HiseColourScheme::ComponentFillTopColourId,
-        numColourIds
-    };
-    
-    struct PageBase: public Component
-    {
-        PageBase(int width, const var& obj)
-        {};
-        
-        virtual Result checkGlobalState(var globalState) = 0;
-        
-        virtual ~PageBase() {};
-    };
-    
-    struct PositionInfo
-    {
-        var toJSON() const
-        {
-            auto obj = new DynamicObject();
-            
-            obj->setProperty("TopHeight", TopHeight);
-            obj->setProperty("ButtonTab", ButtonTab);
-            obj->setProperty("ButtonMargin", ButtonMargin);
-            obj->setProperty("OuterPadding", OuterPadding);
-            obj->setProperty("ErrorHeight", ErrorHeight);
-            
-            return var(obj);
-        }
-        
-        void fromJSON(const var& obj)
-        {
-            TopHeight = obj.getProperty("TopHeight", 0);
-            ButtonTab = obj.getProperty("ButtonTab", 0);
-            ButtonMargin = obj.getProperty("ButtonMargin", 0);
-            OuterPadding = obj.getProperty("OuterPadding", 0);
-            ErrorHeight = obj.getProperty("ErrorHeight", 0);
-        }
-        
-        int TopHeight = 50;
-        int ButtonTab = 40;
-        int ButtonMargin = 5;
-        int OuterPadding = 30;
-        int ErrorHeight = 50;
-    };
-    
-    struct ErrorComponent: public Component,
-                           public PathFactory
-    {
-        ErrorComponent():
-          currentError(Result::ok()),
-          parser(""),
-          closeButton("close", nullptr, *this)
-        {
-            addAndMakeVisible(closeButton);
-            closeButton.onClick = [this]()
-            {
-                this->show(false);
-            };
-        };
-        
-        void paint(Graphics& g) override
-        {
-            g.setColour(Colour(HISE_ERROR_COLOUR));
-            g.fillRoundedRectangle(getLocalBounds().toFloat(), 5.0f);
-            
-            auto x = getLocalBounds().toFloat();
-            x.removeFromRight(40.0f);
-            x.removeFromLeft(10.0f);
-            x.removeFromTop(3.0f);
-            
-            parser.draw(g, x);
-        }
-        
-        int height = 40;
-        
-        void setError(const Result& r)
-        {
-            currentError = r;
-            
-            if(!r.wasOk())
-            {
-                parser.setNewText(r.getErrorMessage());
-                parser.parse();
-                height = jmax<int>(40, parser.getHeightForWidth(getWidth() - 50));
-            }
-            
-            show(!currentError.wasOk());
-        }
-        
-        void show(bool shouldShow)
-        {
-            setVisible(shouldShow);
-            getParentComponent()->resized();
-            setVisible(!shouldShow);
-            
-            auto& animator = Desktop::getInstance().getAnimator();
-            
-            if(shouldShow)
-                animator.fadeIn(this, 50);
-            else
-                animator.fadeOut(this, 50);
+#include "MultiPageDialog.h"
+#include "PageFactory.h"
 
-            repaint();
-        }
-        
-        void resized() override
-        {
-            auto b = getLocalBounds();
-            auto cb = b.removeFromRight(40).removeFromTop(40).reduced(10);
-            closeButton.setBounds(cb);
-        }
-        
-        Path createPath(const String&) const override
-        {
-            Path p;
-            p.loadPathFromData(HiBinaryData::ProcessorEditorHeaderIcons::closeIcon, HiBinaryData::ProcessorEditorHeaderIcons::closeIcon_Size);
-            
-            return p;
-        };
-        
-        MarkdownRenderer parser;
-        
-        HiseShapeButton closeButton;
-        Result currentError;
-        
-    } errorComponent;
-    
-    struct PageInfo
+namespace hise {
+namespace multipage {
+using namespace juce;
+
+
+
+struct CustomResultPage: public Dialog::PageBase
+{
+    DEFAULT_PROPERTIES(CustomResultPage)
     {
-        PageBase* create(int currentWidth) const
-        {
-            if(pageCreator)
-                return pageCreator(currentWidth, data);
-            
-            return nullptr;
+        return {
+            { mpid::ID, "custom" }
         };
-        
-        var& operator[](const char* id)
-        {
-            if(auto obj = data.getDynamicObject())
-            {
-                obj->setProperty(Identifier(id), var());
-                return *obj->getProperties().getVarPointer(Identifier(id));
-            }
-            
-            static var nullValue;
-            return nullValue;
-        }
-        
-        var data;
-        std::function<PageBase*(int width, const var&)> pageCreator;
+    }
+
+    CustomResultPage(Dialog& r, int width, const var& obj):
+      PageBase(r, width, obj),
+      textDoc(doc),
+      codeEditor(textDoc)
+    {
+        addAndMakeVisible(codeEditor);
+        codeEditor.setReadOnly(true);
+        codeEditor.setColour(CodeEditorComponent::ColourIds::backgroundColourId, Colour(0xFF222222));
+        setSize(width, 400);
     };
-    
-    MultiPageDialog():
-      cancelButton("Cancel"),
-      nextButton("Next"),
-      prevButton("Previous"),
-      globalState(new DynamicObject()),
-      currentError(Result::ok())
+
+    void postInit() override
     {
-        setColour(backgroundColour, Colours::black.withAlpha(0.2f));
-        
-        styleData = MarkdownLayout::StyleData::createDarkStyle();
-        
-        addAndMakeVisible(cancelButton);
-        addAndMakeVisible(nextButton);
-        addAndMakeVisible(prevButton);
-        addAndMakeVisible(content);
-        addChildComponent(errorComponent);
-        setLookAndFeel(&defaultLaf);
-        
-        setSize(600, 400);
-        
-        nextButton.onClick = [this]()
-        {
-            navigate(true);
-        };
-        
-        prevButton.onClick = [this]()
-        {
-            navigate(false);
-        };
-        
-        cancelButton.onClick = [this]()
-        {
-            if(NativeMessageBox::showOkCancelBox(MessageBoxIconType::QuestionIcon, "Cancel", "Do you want to cancel the process"))
-            {
-                MessageManager::callAsync(finishCallback);
-            };
-        };
+        auto gs = Dialog::getGlobalState(*this, {}, var());
+
+        String b;
+
+        b << "const var " << Dialog::getGlobalState(*this, "id", "bc").toString() << " = Engine.createBroadcaster(";
+        b << JSON::toString(gs, false) << ");\n";
+
+	    doc.replaceAllContent(b);
     }
-    
-    template <typename T> PageInfo& addPage()
-    {
-        PageInfo p;
-        p.data = styleData.toDynamicObject();
-        p.pageCreator = [](int w, const var& d){ return new T(w, d); };
-        pages.add(std::move(p));
-        
-        return pages.getReference(pages.size()-1);
-    }
-    
-    void showFirstPage()
-    {
-        currentPage = nullptr;
-        currentPageIndex = -1;
-        navigate(true);
-    }
-    
-    static void setGlobalState(Component& page, const Identifier& id, var newValue)
-    {
-        if(auto m = page.findParentComponentOfClass<MultiPageDialog>())
-        {
-            m->globalState.getDynamicObject()->setProperty(id, newValue);
-        }
-    }
-    
-    void setStyleData(const MarkdownLayout::StyleData& sd)
-    {
-        styleData = sd;
-        errorComponent.parser.setStyleData(sd);
-    }
-    
-    MarkdownLayout::StyleData styleData;
-    
-    static var getGlobalState(Component& page, const Identifier& id, const var& defaultValue)
-    {
-        if(auto m = page.findParentComponentOfClass<MultiPageDialog>())
-        {
-            return m->globalState.getProperty(id, defaultValue);
-        }
-        
-        return defaultValue;
-    }
-    
-    static std::pair<Font, Colour> getDefaultFont(Component& c)
-    {
-        if(auto m = c.findParentComponentOfClass<MultiPageDialog>())
-        {
-            return { m->styleData.getFont(), m->styleData.textColour };
-        }
-        
-        return { Font(), Colours::white };
-    }
-    
-    void setFinishCallback(const std::function<void()>& f)
-    {
-        finishCallback = f;
-    }
-    
-    void paint(Graphics& g) override
-    {
-        g.fillAll(findColour(backgroundColour));
-        if(auto laf = dynamic_cast<LookAndFeelMethods*>(&getLookAndFeel()))
-        {
-            laf->drawHeader(g, *this, top);
-            laf->drawButtonTab(g, *this, bottom);
-        }
-    }
-    
-    bool navigate(bool forward)
-    {
-        auto newIndex = currentPageIndex + (forward ? 1 : -1);
-        
-        prevButton.setEnabled(newIndex != 0);
-        
-        if(isPositiveAndBelow(newIndex, pages.size()))
-        {
-            if(forward && currentPage != nullptr)
-            {
-                auto ok = currentPage->checkGlobalState(globalState);
-                errorComponent.setError(ok);
-                
-                if(!ok.wasOk())
-                    return false;
-            }
-            
-            if((currentPage = pages[newIndex].create(content.getWidth() - content.getScrollBarThickness())))
-            {
-                content.setViewedComponent(currentPage);
-                currentPageIndex = newIndex;
-                
-                currentPage->setLookAndFeel(&getLookAndFeel());
-                
-                nextButton.setButtonText(currentPageIndex == pages.size() - 1 ? "Finish" : "Next");
-                
-                return true;
-            }
-        }
-        else if (newIndex == pages.size())
-        {
-            MessageManager::callAsync(finishCallback);
-            return true;
-        }
-        
-        return false;
-    }
-    
+
     void resized() override
     {
-        PositionInfo position;
-        
-        if(auto laf = dynamic_cast<LookAndFeelMethods*>(&getLookAndFeel()))
-        {
-            position = laf->getPositionInfo();
-        }
-        
-        auto b = getLocalBounds().reduced(position.OuterPadding);
-        
-        top = b.removeFromTop(position.TopHeight);
-        b.removeFromTop(position.OuterPadding);
-        bottom = b.removeFromBottom(position.ButtonTab);
-        b.removeFromBottom(position.OuterPadding);
-        center = b;
-        
-        auto copy = bottom;
-        
-        
-        cancelButton.setBounds(copy.removeFromLeft(140).reduced(position.ButtonMargin));
-        
-        nextButton.setBounds(copy.removeFromRight(140).reduced(position.ButtonMargin));
-        prevButton.setBounds(copy.removeFromRight(140).reduced(position.ButtonMargin));
-        
-        copy = center;
-
-        errorComponent.setBounds(copy.removeFromTop(errorComponent.isVisible() ? errorComponent.height : 0));
-        
-        if(errorComponent.isVisible())
-            copy.removeFromTop(position.OuterPadding);
-        
-        content.setBounds(copy);
-    }
-    
-    struct LookAndFeelMethods
-    {
-        virtual ~LookAndFeelMethods() {};
-        virtual void drawHeader(Graphics& g, MultiPageDialog& d, Rectangle<int> area) = 0;
-        virtual void drawButtonTab(Graphics& g, MultiPageDialog& d, Rectangle<int> area) = 0;
-        
-        virtual PositionInfo getPositionInfo() const = 0;
-    };
-    
-    struct DefaultLookAndFeel: public hise::GlobalHiseLookAndFeel,
-                               public LookAndFeelMethods
-    {
-        void drawHeader(Graphics& g, MultiPageDialog& d, Rectangle<int> area) override
-        {
-            g.setColour(d.styleData.textColour);
-            
-            auto f = d.styleData.getBoldFont().withHeight(area.getHeight() - 10);
-            
-            g.fillRect(area.removeFromBottom(2));
-            g.setFont(f);
-            g.setColour(d.styleData.headlineColour);
-            g.drawText(d.getName(), area.toFloat(), Justification::left);
-        }
-        
-        void drawButtonTab(Graphics& g, MultiPageDialog& d, Rectangle<int> area)
-        {
-            
-        }
-        
-        PositionInfo getPositionInfo() const override
-        {
-            return defaultPosition;
-        }
-        
-        void layoutFilenameComponent (FilenameComponent& filenameComp,
-                                                      ComboBox* filenameBox, Button* browseButton) override
-        {
-            if (browseButton == nullptr || filenameBox == nullptr)
-                return;
-
-            auto b = filenameComp.getLocalBounds();
-            
-            browseButton->setBounds(b.removeFromRight(100));
-            b.removeFromRight(getPositionInfo().OuterPadding);
-
-            filenameBox->setBounds(b);
-        }
-        
-        PositionInfo defaultPosition;
-    } defaultLaf;
-    
-    Array<PageInfo> pages;
-    
-    int currentPageIndex = -1;
-    TextButton cancelButton;
-    TextButton nextButton;
-    TextButton prevButton;
-    
-    Result currentError;
-    
-    Viewport content;
-    
-    ScopedPointer<PageBase> currentPage;
-    
-    Rectangle<int> top, bottom, center;
-    
-    std::function<void()> finishCallback;
-    
-    var globalState;
-};
-
-namespace PageFactory
-{
-
-struct MarkdownText: public MultiPageDialog::PageBase
-{
-    MarkdownText(int width, const var& d):
-      PageBase(width, d),
-      r(d["Text"].toString())
-    {
-        auto sd = r.getStyleData();
-        sd.fromDynamicObject(d, [](const String& fn){ return Font(fn, 13.0f, Font::plain); });
-        r.setStyleData(sd);
-        r.parse();
-        auto h = roundToInt(r.getHeightForWidth(width));
-        setSize(width, h);
-    }
-    
-    void paint(Graphics& g) override
-    {
-        r.draw(g, getLocalBounds().toFloat());
-    }
-    
-    Result checkGlobalState(var) override
-    {
-        return Result::ok();
-    }
-    
-    MarkdownRenderer r;
-};
-
-struct FileSelector: public MultiPageDialog::PageBase
-{
-    static FilenameComponent* createFileComponent(const var& obj)
-    {
-        bool isDirectory = obj["isDirectory"];
-        auto name = obj["Description"].toString();
-        if(name.isEmpty())
-            name = isDirectory ? "Directory" : "File";
-        auto wildcard = obj["wildcard"].toString();
-        auto defaultFile = getInitialFile(obj);
-        auto save = (bool)obj["writeAccess"];
-        
-        return new FilenameComponent(name, defaultFile, true, isDirectory, save, wildcard, "", "");
-    }
-    
-    FileSelector(int width, const var& obj):
-      PageBase(width, obj),
-      fileSelector(createFileComponent(obj)),
-      fileId(obj["ID"].toString())
-    {
-        isDirectory = obj["isDirectory"];
-        addAndMakeVisible(fileSelector);
-        
-        fileSelector->setBrowseButtonText("Browse");
-        hise::GlobalHiseLookAndFeel::setDefaultColours(*fileSelector);
-        
-        setSize(width, 32);
+	    codeEditor.setBounds(getLocalBounds());
     }
 
-    static File getInitialFile(const var& obj)
-    {
-        auto path = obj["defaultFile"];
-            
-        if(path.isString())
-            return File(path);
-        if(path.isInt() || path.isInt64())
-        {
-            auto specialLocation = (File::SpecialLocationType)(int)path;
-            return File::getSpecialLocation(specialLocation);
-        }
-        
-        return File();
-    }
-    
-    void resized() override
-    {
-        fileSelector->setBounds(getLocalBounds());
-    }
-    
-    Result checkGlobalState(var globalState) override
-    {
-        auto f = fileSelector->getCurrentFile();
-        
-        if(f != File() && !f.isRoot() && (f.isDirectory() || f.existsAsFile()))
-        {
-            MultiPageDialog::setGlobalState(*this, fileId, f.getFullPathName());
-            return Result::ok();
-        }
-        
-        String message;
-        message << "You need to select a ";
-        if(isDirectory)
-            message << "directory";
-        else
-            message << "file";
-        
-        return Result::fail(message);
-    }
-    
-    bool isDirectory = false;
-    ScopedPointer<juce::FilenameComponent> fileSelector;
-    Identifier fileId;
-};
+    Result checkGlobalState(var globalState) override { return Result::ok(); }
 
-struct Container: public MultiPageDialog::PageBase
-{
-    Container(int width, const var& obj):
-      PageBase(width, obj)
-    {
-        auto l = obj["Children"];
-        
-        if(l.isArray())
-        {
-            for(auto& r: *l.getArray())
-                addChild(width, r);
-        }
-    };
-    
-    virtual ~Container() {};
-    
-    OwnedArray<PageBase> childItems;
-    
-    Result checkGlobalState(var globalState) override
-    {
-        for(auto c: childItems)
-        {
-            auto ok = c->checkGlobalState(globalState);
-            
-            if(!ok.wasOk())
-                return ok;
-        }
-        
-        return Result::ok();
-    }
+    CodeDocument doc;
+    mcl::TextDocument textDoc;
+    mcl::TextEditor codeEditor;
 
-    void addChild(int width, const var& r)
-    {
-        auto type = r["Type"].toString();
-        
-        if(type == "FileSelector")
-        {
-            childItems.add(new PageFactory::FileSelector(width, r));
-            addAndMakeVisible(childItems.getLast());
-        }
-        if(type == "Markdown")
-        {
-            childItems.add(new PageFactory::MarkdownText(width, r));
-            addAndMakeVisible(childItems.getLast());
-        }
-    }
-};
-
-struct Tickbox: public MultiPageDialog::PageBase
-{
-    Tickbox(int width, const var& obj):
-      PageBase(width, obj)
-    {
-        label = obj["Label"].toString();
-        id = obj["ID"].toString();
-        
-        if(obj.hasProperty("Required"))
-        {
-            required = true;
-            requiredOption = obj["Required"];
-        }
-    };
-    
-    void paint(Graphics& g) override
-    {
-        auto b = getLocalBounds();
-        
-
-        auto df = MultiPageDialog::getDefaultFont(*this);
-        
-        g.setFont(df.first);
-        g.setColour(df.second);
-        
-        
-        g.drawText(label, b.toFloat(), Justification::left);
-    }
-    
-    void resized() override
-    {
-        auto b = getLocalBounds();
-        button.setBounds(b.removeFromRight(100));
-    }
-  
-    Result checkGlobalState(var globalState) override
-    {
-        if(required)
-        {
-            if(button.getToggleState() != required)
-            {
-                return Result::fail("You need to tick " + label);
-            }
-        }
-    }
-    
-    bool required = false;
-    bool requiredOption = false;
-    
-    String label;
-    Identifier id;
-    ToggleButton button;
-};
-
-struct List: public Container
-{
-    List(int width, const var& obj):
-      Container(width, obj)
-    {
-        int h = 0;
-        
-        padding = (int)obj["Padding"];
-        
-        for(auto& c: childItems)
-            h += c->getHeight() + padding;
-        
-        setSize(width, h);
-    }
-    
-    void resized() override
-    {
-        auto b = getLocalBounds();
-        
-        for(auto c: childItems)
-        {
-            c->setBounds(b.removeFromTop(c->getHeight()));
-            b.removeFromTop(padding);
-        }
-    }
-    
-    int padding = 0;
 };
 
 }
+}
 
-//==============================================================================
-MainComponent::MainComponent():
-  Thread("Unit Test thread")
+void MainComponent::build()
 {
-	startTimer(150);
+    var obj;
 
-    auto mp = new MultiPageDialog();
+    //auto ok = JSON::parse(f.loadFileAsString(), obj);
+
+    using namespace multipage;
+    using namespace factory;
+
+    auto mp = new Dialog({}, rt);
+
+    mp->setProperty(mpid::Header, "Multipage Dialog Wizard");
+
+    auto sd = mp->getStyleData();
+    sd.backgroundColour = Colours::transparentBlack;
+    sd.fontSize = 16.0f;
+    mp->setStyleData(sd);
+
+    mp->defaultLaf.defaultPosition.OuterPadding = 50;
     
+
+    {
+        // TODO: Fix setting properties in nested JSON
+        auto& introPage = mp->addPage<List>({
+            { mpid::Padding, 10 },
+        });
+
+        introPage.addChild<MarkdownText>({
+            { mpid::Text, "Welcome to the JSON builder. You can use this wizard to create a JSON data object that will create a wizard like this!  \n> You can toggle between the editor, a raw JSON viewer and a preview of the wizard that you're about to create by clicking on the buttons in the top row.\nAs first step please enter the name that it should show in the header (like the **JSON Builder** above, then specify the number of pages." }
+        });
+
+        auto& propList = introPage.addChild<List>({
+            { mpid::Padding, 10 },
+            { mpid::ID, mpid::Properties.toString() }
+        });
+        
+        propList.addChild<TextInput>({
+            { mpid::ID, mpid::Header.toString() },
+            { mpid::Text, mpid::Header.toString() },
+            { mpid::Required, true },
+            { mpid::Help, "This will be shown as big title at the top" }
+        });
+
+        propList.addChild<TextInput>({
+            { mpid::ID, mpid::Subtitle.toString() },
+            { mpid::Text, mpid::Subtitle.toString() },
+            { mpid::Help, "This will be shown as small title below" }
+        });
+        
+        auto& styleProperties = introPage.addChild<List>({
+            { mpid::ID, mpid::StyleData.toString(), },
+            { mpid::Text, mpid::StyleData.toString(), },
+            { mpid::Padding, 10 },
+            { mpid::Foldable, true },
+            { mpid::Folded, true }
+        });
+        
+        auto sdData = sd.toDynamicObject();
+
+        const Array<Identifier> hiddenProps({
+          Identifier("codeBgColour"),
+	      Identifier("linkBgColour"),
+	      Identifier("codeColour"),
+	      Identifier("linkColour"),
+	      Identifier("tableHeaderBgColour"),
+	      Identifier("tableLineColour"),
+	      Identifier("tableBgColour")
+        });
+
+        for(auto& nv: sdData.getDynamicObject()->getProperties())
+        {
+            if(hiddenProps.contains(nv.name))
+                continue;
+    
+            if(nv.name.toString().contains("Colour"))
+	        {
+		        auto& ed = styleProperties.addChild<ColourChooser>({
+                    { mpid::ID, nv.name.toString() },
+                    { mpid::Text, nv.name.toString() },
+                    { mpid::Value, nv.value }
+		        });
+	        }
+            else
+            {
+	            auto& ed = styleProperties.addChild<TextInput>({
+                    { mpid::ID, nv.name.toString() },
+                    { mpid::Text, nv.name.toString() },
+                    { mpid::Value, nv.value }
+	            });
+
+                if(nv.name == Identifier("Font") || nv.name == Identifier("BoldFont"))
+	            {
+		            ed[mpid::Items] = Font::findAllTypefaceNames().joinIntoString("\n");
+	            }
+
+            }
+        }
+
+        
+
+        {
+            auto& layoutProperties = introPage.addChild<List>({
+	            { mpid::ID, mpid::LayoutData.toString() },
+	            { mpid::Text, mpid::LayoutData.toString() },
+	            { mpid::Padding, 10 },
+	            { mpid::Foldable, true },
+	            { mpid::Folded, true }
+	        });
+
+			auto layoutObj = mp->defaultLaf.getMultiPagePositionInfo({}).toJSON();
+
+            std::map<Identifier, String> help;
+	        help["OuterPadding"] = "The distance between the content and the component bounds in pixel.";
+            help["ButtonTab"] = "The height of the bottom tab with the Cancel / Prev / Next buttons.";
+            help["ButtonMargin"] = "The distance between the buttons in the bottom tab in pixel.";
+            help["TopHeight"] = "The height of the top bar with the title and the step progress in pixel.";
+            help["LabelWidth"] = "The width of the text labels of each property component. You can use either relative or absolute size values:\n- Negative values are relative to the component width (minus the `OuterPadding` property)\n- positive values are absolute pixel values.";
+            
+	        for(auto& v: layoutObj.getDynamicObject()->getProperties())
+	        {
+		        layoutProperties.addChild<TextInput>({
+	                { mpid::ID, v.name.toString() },
+					{ mpid::Text, v.name.toString() },
+	                { mpid::Value, v.value },
+                    { mpid::Help, help[v.name] }
+		        });
+	        }
+        }
+        
+        {
+            auto& numPageCreator = mp->addPage<List>({
+                { mpid::Padding, 30 }
+            });
+
+            numPageCreator.addChild<MarkdownText>({
+                { mpid::Text, "Now please enter the number of pages that you want to add to your dialog. You can then design each page in the next steps. " }
+            });
+
+	        auto& te = numPageCreator.addChild<TextInput>({
+		        { mpid::Text, "Number of pages" },
+	            { mpid::Required, true },
+                { mpid::ID, "NumPages" },
+	            { mpid::Help, "You can specify a number of pages that the wizard will have. This will be displayed at the top and you can navigate with the Next / previous page buttons at the bottom" }
+			});
+
+            
+
+            te.setStateObject(var(new DynamicObject()));
+
+            te.setCustomCheckFunction([](Dialog::PageBase* b, const var& obj)
+            {
+                auto gs = b->getParentDialog().getState().globalState;
+
+                var list = gs[mpid::Children];
+
+                if(!list.isArray())
+                {
+	                gs.getDynamicObject()->setProperty(mpid::Children, var(Array<var>()));
+                    list = gs[mpid::Children];
+                }
+                    
+                auto te = dynamic_cast<TextInput*>(b)->getComponent<TextEditor>().getText().getIntValue();
+
+                if(te == 0)
+                    return Result::fail("The number of pages cannot be zero. Please enter a number bigger than 0 in order to proceed.");
+
+                auto currentNumPages = (int)b->getParentDialog().getProperties()["NumPages"];
+
+                if(currentNumPages != te)
+                {
+		            obj.getDynamicObject()->setProperty(mpid::Children, var(list));
+
+		            for(int i = 0; i < te; i++)
+		            {
+			            auto& xxx = b->getParentDialog().addPage<List>({}, 2);
+
+                        String text;
+
+                        text << "### Edit Page " << String((te - i)) << " / " << String(te) <<  "\nYou can define the appearance of this Page by setting the properties and adding UI elements to the `Children` list below.";
+
+                        xxx.addChild<MarkdownText>({
+							{ mpid::Text, text }
+                        });
+
+                        xxx[mpid::Value] = "page" + String(te-i);
+
+	                    DynamicObject* no = new DynamicObject();
+	                    xxx.setStateObject(var(no));
+		                ScopedPointer<Dialog::PageBase> c2 = xxx.create(b->getParentDialog(), 0);
+	                    
+		                list.insert(0, var(no));
+                        
+				        c2->createEditorInfo(&xxx);
+                        
+                        
+		            }
+
+                    b->getParentDialog().getProperties().set("NumPages", te);
+                }
+
+	            
+	            return Result::ok();
+            });
+
+
+        }
+
+        
+
+
+        
+
+        
+        
+        
+
+#if 0
+        auto& p1 = mp->addPage<List>();
+
+
+        
+        p1[MultiPageIds::Padding] = 30;
+
+        p1.addChild<MarkdownText>()[MultiPageIds::Text] = "This wizard will take you through the steps of creating a broadcaster. You can specify every property and connection and it will create a script definition at the end of the process that you then can paste into your `onInit` callback.";
+        auto& idInput = p1.addChild<TextInput>();
+        idInput[MultiPageIds::ID] = "id";
+        idInput[MultiPageIds::Text] = "Broadcaster ID*:";
+        idInput[MultiPageIds::Required] = true;
+        idInput[MultiPageIds::Help] = "The ID will be used to create the script variable definition as well as act as a unique ID for every broadcaster of a single script processor. The name must be a valid HiseScript identifier.";
+
+        auto& additional = p1.addChild<List>({
+            { MultiPageIds::Foldable, true },
+            { MultiPageIds::Folded, true },
+            { MultiPageIds::Text, "Additional Properties" },
+            { MultiPageIds::Padding, 20 }
+        });
+                                            
+        
+        
+        
+        auto& commentInput = additional.addChild<TextInput>();
+        commentInput[MultiPageIds::ID] = "comment";
+        commentInput[MultiPageIds::Text] = "Comment:";
+
+        auto& tagsInput = additional.addChild<TextInput>();
+        tagsInput[MultiPageIds::ID] = "tags";
+        tagsInput[MultiPageIds::Help] = "Enter a comma separated list of strings that will be used as tags for the broadcaster. This lets you filter which broadcaster you want to show on the broadcaster map and is useful for navigating complex projects";
+        tagsInput[MultiPageIds::Text] = "Tags:";
+        
+        additional.addChild<ColourChooser>({
+            { MultiPageIds::Text, "Colour" },
+            { MultiPageIds::Help, "The colour that will be used on the broadcaster map" },
+            { MultiPageIds::ID, "Colour" }
+        });
+    }
+    
+    using namespace PageFactory;
+    
+    {
+        auto& l3 = mp->addPage<List>({
+            { MultiPageIds::Padding, 10 }
+        });
+
+        auto& c2 = l3.addChild<PageFactory::Column>({
+            { MultiPageIds::Padding, 20}
+        });
+        c2.addChild<MarkdownText>({
+            { MultiPageIds::Text, "### Event Source Type\nPlease select the event type that you want to attach the broadcaster to. There are multiple event sources which can trigger a broadcaster message.\n> You can specify the exact source in the next step."},
+            { MultiPageIds::Width, -0.6 }
+        });
+        
+        auto& p2 = c2.addChild<List>({
+            {MultiPageIds::Width, -0.4},
+            {MultiPageIds::Padding, 5},
+        });
+        
+        auto& p2_ = mp->addPage<List>({
+            { MultiPageIds::Padding, 20 }
+        });
+        
+        p2_.addChild<MarkdownText>()[MultiPageIds::Text] = "The current data is downloaded. Please wait...";
+        p2_.addChild<DummyWait>({
+            { MultiPageIds::Text, "Download installer" },
+            { MultiPageIds::ID, "downloadInstaller" }
+        });
+        p2_.addChild<DummyWait>({
+            { MultiPageIds::Text, "Verify installer" },
+            { MultiPageIds::ID, "downloadInstaller2" }
+        });
+        p2_.addChild<DummyWait>({
+            { MultiPageIds::Text, "Extract installer" },
+            { MultiPageIds::ID, "downloadInstaller3" }
+        });
+        
+        //p2_.addChild<Skip>()[MultiPageIds::CallType] = "BackgroundThread";
+        
+        enum class SourceIndex
+        {
+            None,
+            ComplexData,
+            ComponentProperties,
+            ComponentVisibility,
+            ContextMenu,
+            EqEvents,
+            ModuleParameters,
+            MouseEvents,
+            ProcessingSpecs,
+            RadioGroup,
+            RoutingMatrix,
+            numSourceIndexTypes
+        };
+        
+        StringArray options(
+        {
+             "None::No event source. Use this option if you want to call the broadcaster manually or attach it to any other script callback slot (eg. TransportHandler callbacks).",
+             "Complex Data::An event of a complex data object (Tables, Slider Packs or AudioFiles). This can be either:\n- content changes (eg. when loading in a new sample)\n- a display index change (eg. if the table ruler is moved)",
+             "Component Properties::Script properties of a UI component selection (eg. the `visible` property).",
+             "Component Visibility::The visibility of a UI component.\n>This also takes into account the visibility of parent components so it's a more reliable way than listen to the component's `visible` property.",
+             "Context Menu::Adds a popup menu when the UI component is clicked",
+             "EQ Events::Listens to band add / delete, reset events of a parametriq EQ",
+             "Module Parameter::Listens to changes of a module attribute (when calling `setAttribute()`, eg. the **Reverb Width** or **Filter Frequency**",
+             "Mouse Events::Mouse events for a UI component selection",
+             "Processing Specs::Listens to changes of the processing specifications (eg. sample rate of audio buffer size)",
+             "Radio Group::Listens to button clicks within a given radio group ID\n> This is especially useful for implementing your page switch logic",
+             "Routing Matrix::Listens to changes of the routing matrix (the channel routing configuration) of a module"
+        });
+        
+        for(auto sa: options)
+        {
+            p2.addChild<Tickbox>({
+                { MultiPageIds::ID, "Source" },
+                { MultiPageIds::Text, sa.upToFirstOccurrenceOf("::", false, false) },
+                { MultiPageIds::Help, sa.fromFirstOccurrenceOf("::", false, false) },
+                { MultiPageIds::Required, true }
+            });
+        }
+        
+        //MultiPageDialog::setGlobalState(*mp, "Source", -1);
+        //MultiPageDialog::setGlobalState(*mp, "complexDataType", "SliderPack");
+        //MultiPageDialog::setGlobalState(*mp, "complexEventType", "Content");
+        //MultiPageDialog::setGlobalState(*mp, "complexSlotIndex", 0);
+        
+        auto& eventPages = mp->addPage<Branch>({
+            { MultiPageIds::ID, "Source" }
+        });
+        
+        SourceIndex sourceIndex = (SourceIndex)0;
+        
+        for(auto sa: options)
+        {
+            String header;
+            header << "### " << sa.upToFirstOccurrenceOf("::", false, false);
+            
+            auto& ep = eventPages.addChild<List>({
+                {MultiPageIds::Padding, 20 }
+            });
+            
+            ep.addChild<MarkdownText>({
+                {MultiPageIds::Text, header }
+            });
+            
+            
+            
+            switch(sourceIndex)
+            {
+                case SourceIndex::None:
+                {
+                    auto& a = ep.addChild<Skip>();
+                
+                    break;
+                }
+                case SourceIndex::ComplexData:
+                {
+                    ep.addChild<MarkdownText>()[MultiPageIds::Text] = "Attaching a broadcaster to a complex data object lets you listen to table edit changes or playback position updates of one or multiple data sources. Please fill in the information below to proceed to the next step.";
+                    
+                    ep.addChild<Choice>({
+                        { MultiPageIds::Items, "Table\nSliderPack\nAudioFile" },
+                        { MultiPageIds::ID, "complexDataType" },
+                        { MultiPageIds::Text, "Data Type" },
+                        { MultiPageIds::Help, "The data type that you want to listen to" }
+                    });
+                    
+                    ep.addChild<Choice>({
+                        { MultiPageIds::Items, "Content\nDisplayIndex" },
+                        { MultiPageIds::ID, "complexEventType" },
+                        { MultiPageIds::Text, "Event Type" },
+                        { MultiPageIds::Help, "The event type you want to listen to.\n-**Content** events will be triggered whenever the data changes (so eg. loading a new sample or editing a table will trigger this event).\n-**DisplayIndex** events will occur whenever the read position changes (so the playback position in the audio file or the table ruler in the table)." }
+                    });
+                    
+                    auto& mid = ep.addChild<TextInput>({
+                        { MultiPageIds::ID, "complexModuleId" },
+                        { MultiPageIds::Text, "Module ID" },
+                        { MultiPageIds::Help, "The ID of the module that you want to listen to. You can also listen to multiple modules at once, in this case just enter every ID separated by a comma" }
+                    });
+                    
+                    mid.setCustomCheckFunction([](MultiPageDialog::PageBase* pb, var obj)
+                    {
+                        return Result::fail(pb->getValueFromGlobalState().toString() + " is not a module with a complex data object with the selected type.");
+                    });
+                    
+                    ep.addChild<TextInput>({
+                        { MultiPageIds::ID, "complexSlotIndex" },
+                        { MultiPageIds::Text, "Slot Index" },
+                        { MultiPageIds::Help, "The slot index of the complex data object that you want to listen to.\n> Some modules have multiple complex data objects (eg. the table envelope has two tables for the attack and release phase so if you want to listen to the release table, you need to pass in `1` here." }
+                    });
+                    
+                    break;
+                }
+            }
+            
+            auto& additional = ep.addChild<List>({
+                { MultiPageIds::Foldable, true },
+                { MultiPageIds::Folded, true },
+                { MultiPageIds::Text, "Additional Properties" },
+                { MultiPageIds::Padding, 20 }
+            });
+            
+            additional.addChild<TextInput>({
+                { MultiPageIds::Text, "Comment" },
+                { MultiPageIds::ID, "SourceComment" },
+                { MultiPageIds::Help, "An additional comment that will be displayed on the broadcaster map\n> Pro tip: A comment is also a good hook for searching for the location in a big codebase!" }
+            });
+            
+            sourceIndex = (SourceIndex)((int)sourceIndex + 1);
+            
+            
+        }
+#endif
+
+    }
+
+    mp->addPage<MarkdownText>({
+		{ mpid::Text, "Press finish in order to copy the JSON to the clipboard." }
+    });
+
+#if 0
+    mp->addPage<CustomResultPage>();
+#endif
+
+    /*
+    DBG(JSON::toString(mp->defaultLaf.defaultPosition.toJSON()));
+
     auto sd = MarkdownLayout::StyleData::createDarkStyle();
-    
+
+    DBG(JSON::toString(sd.toDynamicObject()));
+
     sd.headlineColour = Colours::yellow;
-    sd.f = Font("Arial", 18.0f, Font::plain);
     
     mp->setStyleData(sd);
 
@@ -705,22 +550,56 @@ MainComponent::MainComponent():
     
     p3["Text"] = "# Chapter 2.\n ";
     p3["headlineColour"] = (int64)0xFFFF0000;
-    
+
+*/
+
     mp->showFirstPage();
     
     mp->setFinishCallback([](){ JUCEApplication::getInstance()->systemRequestedQuit();
     });
     
     addAndMakeVisible(c = mp);
+}
+
+//==============================================================================
+MainComponent::MainComponent():
+  Thread("Unit Test thread"),
+  rt({}),
+  pt({}),
+  editButton("Edit"),
+  codeButton("State"),
+  previewButton("Preview"),
+  doc(),
+  stateDoc(doc),
+  stateViewer(stateDoc)
+{
+    build();
+	startTimer(150);
+
+    addChildComponent(stateViewer);
+
+    addAndMakeVisible(editButton);
+    addAndMakeVisible(codeButton);
+    addAndMakeVisible(previewButton);
     
-    mp->setName("Headline");
+    editButton.setLookAndFeel(&alaf);
+    codeButton.setLookAndFeel(&alaf);
+    previewButton.setLookAndFeel(&alaf);
+
+    editButton.addListener(this);
+    codeButton.addListener(this);
+    previewButton.addListener(this);
+
+    //File f("D:\\Development\\test.json");
+
+    
     
 #if JUCE_WINDOWS
-    context.attachTo(*this);
-    setSize(1440, 900);
+    
+    setSize(1000, 900);
 	//setSize (2560, 1080);
 #else
-    setSize(700, 600);
+    setSize(850, 600);
 #endif
     
     
@@ -731,19 +610,32 @@ MainComponent::MainComponent():
 MainComponent::~MainComponent()
 {
 #if JUCE_WINDOWS
-	context.detach();
+	//context.detach();
 #endif
 }
 
 //==============================================================================
 void MainComponent::paint (Graphics& g)
 {
-	
+	g.fillAll(Colour(0xFF333333));
 }
 
 void MainComponent::resized()
 {
-    c->setBounds(getLocalBounds());
+    auto b = getLocalBounds();
+    auto buttonRow = b.removeFromTop(40);
+
+    editButton.setBounds(buttonRow.removeFromLeft(getWidth() / 3).reduced(10));
+    codeButton.setBounds(buttonRow.removeFromLeft(getWidth() / 3).reduced(10));
+    previewButton.setBounds(buttonRow.reduced(10));
+
+    if(c != nullptr)
+        c->setBounds(b);
+
+    stateViewer.setBounds(b);
+
+    if(preview != nullptr)
+        preview->setBounds(b);
 //    viewer.setBounds(getLocalBounds());
 }
 

@@ -9,7 +9,7 @@
 #pragma once
 
 #include "../JuceLibraryCode/JuceHeader.h"
-
+#include "multipage.h"
 
 //==============================================================================
 /*
@@ -18,7 +18,8 @@
 */
 class MainComponent   : public Component,
 					    public Timer,
-					    public Thread
+					    public Thread,
+					    public ButtonListener
 {
 public:
     //==============================================================================
@@ -38,16 +39,63 @@ public:
         });
     }
 
+    void buttonClicked(Button* b) override
+    {
+        if(b == &editButton)
+        {
+	        if(preview != nullptr)
+				preview->setVisible(false);
+
+        	stateViewer.setVisible(false);
+            c->setVisible(true);
+        }
+        
+
+        if(b == &codeButton)
+        {
+            if(preview != nullptr)
+                preview->setVisible(false);
+
+            if(c != nullptr)
+            {
+	            auto ok = c->checkCurrentPage();
+
+                stateViewer.setVisible(ok.wasOk());
+            	c->setVisible(ok.failed());
+
+                if(ok.wasOk())
+                    doc.replaceAllContent(JSON::toString(rt.globalState, false));
+            }
+        }
+
+        if(b == &previewButton)
+        {
+            auto ok = c->checkCurrentPage();
+
+            if(ok.wasOk())
+            {
+	            stateViewer.setVisible(false);
+	            c->setVisible(false);
+
+		        addAndMakeVisible(preview = new multipage::Dialog(rt.globalState, pt));
+
+            	preview->showFirstPage();
+    
+				preview->setFinishCallback([](){});
+
+	            resized();
+            }
+        }
+        
+    }
+
     //==============================================================================
     void paint (Graphics&) override;
     void resized() override;
 
     void timerCallback() override;;
-
-    void mouseDown(const MouseEvent& e) override
-    {
-        jassertfalse;
-    }
+    
+    void build();
     
 private:
     //==============================================================================
@@ -56,8 +104,20 @@ private:
 	OpenGLContext context;
 
     PerfettoWebviewer viewer;
-    
-    ScopedPointer<Component> c;
+
+    multipage::State pt;
+    multipage::State rt;
+    ScopedPointer<multipage::Dialog> c;
+
+    juce::CodeDocument doc;
+    mcl::TextDocument stateDoc;
+
+    mcl::TextEditor stateViewer;
+
+    ScopedPointer<multipage::Dialog> preview;
+
+    AlertWindowLookAndFeel alaf;
+    TextButton editButton, codeButton, previewButton;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };
