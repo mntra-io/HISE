@@ -1338,18 +1338,27 @@ void DelayedRenderer::processWrapped(AudioSampleBuffer& buffer, MidiBuffer& midi
 
 			AudioSampleBuffer chunk(ptrs, numChannels, numThisTime);
 			
+            auto thisOffset = start;
+            
 			delayedMidiBuffer.clear();
-			delayedMidiBuffer.addEvents(midiMessages, start, numThisTime, -start);
+			delayedMidiBuffer.addEvents(midiMessages, thisOffset, numThisTime, -thisOffset);
 			
+#if HISE_MIDIFX_PLUGIN
+            midiMessages.clear(thisOffset, numThisTime);
+#endif
+
+            
 			start += numThisTime;
 			numToDo -= numThisTime;
 
-            
-            
 			for (int i = 0; i < numChannels; i++)
 				ptrs[i] += numThisTime;
 
 			processWrapped(chunk, delayedMidiBuffer);
+            
+#if HISE_MIDIFX_PLUGIN
+            midiMessages.addEvents(delayedMidiBuffer, 0, numThisTime, thisOffset);
+#endif
 		}
         
         mc->setSampleOffsetWithinProcessBuffer(0);
