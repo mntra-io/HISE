@@ -145,6 +145,10 @@ will break compatibility with older projects / presets because the tempo indexes
 #include "../hi_rlottie/hi_rlottie.h"
 #endif
 
+// Include at least the thread controller to avoid compile errors...
+#if !HISE_INCLUDE_LORIS
+#include "../hi_loris/wrapper/ThreadController.h"
+#endif
 
 #include "../hi_streaming/hi_streaming.h"
 
@@ -309,4 +313,9 @@ using ComponentWithMiddleMouseDrag = juce::Component;
 
 #if HISE_INCLUDE_RT_NEURAL
 #include "hi_neural/hi_neural.h"
+#endif
+
+
+#if !HISE_NO_GUI_TOOLS
+#include "hi_multipage/multipage.h"
 #endif

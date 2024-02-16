@@ -750,6 +750,17 @@ Processor *MainController::createProcessor(FactoryType *factory,
 };
 
 
+void MainController::addPreviewListener(BufferPreviewListener* l)
+{
+	previewListeners.addIfNotAlreadyThere(l);
+	l->previewStateChanged(previewBufferIndex != -1, previewBuffer);
+}
+
+void MainController::removePreviewListener(BufferPreviewListener* l)
+{
+	previewListeners.removeAllInstancesOf(l);
+}
+
 void MainController::stopBufferToPlay()
 {
 	if (previewBufferIndex != -1)
@@ -1655,6 +1666,15 @@ void MainController::handleTransportCallbacks(const AudioPlayHead::CurrentPositi
 				if(tl != nullptr)
 					tl->onGridChange(gi.gridIndex, gi.timestamp, gi.firstGridInPlayback);
 		}
+	}
+}
+
+void MainController::sendArtificialTransportMessage(bool shouldBeOn)
+{
+	for(auto tl: tempoListeners)
+	{
+		if(tl != nullptr)
+			tl->onTransportChange(shouldBeOn, 0.0);
 	}
 }
 

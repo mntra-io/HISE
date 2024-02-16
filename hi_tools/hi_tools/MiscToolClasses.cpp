@@ -2149,7 +2149,11 @@ void ScrollbarFader::Laf::drawScrollbar(Graphics& g, ScrollBar&, int x, int y, i
 
     auto cornerSize = jmin(area.getWidth(), area.getHeight());
 
-    area = area.reduced(4.0f);
+	if(area.getWidth() > 10.0)
+		area = area.reduced(4.0f);
+	else
+		area = area.reduced(2.0f);
+
     cornerSize = jmin(area.getWidth(), area.getHeight());
     
     g.fillRoundedRectangle(area, cornerSize / 2.0f);
@@ -2670,96 +2674,6 @@ AudioSampleBuffer Spectrum2D::createSpectrumBuffer()
 	b.applyGain(thisGain);
 
     return b;
-}
-
-ThreadController::Scaler::Scaler(bool isStep_):
-	isStep(isStep_)
-{}
-
-double ThreadController::Scaler::getScaledProgress(double input) const
-{
-	if(isStep)
-		return (v1 + input) / v2;
-	else
-		return v1 + (v2 - v1) * input;
-}
-
-
-
-
-
-
-ThreadController::ThreadController(Thread* t, double* p, int timeoutMs, uint32& lastTime_):
-	juceThreadPointer(t),
-	progress(p),
-	timeout(timeoutMs),
-	lastTime(&lastTime_)
-{}
-
-ThreadController::ThreadController():
-	juceThreadPointer(nullptr),
-	progress(nullptr),
-	lastTime(nullptr)
-{}
-
-ThreadController::operator bool() const
-{
-	if (juceThreadPointer == nullptr)
-		return false;
-
-	auto thisTime = Time::getMillisecondCounter();
-
-	if (lastTime != nullptr && *lastTime != 0 && thisTime - *lastTime > timeout)
-	{
-		// If this hits, it means that the timeout you've set is too low.
-		// Either increase the timeout or add more checks in between...
-		;
-
-		// prevent the jassert above to mess up subsequent timeouts...
-		thisTime = Time::getMillisecondCounter();
-	}
-
-	if(lastTime != nullptr)
-		*lastTime = thisTime;
-
-	return !static_cast<Thread*>(juceThreadPointer)->threadShouldExit();
-}
-
-void ThreadController::extendTimeout(uint32 milliSeconds)
-{
-	if(lastTime != nullptr)
-		*lastTime += milliSeconds;
-}
-
-bool ThreadController::setProgress(double p)
-{
-	if (progress == nullptr)
-		return true;
-
-	for (int i = progressScalerIndex-1; i >= 0; i--)
-	{
-		p = jlimit(0.0, 1.0, progressScalers[i].getScaledProgress(p));
-	}
-
-	// If this hits, you might have forgot a scaler in the call stack...
-	jassert(*progress <= p);
-
-	*progress = p;
-
-	return *this;
-}
-
-void ThreadController::pushProgressScaler(const Scaler& f)
-{
-	progressScalers[progressScalerIndex++] = f;
-	jassert(isPositiveAndBelow(progressScalerIndex, NumProgressScalers));
-	setProgress(0.0);
-}
-
-void ThreadController::popProgressScaler()
-{
-	progressScalers[progressScalerIndex--] = {};
-	jassert(progressScalerIndex >= 0);
 }
 
 void Spectrum2D::Parameters::set(const Identifier& id, var value, NotificationType n)
