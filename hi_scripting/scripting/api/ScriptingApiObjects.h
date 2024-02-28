@@ -673,6 +673,46 @@ namespace ScriptingObjects
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptBackgroundTask);
 	};
 
+	class ScriptThreadSafeStorage: public ConstScriptingObject
+	{
+	public:
+
+		ScriptThreadSafeStorage(ProcessorWithScriptingContent* pwsc);
+
+		~ScriptThreadSafeStorage() override;
+
+		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("ThreadSafeStorage"); }
+
+		/** Clears the data. If another thread tries to read the value, it will block until that operation is done. */
+		void clear();
+
+		/** Writes the given data to the internal storage. If another thread tries to read the value, it will block until that operation is done. */
+		void store(var dataToStore);
+
+		/** Creates a copy of the data and writes the copy to the data storage. If another thread tries to read the value, it will block until that operation is done. */
+		void storeWithCopy(var dataToStore);
+
+		/** Loads the data. If the data is currently being written, this will lock and wait until the write operation is completed. */
+		var load();
+
+		/** Loads the data if the lock can be gained or returns a given default value if the data is currently being written. */
+		var tryLoad(var returnValueIfLocked);
+
+	private:
+
+		hise::SimpleReadWriteLock lock;
+		var data;
+
+		struct Wrapper
+		{
+			API_VOID_METHOD_WRAPPER_0(ScriptThreadSafeStorage, clear);
+			API_VOID_METHOD_WRAPPER_1(ScriptThreadSafeStorage, store);
+			API_VOID_METHOD_WRAPPER_1(ScriptThreadSafeStorage, storeWithCopy);
+			API_METHOD_WRAPPER_0(ScriptThreadSafeStorage, load);
+			API_METHOD_WRAPPER_1(ScriptThreadSafeStorage, tryLoad);
+		};
+	};
+
 	class ScriptFFT : public ConstScriptingObject,
 					  public Spectrum2D::Holder
 	{
@@ -690,6 +730,9 @@ namespace ScriptingObjects
 			API_VOID_METHOD_WRAPPER_1(ScriptFFT, setPhaseFunction);
 			API_VOID_METHOD_WRAPPER_1(ScriptFFT, setEnableSpectrum2D);
 			API_VOID_METHOD_WRAPPER_1(ScriptFFT, setEnableInverseFFT);
+			API_VOID_METHOD_WRAPPER_1(ScriptFFT, setSpectrum2DParameters);
+			API_METHOD_WRAPPER_0(ScriptFFT, getSpectrum2DParameters);
+			API_METHOD_WRAPPER_2(ScriptFFT, dumpSpectrum);
 		};
 
 		ScriptFFT(ProcessorWithScriptingContent* pwsc);
@@ -731,7 +774,18 @@ namespace ScriptingObjects
 			processed FFT. */
 		void setEnableInverseFFT(bool shouldApplyReverseTransformToInput);
 
+		/** Sets the spectrum data from the JSON object. */
+		void setSpectrum2DParameters(var jsonData);
+
+		/** Returns the JSON data for the spectrum parameters. */
+		var getSpectrum2DParameters() const;
+
+		/** Dumps the spectrum image to the given file (as PNG image). */
+		bool dumpSpectrum(var file, bool output);
+
 		// ======================================================================================================= End of API Methods
+
+		Image getSpectrum(bool getOutput) const { return getOutput ? outputSpectrum : spectrum; }
 
 	private:
 
@@ -1524,6 +1578,76 @@ namespace ScriptingObjects
 		struct Wrapper;
 
 		HiseEvent e;
+	};
+
+	class ScriptNeuralNetwork: public ConstScriptingObject
+	{
+	public:
+
+		ScriptNeuralNetwork(ProcessorWithScriptingContent* p, const String& name);
+
+		Identifier getObjectName() const override { RETURN_STATIC_IDENTIFIER("NeuralNetwork"); }
+
+		// ================================================================================ API Methods
+
+		/** Runs inference on the given input and returns either a single float or a reference to the output buffer. */
+		var process(var input);
+
+		/** Destroys the model and allows rebuilding using a different layout JSON. */
+		void clearModel();
+
+		/** Create a network using the given JSON for the layer setup. */
+		void build(const var& modelJSON);
+
+		/** Resets the network pipeline. */
+		void reset();
+
+		/** Loads the weights from the JSON object. */
+		void loadWeights(const var& weightData);
+
+		/** Helper function to create a JSON model definition from the Pytorch print(model) output. */
+		var createModelJSONFromTextFile(var fileObject);
+
+		/** Connects the network to a input and output global cable. */
+		void connectToGlobalCables(String inputId, String outputId);
+
+		/** Loads the model layout and weights from a tensorflow model JSON. */
+		void loadTensorFlowModel(const var& modelJSON);
+
+		/** Loads the model layout and weights from a Pytorch model JSON. */
+		void loadPytorchModel(const var& modelJSON);
+
+		/** Returns the model JSON. */
+		var getModelJSON()
+		{
+			return nn->getModelJSON();
+		}
+
+		// ================================================================================ API Methods
+
+	private:
+
+		void postBuild();
+
+		ReferenceCountedObjectPtr<ReferenceCountedObject> outputCableUntyped;
+
+		struct CableInputCallback;
+
+		ScopedPointer<CableInputCallback> cableInput;
+
+		float* getConnectionPtr(bool getInput)
+		{
+			return getInput ? inputBuffer->buffer.getWritePointer(0) : outputBuffer->buffer.getWritePointer(0);
+		}
+
+		VariantBuffer::Ptr inputBuffer;
+		VariantBuffer::Ptr outputBuffer;
+
+		struct Wrapper;
+
+		NeuralNetwork::Ptr nn;
+
+		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptNeuralNetwork);
 	};
 
 	class ScriptUnorderedStack : public ConstScriptingObject,
@@ -2864,8 +2988,14 @@ namespace ScriptingObjects
 		/** Returns an object with properties about the length of the current sequence. */
 		var getTimeSignature();
 
+		/** Returns an object with properties about the length of the sequence with the given index. */
+		var getTimeSignatureFromSequence(int index);
+
 		/** Sets the timing information of the current sequence using the given object. */
 		bool setTimeSignature(var timeSignatureObject);
+		
+		/** Sets the timing information of the sequence with the given index using the given object. */
+		bool setTimeSignatureToSequence(int index, var timeSignatureObject);
 
 		/** This will send any CC messages from the MIDI file to the global MIDI handler. */
 		void setAutomationHandlerConsumesControllerEvents(bool shouldBeEnabled);

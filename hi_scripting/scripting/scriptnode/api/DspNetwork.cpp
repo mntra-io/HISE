@@ -1140,6 +1140,10 @@ juce::ValueTree DspNetwork::cloneValueTreeWithNewIds(const ValueTree& treeToClon
 	for (auto n : nodes)
 		sa.add(n->getId());
 
+	// Also add the new IDs from the changes
+	for(const auto& c: changes)
+		sa.add(c.newId);
+
 	auto saRef = &sa;
 	auto changeRef = &changes;
 
@@ -2070,6 +2074,7 @@ String ScriptnodeExceptionHandler::getErrorMessage(Error e)
 	case Error::NodeDebuggerEnabled: return "Node is being debugged";
 	case Error::DeprecatedNode:		 return DeprecationChecker::getErrorMessage(e.actual);
 	case Error::IllegalPolyphony: return "Can't use this node in a polyphonic network";
+	case Error::IllegalMonophony: return "Can't use this node in a monophonic network";
 	case Error::IllegalFaustNode: return "Faust is disabled. Enable faust and recompile HISE.";
 	case Error::IllegalFaustChannelCount: 
 		s << "Faust node channel mismatch. Expected channels: `" << String(e.expected) << "`";
@@ -2080,6 +2085,7 @@ String ScriptnodeExceptionHandler::getErrorMessage(Error e)
 	case Error::CloneMismatch:	return "Clone container must have equal child nodes";
 	case Error::IllegalCompilation: return "Can't compile networks with this node. Uncheck the `AllowCompilation` flag to remove the error.";
 	case Error::CompileFail:	s << "Compilation error** at Line " << e.expected << ", Column " << e.actual; return s;
+	case Error::UncompiledThirdPartyNode: s << "Uncompiled Third Party Node. Export the DLL and restart HISE to load this node."; return s;
 	case Error::UnscaledModRangeMismatch: s << "Unscaled mod range mismatch.  \n> Copy range to source"; return s;
 	default:
 		break;

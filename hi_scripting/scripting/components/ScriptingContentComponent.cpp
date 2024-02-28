@@ -73,7 +73,7 @@ ScriptContentComponent::ScriptContentComponent(ProcessorWithScriptingContent *p_
 
 ScriptContentComponent::~ScriptContentComponent()
 {
-	SUSPEND_GLOBAL_DISPATCH(p->getMainController(), "delete scripting UI");
+
 
 	if (contentData.get() != nullptr)
 	{
@@ -88,12 +88,18 @@ ScriptContentComponent::~ScriptContentComponent()
 
 	if (p.get() != nullptr)
 	{
+        SUSPEND_GLOBAL_DISPATCH(p->getMainController(), "delete scripting UI");
+        
 		p->getMainController()->removeScriptListener(this);
 		OLD_PROCESSOR_DISPATCH(p->removeChangeListener(this));
 		p->removeDeleteListener(this);
-	};
-
-	componentWrappers.clear();
+        
+        componentWrappers.clear();
+	}
+    else
+    {
+        componentWrappers.clear();
+    }
 }
 
 
@@ -679,7 +685,19 @@ void ScriptContentComponent::paintOverChildren(Graphics& g)
 				ug.draw1PxRect(vg.area);
 		}
 	}
+
+	if(processor->simulatedSuspensionState)
+	{
+		g.fillAll(Colours::black.withAlpha(0.8f));
+		g.setColour(Colours::white);
+		g.setFont(GLOBAL_BOLD_FONT());
+		g.drawText("Suspended...", 0, 0, getWidth(), getHeight(), Justification::centred, false);
+		return;
+	}
+
 #endif
+
+	
 
 	if (isRebuilding)
 	{

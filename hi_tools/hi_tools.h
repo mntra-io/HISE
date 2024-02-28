@@ -96,6 +96,14 @@ END_JUCE_MODULE_DECLARATION
 #endif
 
 
+/** Config: HISE_INCLUDE_RT_NEURAL
+ 
+   Includes the neural network framework RTNeural for inferencing networks in realtime.
+*/
+#ifndef HISE_INCLUDE_RT_NEURAL
+#define HISE_INCLUDE_RT_NEURAL 1
+#endif
+
 /** Config: HISE_ENABLE_LORIS_ON_FRONTEND
  
  Includes the Loris Manager for compiled plugins. Be aware that the Loris library is only licensed under
@@ -137,6 +145,10 @@ will break compatibility with older projects / presets because the tempo indexes
 #include "../hi_rlottie/hi_rlottie.h"
 #endif
 
+// Include at least the thread controller to avoid compile errors...
+#if !HISE_INCLUDE_LORIS
+#include "../hi_loris/wrapper/ThreadController.h"
+#endif
 
 #include "../hi_streaming/hi_streaming.h"
 
@@ -223,6 +235,8 @@ will break compatibility with older projects / presets because the tempo indexes
 
 #include "hi_tools/ValueTreeHelpers.h"
 
+#include "hi_tools/runtime_target.h"
+
 #if USE_IPP
 
 #include "ipp.h"
@@ -297,4 +311,11 @@ using ComponentWithMiddleMouseDrag = juce::Component;
 
 
 
+#if HISE_INCLUDE_RT_NEURAL
+#include "hi_neural/hi_neural.h"
+#endif
 
+
+#if !HISE_NO_GUI_TOOLS
+#include "hi_multipage/multipage.h"
+#endif

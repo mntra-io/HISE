@@ -841,8 +841,9 @@ void DspNetworkCompileExporter::writeDebugFileAndShowSolution()
     auto isUsingVs2017 = HelperClasses::isUsingVisualStudio2017(settings);
     auto vsString = isUsingVs2017 ? "VisualStudio2017" : "VisualStudio2022";
     auto vsVersion = isUsingVs2017 ? "15.0" : "17.0";
-    
-    debugExecutable = debugExecutable.getChildFile(vsString).getChildFile("x64/Debug/App/HISE Debug.exe");
+	auto folder = currentExecutable.getFullPathName().contains(" with Faust") ? "Debug with Faust" : "Debug";
+
+	debugExecutable = debugExecutable.getChildFile(vsString).getChildFile("x64").getChildFile(folder).getChildFile("App").getChildFile("HISE Debug.exe");
 
 	// If this hits, then you have a mismatch between VS2022 and VS2017...
 	jassertEqual(debugExecutable, currentExecutable);
@@ -1632,6 +1633,11 @@ void DspNetworkCompileExporter::createMainCppFile(bool isDllMainFile)
     b.addComment("Now we can add the rest of the codebase", snex::cppgen::Base::CommentType::FillTo80);
     Include(b, "JuceHeader.h");
     
+    b.addEmptyLine();
+    
+    b << "#pragma clang diagnostic push";
+    b << "#pragma clang diagnostic ignored \"-Wreturn-type-c-linkage\"";
+    
 	b.addEmptyLine();
 
 	{
@@ -1834,6 +1840,10 @@ void DspNetworkCompileExporter::createMainCppFile(bool isDllMainFile)
 		}
 	}
 
+    b.addEmptyLine();
+    b << "#pragma clang diagnostic pop";
+    b.addEmptyLine();
+    
 	f.replaceWithText(b.toString());
     
     auto rnboSibling = f.getSiblingFile("RNBO.cpp");

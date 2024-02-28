@@ -601,9 +601,6 @@ This will analyse the harmonics of each slice and pick a phase from somewhere in
 ### Dynamic Phase
 This will analyse the sample and recreate every cycle with the correct phase information.This will use the Loris library to resynthesise and pitch lock the sample and export it as wavetable.This might vastly increase the wavetable size, but yields the best results for organic material like real world instruments with subtle pitch differences and a complex stereo image.)");
 
-
-		
-
 		row1->addCustomComponent(new PreviewButton("Original"));
 		row1->addCustomComponent(new PreviewButton("Preview"));
 
@@ -611,12 +608,9 @@ This will analyse the sample and recreate every cycle with the correct phase inf
 		row1->getComponent<Button>("Preview")->addListener(&bl_);
 
 		soundProperty = new MarkdownHelpButton();
-
 		soundProperty->setHelpText(WavetableHelp::About());
 
 		row1->addCustomComponent(soundProperty);
-
-
 
 		row1->setSize(768, 40);
 
@@ -844,8 +838,13 @@ This will use Loris to separate the noise from the sinusoidal parts of the sampl
 
 	~WavetableConverterDialog()
 	{
+		converter->spectrumBroadcaster.removeListener(*preview);
+
 		fileHandling = nullptr;
+		row1 = nullptr;
+		row2 = nullptr;
 		preview = nullptr;
+		sm = nullptr;
 		converter = nullptr;
 	}
 
@@ -1094,23 +1093,18 @@ This will use Loris to separate the noise from the sinusoidal parts of the sampl
 
 	Result r;
 
+	ScopedPointer<SampleMapToWavetableConverter> converter;
 	ScopedPointer<CombinedPreview> preview;
 	ScopedPointer<SampleMapToWavetableConverter::SampleMapPreview> sm;
-
-    bool rebuildPending = false;
-	
-
-	ModulatorSynthChain* chain;
 	
 	ScopedPointer<AdditionalRow> fileHandling;
 	ScopedPointer<AdditionalRow> row1;
 	ScopedPointer<AdditionalRow> row2;
-	ScopedPointer<SampleMapToWavetableConverter> converter;
 
+	ModulatorSynthChain* chain;
+	bool rebuildPending = false;
 	String currentlyLoadedMap;
-
 	File currentFile;
-
 
 	JUCE_DECLARE_WEAK_REFERENCEABLE(WavetableConverterDialog);
 };
@@ -2202,6 +2196,14 @@ public:
 			int numChannels = ob.getNumChannels();
 			int numSamples = ob.getNumSamples();
 
+			AudioFormatManager afm;
+	    afm.registerBasicFormats(); // Register basic audio formats
+
+	    std::unique_ptr<AudioFormatReader> reader(afm.createReaderFor(fileToUse));
+
+			double sampleRate = reader->sampleRate;
+			int bitDepth = reader->bitsPerSample;
+
 			fileToUse.deleteFile();
 
 			AudioSampleBuffer lut;
@@ -2376,8 +2378,8 @@ public:
 				CascadedEnvelopeLowPass lp(true);
 
 				PrepareSpecs ps;
-				ps.blockSize = 16;
-				ps.sampleRate = 44100.0;
+				ps.blockSize = bitDepth;
+				ps.sampleRate = sampleRate;
 				ps.numChannels = numChannels;
 
 				lp.prepare(ps);
@@ -2394,7 +2396,7 @@ public:
 			}
 
 			propertyData.removeProperty(id, nullptr);
-			hlac::CompressionHelpers::dump(ob, fileToUse.getFullPathName());
+			hlac::CompressionHelpers::dump(ob, fileToUse.getFullPathName(), sampleRate, bitDepth);
 		}
 
 		ValueTree propertyData;

@@ -700,7 +700,10 @@ TextEditor::Error::Error(TextDocument& doc_, const String& e, bool isWarning_):
 {
 	auto s = e.fromFirstOccurrenceOf("Line ", false, false);
 	auto l = s.getIntValue() - 1;
-	auto c = s.fromFirstOccurrenceOf("(", false, false).upToFirstOccurrenceOf(")", false, false).getIntValue();
+
+	auto useDefaultJuceErrorFormat = s.contains(", column ");
+
+	auto c = s.fromFirstOccurrenceOf(useDefaultJuceErrorFormat ? "column " : "(", false, false).upToFirstOccurrenceOf(")", false, false).getIntValue();
 	errorMessage = s.fromFirstOccurrenceOf(": ", false, false);
 
 	Point<int> pos, endPoint;
@@ -958,8 +961,14 @@ void TextEditor::updateAutocomplete(bool forceShow /*= false*/)
 
 	auto parent = TopLevelWindowWithOptionalOpenGL::findRoot(this); 
 
+	if(parent == nullptr)
+		parent = dynamic_cast<Component*>(findParentComponentOfClass<TopLevelWindowWithKeyMappings>());
+
 	if (parent == nullptr)
 		parent = this;
+
+	if(tokenCollection != nullptr)
+		tokenCollection->updateIfSync();
 
 	if (forceShow || ((input.isNotEmpty() && tokenCollection != nullptr && tokenCollection->hasEntries(input, tokenBefore, lineNumber)) || hasDotAndNotFloat))
 	{
@@ -987,7 +996,8 @@ void TextEditor::updateAutocomplete(bool forceShow /*= false*/)
 
 		auto ltl = topLeft.roundToInt().transformedBy(transform);
 
-		ltl = getTopLevelComponent()->getLocalPoint(this, ltl);
+		if(parent != this)
+			ltl = getTopLevelComponent()->getLocalPoint(this, ltl);
 		
 		currentAutoComplete->setTopLeftPosition(ltl);
 

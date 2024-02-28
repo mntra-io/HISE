@@ -75,6 +75,8 @@ Component* CodeEditorPanel::createContentComponent(int index)
 			pe->getEditor()->editor.setScaleFactor(scaleFactor);
 #endif
 
+		pe->getEditor()->editor.tokenCollection = BackendRootWindow::getJavascriptTokenCollection(this);
+
 		pe->addMouseListener(this, true);
 		getProcessor()->getMainController()->setLastActiveEditor(pe->getEditor(), CodeDocument::Position());
 		pe->grabKeyboardFocusAsync();
@@ -112,7 +114,9 @@ Component* CodeEditorPanel::createContentComponent(int index)
         if(scaleFactor != -1.0f)
             pe->getEditor()->editor.setScaleFactor(scaleFactor);
 #endif
-        
+
+		pe->getEditor()->editor.tokenCollection = BackendRootWindow::getJavascriptTokenCollection(this);
+
 		if(auto ed = pe->getEditor())
 			getProcessor()->getMainController()->setLastActiveEditor(pe->getEditor(), CodeDocument::Position());
 
@@ -264,9 +268,13 @@ void CodeEditorPanel::fillIndexList(StringArray& indexList)
 			indexList.add(p->getSnippet(i)->getCallbackName().toString());
 		}
 
+        auto scriptRoot = getMainController()->getActiveFileHandler()->getSubDirectory(FileHandlerBase::SubDirectories::Scripts);
+        
 		for (int i = 0; i < p->getNumWatchedFiles(); i++)
 		{
-			indexList.add(p->getWatchedFile(i).getFileName());
+            auto f = p->getWatchedFile(i);
+			auto path = f.getRelativePathFrom(scriptRoot);
+			indexList.add(path.replaceCharacter('\\', '/'));
 		}
 
 		if (auto h = dynamic_cast<scriptnode::DspNetwork::Holder*>(p))
@@ -792,6 +800,7 @@ void ScriptContentPanel::Editor::rebuildAfterContentChange()
 
 	addButton("lock");
 	addButton("move");
+	addButton("suspend");
 
 	addSpacer(10);
 
@@ -801,6 +810,8 @@ void ScriptContentPanel::Editor::rebuildAfterContentChange()
 	addButton("horizontal-distribute");
 
 	addSpacer(10);
+
+	addButton("edit-json");
 
 	addCustomComponent(overlaySelector);
 	addCustomComponent(overlayAlphaSlider);
@@ -826,6 +837,18 @@ void ScriptContentPanel::Editor::addButton(const String& name)
 		b->enabledFunction = isSelected;
 		b->actionFunction = Actions::deselectAll;
 		b->setTooltip("Deselect current item (Escape)");
+	}
+	if(name == "edit-json")
+	{
+		b->enabledFunction = isSelected;
+		b->actionFunction = Actions::editJson;
+		b->setTooltip("Edits the raw property data object as JSON (Dangerzone!)");
+	}
+	if(name == "suspend")
+	{
+		b->stateFunction = [](Editor& e){ return !dynamic_cast<ProcessorWithScriptingContent*>(e.getProcessor())->simulatedSuspensionState; };
+		b->setTooltip("Simulates the suspension of the UI timers (as if all interface would be closed).");
+		b->actionFunction = Actions::toggleSuspension;
 	}
 	if (name == "showall")
 	{
@@ -1146,6 +1169,12 @@ bool ScriptContentPanel::Editor::Actions::toggleEditMode(Editor& e)
 	return true;
 }
 
+bool ScriptContentPanel::Editor::Actions::toggleSuspension(Editor& e)
+{
+	dynamic_cast<ProcessorWithScriptingContent*>(e.getProcessor())->toggleSuspension();
+	return true;
+}
+
 bool ScriptContentPanel::Editor::Actions::lockSelection(Editor& e)
 {
 	auto sl = e.getScriptComponentEditBroadcaster();
@@ -1237,6 +1266,12 @@ bool ScriptContentPanel::Editor::Actions::undo(Editor* e, bool shouldUndo)
 	e->getScriptComponentEditBroadcaster()->undo(shouldUndo);
 	rebuild(*e);
 
+	return true;
+}
+
+bool ScriptContentPanel::Editor::Actions::editJson(Editor& e)
+{
+	e.getScriptComponentEditBroadcaster()->showJSONEditor(&e);
 	return true;
 }
 
@@ -2164,7 +2199,8 @@ Array<PathFactory::KeyMapping> ScriptContentPanel::Factory::getKeyMapping() cons
 	km.add({ "Zoom out", '-', ModifierKeys::commandModifier });
 	km.add({ "Undo", 'z', ModifierKeys::commandModifier });
 	km.add({ "Redo", 'y', ModifierKeys::commandModifier });
-
+	km.add({ "Edit JSON", 'j' });
+	
 	return km;
 }
 
@@ -2188,6 +2224,8 @@ juce::Path ScriptContentPanel::Factory::createPath(const String& id) const
 	LOAD_PATH_IF_URL("horizontal-align", ColumnIcons::horizontalAlign);
 	LOAD_PATH_IF_URL("vertical-distribute", ColumnIcons::verticalDistribute);
 	LOAD_PATH_IF_URL("horizontal-distribute", ColumnIcons::horizontalDistribute);
+	LOAD_EPATH_IF_URL("edit-json", HiBinaryData::SpecialSymbols::scriptProcessor);
+	LOAD_EPATH_IF_URL("suspend", EditorIcons::nightIcon);
 
 	return p;
 }

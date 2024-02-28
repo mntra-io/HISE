@@ -1023,6 +1023,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_0(Engine, createMidiList);
 	API_METHOD_WRAPPER_0(Engine, createBeatportManager);
 	API_METHOD_WRAPPER_0(Engine, createUnorderedStack);
+	API_METHOD_WRAPPER_0(Engine, createThreadSafeStorage);
 	API_METHOD_WRAPPER_0(Engine, createTimerObject);
 	API_METHOD_WRAPPER_0(Engine, createMessageHolder);
 	API_METHOD_WRAPPER_0(Engine, createTransportHandler);
@@ -1062,6 +1063,7 @@ struct ScriptingApi::Engine::Wrapper
 	API_METHOD_WRAPPER_1(Engine, createDspNetwork);
 	API_METHOD_WRAPPER_0(Engine, createExpansionHandler);
 	API_METHOD_WRAPPER_0(Engine, createFFT);
+	API_METHOD_WRAPPER_1(Engine, createNeuralNetwork);
 	API_METHOD_WRAPPER_0(Engine, getExpansionList);
 	API_METHOD_WRAPPER_1(Engine, setCurrentExpansion);
 	API_METHOD_WRAPPER_0(Engine, createGlobalScriptLookAndFeel);
@@ -1148,6 +1150,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_0(getNumPluginChannels);
 	ADD_TYPED_API_METHOD_1(setMinimumSampleRate, VarTypeChecker::Number);
 	ADD_TYPED_API_METHOD_1(setMaximumBlockSize, VarTypeChecker::Number);
+	ADD_API_METHOD_0(createThreadSafeStorage);
 	ADD_API_METHOD_1(getMidiNoteName);
 	ADD_API_METHOD_1(getMidiNoteFromName);
 	ADD_API_METHOD_1(getMacroName);
@@ -1179,6 +1182,7 @@ parentMidiProcessor(dynamic_cast<ScriptBaseMidiProcessor*>(p))
 	ADD_API_METHOD_0(createUnorderedStack);
 	ADD_API_METHOD_1(createBackgroundTask);
 	ADD_API_METHOD_0(createFFT);
+	ADD_API_METHOD_1(createNeuralNetwork);
 	ADD_API_METHOD_1(createBroadcaster);
 	ADD_API_METHOD_0(getPlayHead);
 	ADD_API_METHOD_2(dumpAsJSON);
@@ -1956,6 +1960,11 @@ var ScriptingApi::Engine::createFixObjectFactory(var layoutData)
     return var(new fixobj::Factory(getScriptProcessor(), layoutData));
 }
 
+var ScriptingApi::Engine::createThreadSafeStorage()
+{
+	return var (new ScriptingObjects::ScriptThreadSafeStorage(getScriptProcessor()));
+}
+
 juce::var ScriptingApi::Engine::createLicenseUnlocker()
 {
 	return var(new ScriptUnlocker::RefObject(getScriptProcessor()));
@@ -1966,14 +1975,12 @@ var ScriptingApi::Engine::createBeatportManager()
 	return var(new BeatportManager(getScriptProcessor()));
 }
 
-struct AudioRenderer : public Thread,
-                       public ControlledObject
-{
-	static constexpr int NumThrowAwayBuffers = 4;
 
+
+struct AudioRenderer : public AudioRendererBase
+{
 	AudioRenderer(ProcessorWithScriptingContent* pwsc, var eventList_, var finishCallback_):
-		Thread("AudioExportThread"),
-		ControlledObject(pwsc->getMainController_()),
+		AudioRendererBase(pwsc->getMainController_()),
 		finishCallback(pwsc, nullptr, finishCallback_, 1)
 	{
 		finishCallback.incRefCount();
@@ -1990,44 +1997,15 @@ struct AudioRenderer : public Thread,
 			}
 		}
 
-		if (!events.isEmpty())
-		{
-			if ((bufferSize = getMainController()->getMainSynthChain()->getLargestBlockSize()) != 0)
-			{
-				numSamplesToRender = (int)events.getEvent(events.getNumUsed() - 1).getTimeStamp();
-
-				// we'll trim it later
-				numActualSamples = numSamplesToRender;
-
-				auto leftOver = numSamplesToRender % bufferSize;
-
-				if (leftOver != 0)
-				{
-					// pad to blocksize
-					numSamplesToRender += (bufferSize - leftOver);
-				}
-
-				numChannelsToRender = getMainController()->getMainSynthChain()->getMatrix().getNumSourceChannels();
-
-				events.subtractFromTimeStamps(-bufferSize * NumThrowAwayBuffers);
-
-				events.template alignEventsToRaster<HISE_EVENT_RASTER>(numSamplesToRender);
-
-				for (int i = 0; i < numChannelsToRender; i++)
-					channels.add(new VariantBuffer(numSamplesToRender));
-
-				Thread::startThread(8);
-			}
-		}
+		initAfterFillingEventBuffer();
 	}
 
 	~AudioRenderer()
 	{
-		stopThread(1000);
-		cleanup();
+		
 	}
 
-	void callUpdateCallback(bool isFinished, double progress)
+	void callUpdateCallback(bool isFinished, double progress) override
 	{
 		if (finishCallback)
 		{
@@ -2050,148 +2028,8 @@ struct AudioRenderer : public Thread,
 		}
 	}
 
-	bool renderAudio()
-	{
-        // Stop all clocks...
-        getMainController()->getMasterClock().changeState(0, true, false);
-        getMainController()->getMasterClock().changeState(0, false, false);
-        
-		SuspendHelpers::ScopedTicket st(getMainController());
-
-		callUpdateCallback(false, 0.0);
-
-        
-        
-		while (getMainController()->getKillStateHandler().isAudioRunning())
-		{
-			if (threadShouldExit())
-				return false;
-
-			Thread::wait(400);
-		}
-
-		jassert(!getMainController()->getKillStateHandler().isAudioRunning());
-
-		getMainController()->getKillStateHandler().setCurrentExportThread(getCurrentThreadId());
-
-		dynamic_cast<AudioProcessor*>(getMainController())->setNonRealtime(true);
-		getMainController()->getSampleManager().handleNonRealtimeState();
-		
-		{
-			LockHelpers::SafeLock sl(getMainController(), LockHelpers::Type::AudioLock);
-
-			int numTodo = numSamplesToRender;
-			int pos = 0;
-
-			int numThrowAway = NumThrowAwayBuffers;
-
-			AudioSampleBuffer nirvana(numChannelsToRender, bufferSize);
-
-			auto startTime = Time::getMillisecondCounter();
-
-			while (numTodo > 0)
-			{
-				if (threadShouldExit())
-					return false;
-
-				int numThisTime = jmin<int>(bufferSize, numTodo);
-
-				AudioSampleBuffer ab = getChunk(pos, numThisTime);
-				HiseEventBuffer thisBuffer;
-				events.moveEventsBelow(thisBuffer, pos + numThisTime);
-				thisBuffer.subtractFromTimeStamps(pos);
-
-				MidiBuffer mb;
-
-				for (const auto& e : thisBuffer)
-					mb.addEvent(e.toMidiMesage(), e.getTimeStamp());
-
-				auto& bufferToUse = numThrowAway > 0 ? nirvana : ab;
-
-				dynamic_cast<AudioProcessor*>(getMainController())->processBlock(bufferToUse, mb);
-
-				if (numThrowAway > 0)
-				{
-					--numThrowAway;
-					events.subtractFromTimeStamps(numThisTime);
-				}
-				else
-				{
-					pos += numThisTime;
-					numTodo -= numThisTime;
-				}
-
-				auto now = Time::getMillisecondCounter();
-
-				if (now - startTime > 90)
-				{
-					auto p = (double)numTodo / (double)numSamplesToRender;
-					callUpdateCallback(false, 1.0 - p);
-					startTime = now;
-					Thread::wait(60);
-				}
-			}
-
-			MidiBuffer emptyBuffer;
-
-			for (int i = 0; i < 50; i++)
-			{
-				dynamic_cast<AudioProcessor*>(getMainController())->processBlock(nirvana, emptyBuffer);
-			}
-		}
-
-        for (int i = 0; i < numChannelsToRender; i++)
-		{
-			VariantBuffer* b = channels[i].get();
-			b->size = numActualSamples;
-		}
-
-        getMainController()->getKillStateHandler().setCurrentExportThread(nullptr);
-		dynamic_cast<AudioProcessor*>(getMainController())->setNonRealtime(false);
-		getMainController()->getSampleManager().handleNonRealtimeState();
-		return true;
-	}
-
-	void run() override
-	{
-		if (!renderAudio())
-		{
-			cleanup();
-			return;
-		}
-		
-		callUpdateCallback(true, 1.0);
-
-		cleanup();
-	}
-
-	void cleanup()
-	{
-        getMainController()->getKillStateHandler().setCurrentExportThread(nullptr);
-		channels.clear();
-		memset(splitData, 0, sizeof(float*) * NUM_MAX_CHANNELS);
-		events.clear();
-	}
-
-	AudioSampleBuffer getChunk(int startSample, int numSamples)
-	{
-		for (int i = 0; i < numChannelsToRender; i++)
-			splitData[i] = channels[i]->buffer.getWritePointer(0, startSample);
-
-		jassert(isPositiveAndBelow(startSample + numSamples, numSamplesToRender + 1));
-
-		return AudioSampleBuffer(splitData, numChannelsToRender, numSamples);
-	}
-
-	Array<VariantBuffer::Ptr> channels;
-
-	HiseEventBuffer events;
 	WeakCallbackHolder finishCallback;
-	int numSamplesToRender = 0;
-	int numChannelsToRender = 0;
-	int numActualSamples = 0;
-	float* splitData[NUM_MAX_CHANNELS];
-	int bufferSize = 0;
+	
 };
 
 void ScriptingApi::Engine::renderAudio(var eventList, var updateCallback)
@@ -3397,6 +3235,11 @@ ScriptingObjects::ScriptingMessageHolder* ScriptingApi::Engine::createMessageHol
 	return new ScriptingObjects::ScriptingMessageHolder(getScriptProcessor());
 }
 
+ScriptingObjects::ScriptNeuralNetwork* ScriptingApi::Engine::createNeuralNetwork(String id)
+{
+	return new ScriptingObjects::ScriptNeuralNetwork(getScriptProcessor(), id);
+}
+
 var ScriptingApi::Engine::createTransportHandler()
 {
 	return new TransportHandler(getScriptProcessor());
@@ -3866,9 +3709,10 @@ void ScriptingApi::Sampler::setActiveGroupForEventId(int eventId, int activeGrou
 		return;
 	}
 	
-	if(s->getMainController()->getKillStateHandler().getCurrentThread() != MainController::KillStateHandler::TargetThread::AudioThread)
+	if(eventId != -1 && s->getMainController()->getKillStateHandler().getCurrentThread() != MainController::KillStateHandler::TargetThread::AudioThread)
 	{
 		reportScriptError("This method is only available in the onNoteOnCallback");
+		return;
 	}
 
 	bool ok = s->setCurrentGroupIndex(activeGroupIndex, eventId);
@@ -5156,10 +5000,12 @@ struct ScriptingApi::Synth::Wrapper
 	API_METHOD_WRAPPER_1(Synth, getAttribute);
 	API_METHOD_WRAPPER_4(Synth, addNoteOn);
 	API_VOID_METHOD_WRAPPER_3(Synth, addNoteOff);
+	API_VOID_METHOD_WRAPPER_1(Synth, setFixNoteOnAfterNoteOff);
 	API_VOID_METHOD_WRAPPER_3(Synth, addVolumeFade);
 	API_VOID_METHOD_WRAPPER_4(Synth, addPitchFade);
 	API_VOID_METHOD_WRAPPER_4(Synth, addController);
 	API_METHOD_WRAPPER_1(Synth, addMessageFromHolder);
+	API_METHOD_WRAPPER_2(Synth, attachNote);
 	API_VOID_METHOD_WRAPPER_2(Synth, setVoiceGainValue);
 	API_VOID_METHOD_WRAPPER_2(Synth, setVoicePitchValue);
 	API_VOID_METHOD_WRAPPER_1(Synth, startTimer);
@@ -5229,7 +5075,9 @@ ScriptingApi::Synth::Synth(ProcessorWithScriptingContent *p, Message* messageObj
 	ADD_API_METHOD_2(playNote);
 	ADD_API_METHOD_4(playNoteWithStartOffset);
     ADD_API_METHOD_3(playNoteFromUI);
+	ADD_API_METHOD_2(attachNote);
     ADD_API_METHOD_2(noteOffFromUI);
+	ADD_API_METHOD_1(setFixNoteOnAfterNoteOff);
 	ADD_API_METHOD_2(setAttribute);
 	ADD_API_METHOD_1(getAttribute);
 	ADD_API_METHOD_4(addNoteOn);
@@ -5406,6 +5254,25 @@ int ScriptingApi::Synth::playNoteWithStartOffset(int channel, int number, int ve
 	}
 
 	return internalAddNoteOn(channel, number, velocity, 0, offset); // the timestamp will be added from the current event
+}
+
+bool ScriptingApi::Synth::attachNote(int originalNoteId, int artificialNoteId)
+{
+	if (parentMidiProcessor != nullptr)
+	{
+		if(!owner->midiProcessorChain->hasAttachedNoteBuffer())
+			reportScriptError("You must call setFixNoteOnAfterNoteOff() before calling this method");
+
+		return owner->midiProcessorChain->attachNote(originalNoteId, artificialNoteId);
+	}
+
+	return false;
+}
+
+void ScriptingApi::Synth::setFixNoteOnAfterNoteOff(bool shouldBeFixed)
+{
+	if (parentMidiProcessor != nullptr)
+		owner->midiProcessorChain->setFixNoteOnAfterNoteOff(shouldBeFixed);
 }
 
 void ScriptingApi::Synth::addVolumeFade(int eventId, int fadeTimeMilliseconds, int targetVolume)
@@ -7088,7 +6955,13 @@ juce::var ScriptingApi::FileSystem::fromReferenceString(String referenceStringOr
 
 	PoolReference ref(getScriptProcessor()->getMainController_(), referenceStringOrFullPath, sub);
 
-	if (ref.isValid() && !ref.isEmbeddedReference())
+	// also return a file object for missing files...
+	if(ref.isAbsoluteFile())
+	{
+		return var(new ScriptingObjects::ScriptFile(getScriptProcessor(), File(referenceStringOrFullPath)));
+	}
+	
+	if ((ref.isValid()) && !ref.isEmbeddedReference())
 	{
 		auto f = ref.getFile();
 		return var(new ScriptingObjects::ScriptFile(getScriptProcessor(), File(f)));
@@ -7774,12 +7647,14 @@ struct ScriptingApi::TransportHandler::Wrapper
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setOnGridChange);
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setOnSignatureChange);
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setOnTransportChange);
+	API_VOID_METHOD_WRAPPER_1(TransportHandler, setOnBypass);
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, setSyncMode);
 	API_VOID_METHOD_WRAPPER_2(TransportHandler, setEnableGrid);
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, startInternalClock);
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, stopInternalClock);
 	API_VOID_METHOD_WRAPPER_0(TransportHandler, sendGridSyncOnNextCallback);
 	API_VOID_METHOD_WRAPPER_1(TransportHandler, setLinkBpmToSyncMode);
+	API_METHOD_WRAPPER_0(TransportHandler, isNonRealtime);
 };
 
 ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* sp) :
@@ -7800,6 +7675,7 @@ ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* 
 	ADD_TYPED_API_METHOD_2(setOnGridChange, VarTypeChecker::Number, VarTypeChecker::Function);
 	ADD_TYPED_API_METHOD_2(setOnSignatureChange, VarTypeChecker::Number, VarTypeChecker::Function);
 	ADD_TYPED_API_METHOD_2(setOnTransportChange, VarTypeChecker::Number, VarTypeChecker::Function);
+	ADD_TYPED_API_METHOD_1(setOnBypass, VarTypeChecker::Function);
 	ADD_API_METHOD_1(setSyncMode);
 	ADD_API_METHOD_1(startInternalClock);
 	ADD_API_METHOD_1(stopInternalClock);
@@ -7807,10 +7683,12 @@ ScriptingApi::TransportHandler::TransportHandler(ProcessorWithScriptingContent* 
 	ADD_API_METHOD_0(sendGridSyncOnNextCallback);
     ADD_API_METHOD_1(stopInternalClockOnExternalStop);
 	ADD_API_METHOD_1(setLinkBpmToSyncMode);
+	ADD_API_METHOD_0(isNonRealtime);
 }
 
 ScriptingApi::TransportHandler::~TransportHandler()
 {
+	getMainController()->getPluginBypassHandler().listeners.removeListener(*this);
 	getMainController()->removeTempoListener(this);
 	getMainController()->removeMusicalUpdateListener(this);
 }
@@ -7988,6 +7866,13 @@ void ScriptingApi::TransportHandler::setOnGridChange(var sync, var f)
 	}
 }
 
+void ScriptingApi::TransportHandler::setOnBypass(var f)
+{
+	bypassCallback = new Callback(this, "onGridChange", f, false, 1);
+
+	getMainController()->getPluginBypassHandler().listeners.addListener(*this, TransportHandler::onBypassUpdate, true);
+}
+
 void ScriptingApi::TransportHandler::setEnableGrid(bool shouldBeEnabled, int tempoFactor)
 {
 	if (isPositiveAndBelow(tempoFactor, (int)TempoSyncer::numTempos))
@@ -8026,4 +7911,14 @@ void ScriptingApi::TransportHandler::setLinkBpmToSyncMode(bool shouldPrefer)
 	getMainController()->getMasterClock().setLinkBpmToSyncMode(shouldPrefer);
 }
 
+bool ScriptingApi::TransportHandler::isNonRealtime() const
+{
+	return getScriptProcessor()->getMainController_()->getSampleManager().isNonRealtime();
+}
+
+void ScriptingApi::TransportHandler::onBypassUpdate(TransportHandler& handler, bool state)
+{
+	if(handler.bypassCallback != nullptr)
+		handler.bypassCallback->call(state, {}, {}, true);
+}
 } // namespace hise

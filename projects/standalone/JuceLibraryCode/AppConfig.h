@@ -45,7 +45,7 @@
 
 #define JUCE_USE_DARK_SPLASH_SCREEN 1
 
-#define JUCE_PROJUCER_VERSION 0x60103
+#define JUCE_PROJUCER_VERSION 0x60104
 
 //==============================================================================
 #define JUCE_MODULE_AVAILABLE_hi_backend                  1
@@ -56,6 +56,7 @@
 #define JUCE_MODULE_AVAILABLE_hi_faust_lib                1
 #define JUCE_MODULE_AVAILABLE_hi_faust_types              1
 #define JUCE_MODULE_AVAILABLE_hi_lac                      1
+#define JUCE_MODULE_AVAILABLE_hi_loris                    1
 #define JUCE_MODULE_AVAILABLE_hi_rlottie                  1
 #define JUCE_MODULE_AVAILABLE_hi_scripting                1
 #define JUCE_MODULE_AVAILABLE_hi_snex                     1
@@ -344,6 +345,17 @@
 #endif
 
 //==============================================================================
+// hi_loris flags:
+
+#ifndef    HISE_INCLUDE_LORIS
+ #define   HISE_INCLUDE_LORIS 1
+#endif
+
+#ifndef    HISE_USE_LORIS_DLL
+ #define   HISE_USE_LORIS_DLL 0
+#endif
+
+//==============================================================================
 // hi_rlottie flags:
 
 #ifndef    HISE_INCLUDE_RLOTTIE
@@ -408,6 +420,10 @@
 
 #ifndef    HISE_INCLUDE_PITCH_DETECTION
  //#define HISE_INCLUDE_PITCH_DETECTION 1
+#endif
+
+#ifndef    HISE_INCLUDE_RT_NEURAL
+ //#define HISE_INCLUDE_RT_NEURAL 1
 #endif
 
 #ifndef    HISE_ENABLE_LORIS_ON_FRONTEND

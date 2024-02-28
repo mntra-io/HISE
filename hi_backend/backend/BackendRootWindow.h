@@ -90,6 +90,24 @@ public:
 
 	bool isFullScreenMode() const;
 
+	static mcl::TokenCollection::Ptr getJavascriptTokenCollection(Component* any)
+	{
+        auto cw = any->findParentComponentOfClass<ComponentWithBackendConnection>();
+        
+        if(cw == nullptr)
+            return nullptr;
+        
+		if(auto brw = cw->getBackendRootWindow())
+		{
+			if(brw->javascriptTokens == nullptr)
+				brw->javascriptTokens = new mcl::TokenCollection(mcl::LanguageIds::HiseScript);
+
+			return brw->javascriptTokens;
+		}
+
+		return nullptr;
+	}
+
 	void rebuildTokenProviders(const Identifier& languageId)
 	{
 		if(javascriptTokens == nullptr && languageId == mcl::LanguageIds::HiseScript)

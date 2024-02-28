@@ -948,8 +948,13 @@ void ScriptingApi::Content::ScriptComponent::sendValueListenerMessage()
 void ScriptingApi::Content::ScriptComponent::changed()
 {
 	if (!parent->asyncFunctionsAllowed())
+	{
+		debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), "Skipping changed() callback during onInit for " + getId());
 		return;
+	}
 
+	ScopedValueSetter<bool> svs(getScriptProcessor()->getMainController_()->getDeferNotifyHostFlag(), true);
+	
 	controlSender.sendControlCallbackMessage();
 	sendValueListenerMessage();
 
@@ -2609,7 +2614,8 @@ ScriptComponent(base, name)
 	ADD_SCRIPT_PROPERTY(i03, "fontStyle");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ChoiceSelector);
 	ADD_SCRIPT_PROPERTY(i04, "enableMidiLearn"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
     ADD_SCRIPT_PROPERTY(i05, "popupAlignment"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ChoiceSelector);
-
+    ADD_SCRIPT_PROPERTY(i06, "useCustomPopup"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+    
 	priorityProperties.add(getIdFor(Items));
 
 	setDefaultValue(ScriptComponent::Properties::x, x);
@@ -2624,6 +2630,7 @@ ScriptComponent(base, name)
 	setDefaultValue(ScriptComponent::Properties::defaultValue, 1);
 	setDefaultValue(ScriptComponent::min, 1.0f);
 	setDefaultValue(ScriptComboBox::Properties::enableMidiLearn, false);
+    setDefaultValue(ScriptComboBox::Properties::useCustomPopup, false);
 	
 	handleDefaultDeactivatedProperties();
 	initInternalPropertyFromValueTreeOrDefault(Items);
@@ -3437,6 +3444,7 @@ ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScr
 	
 	ADD_SCRIPT_PROPERTY(i05, "sampleIndex");
 	ADD_SCRIPT_PROPERTY(i06, "enableRange"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+	ADD_SCRIPT_PROPERTY(i07, "loadWithLeftClick"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 
 	setDefaultValue(ScriptComponent::Properties::x, x);
 	setDefaultValue(ScriptComponent::Properties::y, y);
@@ -3453,6 +3461,7 @@ ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScr
 	setDefaultValue(Properties::showFileName, true);
 	setDefaultValue(Properties::sampleIndex, 0);
 	setDefaultValue(Properties::enableRange, true);
+	setDefaultValue(Properties::loadWithLeftClick, false);
 
 	handleDefaultDeactivatedProperties();
 
@@ -5776,6 +5785,7 @@ width(600),
 name(String()),
 allowGuiCreation(true),
 dragCallback(p, nullptr, var(), 1),
+suspendCallback(p, nullptr, var(), 1),
 colour(Colour(0xff777777))
 {
 #if USE_FRONTEND
@@ -5829,6 +5839,7 @@ colour(Colour(0xff777777))
 	setMethod("isCtrlDown", Wrapper::isCtrlDown);
 	setMethod("createPath", Wrapper::createPath);
 	setMethod("createShader", Wrapper::createShader);
+	setMethod("setSuspendTimerCallback", Wrapper::setSuspendTimerCallback);
 	setMethod("createMarkdownRenderer", Wrapper::createMarkdownRenderer);
     setMethod("createSVG", Wrapper::createSVG);
 	setMethod("getScreenBounds", Wrapper::getScreenBounds);
@@ -6657,12 +6668,23 @@ void ScriptingApi::Content::setValuePopupData(var jsonData)
 
 void ScriptingApi::Content::suspendPanelTimers(bool shouldBeSuspended)
 {
+	if(suspendCallback)
+	{
+		suspendCallback.call1(shouldBeSuspended);
+	}
+    
+#if USE_BACKEND
+    for(auto rb: rebuildListeners)
+    {
+        if(rb != nullptr)
+            rb->suspendStateChanged(shouldBeSuspended);
+    }
+#endif
+
 	for (int i = 0; i < components.size(); i++)
 	{
 		if (auto sp = dynamic_cast<ScriptPanel*>(components[i].get()))
-		{
 			sp->suspendTimer(shouldBeSuspended);
-		}
 	}
 }
 

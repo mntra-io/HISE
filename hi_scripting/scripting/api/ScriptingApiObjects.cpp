@@ -4986,7 +4986,224 @@ String ScriptingObjects::ScriptingMessageHolder::dump() const
 	return x;
 }
 
+struct ScriptingObjects::ScriptNeuralNetwork::Wrapper
+{
+	API_METHOD_WRAPPER_1(ScriptNeuralNetwork, process);
+	API_VOID_METHOD_WRAPPER_0(ScriptNeuralNetwork, clearModel);
+	API_VOID_METHOD_WRAPPER_1(ScriptNeuralNetwork, build);
+	API_VOID_METHOD_WRAPPER_0(ScriptNeuralNetwork, reset);
+	API_VOID_METHOD_WRAPPER_1(ScriptNeuralNetwork, loadWeights);
+	API_METHOD_WRAPPER_0(ScriptNeuralNetwork, getModelJSON);
+	API_VOID_METHOD_WRAPPER_1(ScriptNeuralNetwork, loadTensorFlowModel);
+	API_VOID_METHOD_WRAPPER_1(ScriptNeuralNetwork, loadPytorchModel);
+	API_METHOD_WRAPPER_1(ScriptNeuralNetwork, createModelJSONFromTextFile);
+};
 
+ScriptingObjects::ScriptNeuralNetwork::ScriptNeuralNetwork(ProcessorWithScriptingContent* p, const String& name):
+	ConstScriptingObject(p, 0)
+{
+	ADD_API_METHOD_1(process);
+	ADD_API_METHOD_0(clearModel);
+	ADD_API_METHOD_1(build);
+	ADD_API_METHOD_0(reset);
+	ADD_API_METHOD_1(loadWeights);
+	ADD_API_METHOD_1(createModelJSONFromTextFile);
+	ADD_API_METHOD_1(loadTensorFlowModel);
+	ADD_API_METHOD_1(loadPytorchModel);
+	ADD_API_METHOD_0(getModelJSON);
+	
+	nn = p->getMainController_()->getNeuralNetworks().getOrCreate(Identifier(name));
+}
+
+var ScriptingObjects::ScriptNeuralNetwork::process(var input)
+{
+	auto isSingleOut = nn->getNumOutputs() == 1;
+	auto isSingleIn = nn->getNumInputs() == 1;
+
+	if(isSingleOut)
+	{
+		float out;
+
+		if(isSingleIn)
+		{
+			float in = (float)input;
+			nn->process(0, &in, &out);
+		}
+		else if (input.isArray())
+		{
+			if(isPositiveAndBelow(inputBuffer->size, input.size()))
+			{
+				int idx = 0;
+				for(const auto& v: *input.getArray())
+					inputBuffer->setSample(idx++, (float)v);
+
+				nn->process(0, getConnectionPtr(true), &out);
+			}
+		}
+		else if (input.isBuffer())
+		{
+			if(isPositiveAndBelow(nn->getNumInputs(), input.getBuffer()->size))
+			{
+				auto ptr = input.getBuffer()->buffer.getReadPointer(0);
+				nn->process(0, ptr, &out);
+			}
+		}
+
+		if(outputCableUntyped != nullptr)
+		{
+			auto typed = dynamic_cast<scriptnode::routing::GlobalRoutingManager::CableTargetBase*>(outputCableUntyped.get());
+			typed->sendValue(out);
+		}
+
+		return var(out);
+	}
+	else
+	{
+		if(isSingleIn)
+		{
+			float in = (float)input;
+			nn->process(0, &in, getConnectionPtr(false));
+		}
+		else if (input.isArray())
+		{
+			if(isPositiveAndBelow(inputBuffer->size, input.size()))
+			{
+				int idx = 0;
+				for(const auto& v: *input.getArray())
+					inputBuffer->setSample(idx++, (float)v);
+
+				nn->process(0, getConnectionPtr(true), getConnectionPtr(false));
+			}
+		}
+		else if (input.isBuffer())
+		{
+			if(isPositiveAndBelow(nn->getNumInputs(), input.getBuffer()->size))
+			{
+				auto ptr = input.getBuffer()->buffer.getReadPointer(0);
+				nn->process(0, ptr, getConnectionPtr(false));
+			}
+		}
+
+		if(outputCableUntyped != nullptr)
+		{
+			auto typed = dynamic_cast<scriptnode::routing::GlobalRoutingManager::CableTargetBase*>(outputCableUntyped.get());
+			typed->sendValue(getConnectionPtr(false)[0]);
+		}
+
+		return var(outputBuffer.get());
+	}
+}
+
+void ScriptingObjects::ScriptNeuralNetwork::clearModel()
+{
+	nn->clearModel();
+}
+
+void ScriptingObjects::ScriptNeuralNetwork::build(const var& modelJSON)
+{
+	nn->build(modelJSON);
+
+	postBuild();
+}
+
+void ScriptingObjects::ScriptNeuralNetwork::reset()
+{
+	nn->reset();
+}
+
+void ScriptingObjects::ScriptNeuralNetwork::loadWeights(const var& weightData)
+{
+	auto jsonData = JSON::toString(weightData, true);
+	nn->loadWeights(jsonData);
+}
+
+var ScriptingObjects::ScriptNeuralNetwork::createModelJSONFromTextFile(var fileObject)
+{
+	if(auto sf = dynamic_cast<ScriptFile*>(fileObject.getObject()))
+	{
+		return NeuralNetwork::parseModelJSON(sf->f);
+	}
+
+	return {};
+}
+
+struct ScriptingObjects::ScriptNeuralNetwork::CableInputCallback: public scriptnode::routing::GlobalRoutingManager::CableTargetBase
+{
+	CableInputCallback(ScriptNeuralNetwork* parent_):
+	  parent(parent_)
+	{};
+	
+	void sendValue(double v) override
+	{
+		if(parent != nullptr)
+		{
+			auto numInputs = parent->nn->getNumInputs();
+
+			if(numInputs == 1)
+			{
+				parent->process(v);
+			}
+			else
+			{
+				auto input = parent->getConnectionPtr(false);
+				input[0] = (float)v;
+				parent->process(var(parent->inputBuffer.get()));
+			}
+		}
+	}
+
+	virtual void selectCallback(Component* rootEditor) {};
+
+	virtual String getTargetId() const { return "NeuralNetwork Input"; }
+
+	virtual Path getTargetIcon() const { return {}; }
+
+	WeakReference<ScriptNeuralNetwork> parent;
+};
+
+void ScriptingObjects::ScriptNeuralNetwork::connectToGlobalCables(String inputId, String outputId)
+{
+	auto rm = dynamic_cast<scriptnode::routing::GlobalRoutingManager*>(getScriptProcessor()->getMainController_()->getGlobalRoutingManager());
+
+	using CableType = scriptnode::routing::GlobalRoutingManager::Cable;
+
+	auto ct = routing::GlobalRoutingManager::SlotBase::SlotType::Cable;
+
+	if(inputId.isNotEmpty())
+	{
+		auto inputCable = dynamic_cast<CableType*>(rm->getSlotBase(inputId, ct).get());
+		cableInput = new CableInputCallback(this);
+		inputCable->addTarget(cableInput.get());
+	}
+
+	if(outputId.isNotEmpty())
+	{
+		outputCableUntyped = rm->getSlotBase(outputId, ct);
+	}
+}
+
+void ScriptingObjects::ScriptNeuralNetwork::loadTensorFlowModel(const var& modelJSON)
+{
+	nn->loadTensorFlowModel(modelJSON);
+	postBuild();
+}
+
+void ScriptingObjects::ScriptNeuralNetwork::loadPytorchModel(const var& modelJSON)
+{
+	nn->loadPytorchModel(modelJSON);
+	postBuild();
+}
+
+void ScriptingObjects::ScriptNeuralNetwork::postBuild()
+{
+	auto numInputs = nn->getNumInputs();
+	auto numOutputs = nn->getNumOutputs();
+
+	if(numInputs > 1)
+		inputBuffer = new VariantBuffer(numInputs);
+	if(numOutputs > 1)
+		outputBuffer = new VariantBuffer(numOutputs);
+}
 
 ApiHelpers::ModuleHandler::ModuleHandler(Processor* parent_, JavascriptProcessor* sp) :
 	parent(parent_),
@@ -5188,6 +5405,8 @@ struct ScriptingObjects::ScriptedMidiPlayer::Wrapper
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getPlayState);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getTimeSignature);
 	API_METHOD_WRAPPER_1(ScriptedMidiPlayer, setTimeSignature);
+	API_METHOD_WRAPPER_1(ScriptedMidiPlayer, getTimeSignatureFromSequence);
+	API_METHOD_WRAPPER_2(ScriptedMidiPlayer, setTimeSignatureToSequence);
 	API_METHOD_WRAPPER_0(ScriptedMidiPlayer, getLastPlayedNotePosition);
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setSyncToMasterClock);
 	API_VOID_METHOD_WRAPPER_1(ScriptedMidiPlayer, setSequenceCallback);
@@ -5236,6 +5455,8 @@ ScriptingObjects::ScriptedMidiPlayer::ScriptedMidiPlayer(ProcessorWithScriptingC
 	ADD_API_METHOD_0(getPlayState);
 	ADD_API_METHOD_0(getTimeSignature);
 	ADD_API_METHOD_1(setTimeSignature);
+	ADD_API_METHOD_1(getTimeSignatureFromSequence);
+	ADD_API_METHOD_2(setTimeSignatureToSequence);
 	ADD_API_METHOD_1(setSyncToMasterClock);
 	ADD_API_METHOD_1(setUseTimestampInTicks);
 	ADD_API_METHOD_0(getTicksPerQuarter);
@@ -5698,10 +5919,15 @@ int ScriptingObjects::ScriptedMidiPlayer::getNumSequences()
 
 var ScriptingObjects::ScriptedMidiPlayer::getTimeSignature()
 {
-	if (sequenceValid())
-	{
-		auto sig = getSequence()->getTimeSignature();
+	return getTimeSignatureFromSequence(-1);
+	
+}
 
+var ScriptingObjects::ScriptedMidiPlayer::getTimeSignatureFromSequence(int index)
+{
+	if (auto seq = getPlayer()->getSequenceWithIndex(index))
+	{
+		auto sig = seq->getTimeSignature();
 		return sig.getAsJSON();
 	}
 
@@ -5710,7 +5936,13 @@ var ScriptingObjects::ScriptedMidiPlayer::getTimeSignature()
 
 bool ScriptingObjects::ScriptedMidiPlayer::setTimeSignature(var timeSignatureObject)
 {
-	if (sequenceValid())
+	return setTimeSignatureToSequence(-1, timeSignatureObject);
+
+}
+
+bool ScriptingObjects::ScriptedMidiPlayer::setTimeSignatureToSequence(int index, var timeSignatureObject)
+{
+	if (auto seq = getPlayer()->getSequenceWithIndex(index))
 	{
 		HiseMidiSequence::TimeSignature sig;
 
@@ -5724,7 +5956,7 @@ bool ScriptingObjects::ScriptedMidiPlayer::setTimeSignature(var timeSignatureObj
 		bool valid = sig.numBars > 0 && sig.nominator > 0 && sig.denominator > 0;
 
 		if(valid)
-			getSequence()->setLengthFromTimeSignature(sig);
+			seq->setLengthFromTimeSignature(sig);
 
 		return valid;
 	}
@@ -6811,6 +7043,60 @@ void ScriptingObjects::ScriptBackgroundTask::run()
 	callFinishCallback(true, threadShouldExit());
 }
 
+ScriptingObjects::ScriptThreadSafeStorage::ScriptThreadSafeStorage(ProcessorWithScriptingContent* pwsc):
+	ConstScriptingObject(pwsc, 0)
+{
+	ADD_API_METHOD_0(clear);
+	ADD_API_METHOD_1(store);
+	ADD_API_METHOD_1(storeWithCopy);
+	ADD_API_METHOD_0(load);
+	ADD_API_METHOD_1(tryLoad);
+}
+
+ScriptingObjects::ScriptThreadSafeStorage::~ScriptThreadSafeStorage()
+{
+	clear();
+}
+
+void ScriptingObjects::ScriptThreadSafeStorage::clear()
+{
+	store(var());
+}
+
+void ScriptingObjects::ScriptThreadSafeStorage::store(var dataToStore)
+{
+	SimpleReadWriteLock::ScopedMultiWriteLock sl(lock);
+	std::swap(data, dataToStore);
+}
+
+void ScriptingObjects::ScriptThreadSafeStorage::storeWithCopy(var dataToStore)
+{
+	var copy;
+			
+	if(dataToStore.isString())
+		copy = var(copy.toString());
+	else
+		copy = dataToStore.clone();
+
+	store(copy);
+}
+
+var ScriptingObjects::ScriptThreadSafeStorage::load()
+{
+	SimpleReadWriteLock::ScopedReadLock sl(lock);
+	return data;
+}
+
+var ScriptingObjects::ScriptThreadSafeStorage::tryLoad(var returnValueIfLocked)
+{
+	if(auto sl = SimpleReadWriteLock::ScopedTryReadLock(lock))
+	{
+		return data;
+	}
+
+	return returnValueIfLocked;
+}
+
 ScriptingObjects::ScriptFFT::ScriptFFT(ProcessorWithScriptingContent* p) :
 	ConstScriptingObject(p, WindowType::numWindowType),
 	phaseFunction(p, this, var(), 2),
@@ -6832,7 +7118,10 @@ ScriptingObjects::ScriptFFT::ScriptFFT(ProcessorWithScriptingContent* p) :
 	ADD_API_METHOD_1(setPhaseFunction);
 	ADD_API_METHOD_1(setEnableSpectrum2D);
 	ADD_API_METHOD_1(setEnableInverseFFT);
-
+	ADD_API_METHOD_1(setSpectrum2DParameters);
+	ADD_API_METHOD_0(getSpectrum2DParameters);
+	ADD_API_METHOD_2(dumpSpectrum);
+	
 	spectrumParameters = new Spectrum2D::Parameters();
 }
 
@@ -6991,6 +7280,8 @@ void ScriptingObjects::ScriptFFT::prepare(int powerOfTwoSize, int maxNumChannels
 
 var ScriptingObjects::ScriptFFT::process(var dataToProcess)
 {
+	TRACE_EVENT("scripting", "render FFT");
+
 	if (scratchBuffers.isEmpty() || fft == nullptr || maxNumSamples == 0)
 		reportScriptError("You must call prepare before process");
 
@@ -7094,19 +7385,27 @@ var ScriptingObjects::ScriptFFT::process(var dataToProcess)
 
 		if (enableSpectrum)
 		{
-			Spectrum2D fb(this, outputData[0].getBuffer()->buffer);
-			fb.parameters = spectrumParameters;
-			auto b = fb.createSpectrumBuffer();
+			auto bToUse = outputData[0].getBuffer();
 
-			if (b.getNumSamples() > 0)
-				outputSpectrum = fb.createSpectrumImage(b);
-			else
-				outputSpectrum = {};
+			if(bToUse == nullptr)
+				bToUse = dataToProcess.getBuffer();
+
+			if(bToUse != nullptr)
+			{
+				Spectrum2D fb(this, bToUse->buffer);
+				fb.parameters = spectrumParameters;
+				auto b = fb.createSpectrumBuffer();
+
+				if (b.getNumSamples() > 0)
+					outputSpectrum = fb.createSpectrumImage(b);
+				else
+					outputSpectrum = {};
+			}
 		}
 
 		return returnValue;
 	}
-	else
+	else if (!enableSpectrum)
 		reportScriptError("the process function is not defined");
 
 	return var();
@@ -7125,6 +7424,34 @@ void ScriptingObjects::ScriptFFT::setEnableInverseFFT(bool shouldApplyReverseTra
 
 		reinitialise();
 	}
+}
+
+void ScriptingObjects::ScriptFFT::setSpectrum2DParameters(var jsonData)
+{
+	spectrumParameters->loadFromJSON(jsonData);
+}
+
+var ScriptingObjects::ScriptFFT::getSpectrum2DParameters() const
+{
+	var d(new DynamicObject());
+	spectrumParameters->saveToJSON(d);
+	return d;
+}
+
+bool ScriptingObjects::ScriptFFT::dumpSpectrum(var file, bool output)
+{
+	auto img = output ? outputSpectrum : spectrum;
+
+	if(auto sf = dynamic_cast<ScriptFile*>(file.getObject()))
+	{
+		sf->f.deleteFile();
+		FileOutputStream fos(sf->f);
+		
+		PNGImageFormat f;
+		return f.writeImageToStream(img, fos);
+	}
+
+	return false;
 }
 
 var ScriptingObjects::ScriptFFT::getBufferArgs(bool useMagnitude, int numToUse)
@@ -7531,7 +7858,7 @@ struct ScriptingObjects::GlobalCableReference::DummyTarget : public scriptnode::
 	Path getTargetIcon() const override
 	{
 		Path path;
-		path.loadPathFromData(HiBinaryData::SpecialSymbols::scriptProcessor, sizeof(HiBinaryData::SpecialSymbols::scriptProcessor));
+		path.loadPathFromData(HiBinaryData::SpecialSymbols::scriptProcessor, SIZE_OF_PATH(HiBinaryData::SpecialSymbols::scriptProcessor));
 		return path;
 	}
 
@@ -7685,7 +8012,7 @@ struct ScriptingObjects::GlobalCableReference::Callback: public scriptnode::rout
 	Path getTargetIcon() const override
 	{
 		Path path;
-		path.loadPathFromData(HiBinaryData::SpecialSymbols::scriptProcessor, sizeof(HiBinaryData::SpecialSymbols::scriptProcessor));
+		path.loadPathFromData(HiBinaryData::SpecialSymbols::scriptProcessor, SIZE_OF_PATH(HiBinaryData::SpecialSymbols::scriptProcessor));
 		return path;
 	}
 
@@ -7794,7 +8121,7 @@ struct MacroCableTarget : public scriptnode::routing::GlobalRoutingManager::Cabl
 	Path getTargetIcon() const override
 	{
 		Path p;
-		p.loadPathFromData(HiBinaryData::SpecialSymbols::macros, sizeof(HiBinaryData::SpecialSymbols::macros));
+		p.loadPathFromData(HiBinaryData::SpecialSymbols::macros, SIZE_OF_PATH(HiBinaryData::SpecialSymbols::macros));
 		return p;
 	}
 
@@ -7889,7 +8216,7 @@ struct ProcessorParameterTarget : public scriptnode::routing::GlobalRoutingManag
     Path getTargetIcon() const override
     {
         Path p;
-        p.loadPathFromData(HiBinaryData::SpecialSymbols::macros, sizeof(HiBinaryData::SpecialSymbols::macros));
+        p.loadPathFromData(HiBinaryData::SpecialSymbols::macros, SIZE_OF_PATH(HiBinaryData::SpecialSymbols::macros));
         return p;
     }
 

@@ -479,6 +479,25 @@ HardcodedSwappableEffect::~HardcodedSwappableEffect()
 	factory = nullptr;
 }
 
+void HardcodedSwappableEffect::connectRuntimeTargets()
+{
+    if(opaqueNode != nullptr)
+    {
+        dynamic_cast<Processor*>(this)->getMainController()->connectToRuntimeTargets(*opaqueNode, true);
+    }
+}
+
+void HardcodedSwappableEffect::disconnectRuntimeTargets()
+{
+    if(opaqueNode != nullptr)
+    {
+        dynamic_cast<Processor*>(this)->getMainController()->connectToRuntimeTargets(*opaqueNode, false);
+        
+        factory->deinitOpaqueNode(opaqueNode);
+        opaqueNode = nullptr;
+    }
+}
+
 bool HardcodedSwappableEffect::setEffect(const String& factoryId, bool /*unused*/)
 {
 	if (factoryId == currentEffect)
@@ -498,6 +517,9 @@ bool HardcodedSwappableEffect::setEffect(const String& factoryId, bool /*unused*
 		if (!factory->initOpaqueNode(newNode, idx, isPolyphonic()))
 			newNode = nullptr;
 
+        auto mc = dynamic_cast<Processor*>(this)->getMainController();
+        mc->connectToRuntimeTargets(*newNode, true);
+        
 		bool somethingChanged = false;
 
 		// Create all complex data types we need...
@@ -526,9 +548,14 @@ bool HardcodedSwappableEffect::setEffect(const String& factoryId, bool /*unused*
 
 			std::swap(newNode, opaqueNode);
 
+			numParameters = opaqueNode->numParameters;
+
+			lastParameters.setSize(opaqueNode->numParameters, true);
+
 			for (auto& p : OpaqueNode::ParameterIterator(*opaqueNode))
 			{
-				lastParameters[p.info.index] = p.info.defaultValue;
+				if(auto ptr = getParameterPtr(p.info.index))
+					*ptr = (float)p.info.defaultValue;
 			}
 
             channelCountMatches = checkHardcodedChannelCount();
@@ -556,8 +583,6 @@ bool HardcodedSwappableEffect::setEffect(const String& factoryId, bool /*unused*
 		asProcessor().updateParameterSlots();
 
 		effectUpdater.sendMessage(sendNotificationAsync, currentEffect, somethingChanged, opaqueNode->numParameters);
-
-		
 
 		tempoSyncer.tempoChanged(mc_->getBpm());
 	}
@@ -596,7 +621,6 @@ bool HardcodedSwappableEffect::swap(HotswappableProcessor* other)
 		auto& ap = asProcessor();
 		auto& op = otherFX->asProcessor();
 
-
 		ap.parameterNames.swapWith(op.parameterNames);
 		tables.swapWith(otherFX->tables);
 		sliderPacks.swapWith(otherFX->sliderPacks);
@@ -607,7 +631,7 @@ bool HardcodedSwappableEffect::swap(HotswappableProcessor* other)
 
 		for (int i = 0; i < OpaqueNode::NumMaxParameters; i++)
 		{
-			std::swap(lastParameters[i], otherFX->lastParameters[i]);
+			std::swap(lastParameters, otherFX->lastParameters);
 		}
 
 		{
@@ -674,7 +698,8 @@ juce::Result HardcodedSwappableEffect::sanityCheck()
 
 void HardcodedSwappableEffect::setHardcodedAttribute(int index, float newValue)
 {
-	lastParameters[index] = newValue;
+	if(auto ptr = getParameterPtr(index))
+		*ptr = newValue;
 
 	SimpleReadWriteLock::ScopedReadLock sl(lock);
 
@@ -687,8 +712,8 @@ void HardcodedSwappableEffect::setHardcodedAttribute(int index, float newValue)
 
 float HardcodedSwappableEffect::getHardcodedAttribute(int index) const
 {
-	if (isPositiveAndBelow(index, OpaqueNode::NumMaxParameters))
-		return lastParameters[index];
+	if(auto ptr = getParameterPtr(index))
+		return *ptr;
 
 	return 0.0f;
 }
@@ -793,8 +818,9 @@ ValueTree HardcodedSwappableEffect::writeHardcodedData(ValueTree& v) const
 		for (const auto& p : OpaqueNode::ParameterIterator(*opaqueNode))
 		{
 			auto id = p.info.getId();
-			auto value = lastParameters[p.info.index];
-			v.setProperty(id, value, nullptr);
+
+			if(auto ptr = getParameterPtr(p.info.index))
+				v.setProperty(id, *ptr, nullptr);
 		}
 		
 		ExternalData::forEachType([&](ExternalData::DataType dt)
@@ -1127,18 +1153,21 @@ void HardcodedMasterFX::applyEffect(AudioSampleBuffer &b, int startSample, int n
 				if (!modChains[i].getChain()->shouldBeProcessedAtAll())
 					mv = 1.0f;
 
-				auto value = lastParameters[i] * mv;
-				p->callback.call((double)value);
+				if(auto ptr = getParameterPtr(i))
+					p->callback.call((double)*ptr);
 			}
 			else
 			{
 				auto r = p->toRange();
 
-				auto normMaxValue = r.convertTo0to1(lastParameters[i], false);
-				normMaxValue *= mv;
-				auto value = r.convertFrom0to1(normMaxValue, false);
+				if(auto ptr = getParameterPtr(i))
+				{
+					auto normMaxValue = r.convertTo0to1(*ptr, false);
+					normMaxValue *= mv;
+					auto value = r.convertFrom0to1(normMaxValue, false);
 
-				p->callback.call((double)value);
+					p->callback.call((double)value);
+				}
 			}
 		}
 	}
@@ -1313,8 +1342,23 @@ HardcodedPolyphonicFX::HardcodedPolyphonicFX(MainController *mc, const String &u
 	HardcodedSwappableEffect(mc, true)
 {
 	polyHandler.setVoiceResetter(this);
+
+#if NUM_HARDCODED_POLY_FX_MODS
+	for (int i = 0; i < NUM_HARDCODED_POLY_FX_MODS; i++)
+	{
+		String p;
+		p << "P" << String(i + 1) << " Modulation";
+		modChains += { this, p };
+	}
+
 	finaliseModChains();
 
+	for (int i = 0; i < NUM_HARDCODED_POLY_FX_MODS; i++)
+		paramModulation[i] = modChains[i].getChain();
+#else
+	finaliseModChains();
+#endif
+	
 	getMatrix().setNumAllowedConnections(NUM_MAX_CHANNELS);
 	getMatrix().init();
 	getMatrix().setOnlyEnablingAllowed(true);
@@ -1378,7 +1422,9 @@ hise::ProcessorEditorBody * HardcodedPolyphonicFX::createEditor(ProcessorEditor 
 
 void HardcodedPolyphonicFX::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-	VoiceEffectProcessor::prepareToPlay(sampleRate, samplesPerBlock);
+	auto samplesToUse = jmin(samplesPerBlock, HARDCODED_POLY_FX_BLOCKSIZE);
+
+	VoiceEffectProcessor::prepareToPlay(sampleRate, samplesToUse);
 	SimpleReadWriteLock::ScopedReadLock sl(lock);
 	prepareOpaqueNode(opaqueNode.get());
 }
@@ -1403,9 +1449,67 @@ void HardcodedPolyphonicFX::applyEffect(int voiceIndex, AudioSampleBuffer &b, in
 
 	PolyHandler::ScopedVoiceSetter svs(polyHandler, voiceIndex);
 
-	
+	int blockSize = HARDCODED_POLY_FX_BLOCKSIZE;
 
-	auto ok = processHardcoded(b, nullptr, startSample, numSamples);
+	bool ok = true;
+
+#if !NUM_HARDCODED_POLY_FX_MODS
+	blockSize = numSamples;
+#endif
+
+	auto numToDo = numSamples;
+
+	while(numToDo > 0)
+	{
+		auto numThisTime = jmin(numToDo, blockSize);
+
+#if NUM_HARDCODED_POLY_FX_MODS
+
+		float modValues[NUM_HARDCODED_POLY_FX_MODS];
+
+		if (opaqueNode != nullptr)
+		{
+			int numParametersToModulate = jmin(NUM_HARDCODED_POLY_FX_MODS, opaqueNode->numParameters);
+
+			for (int i = 0; i < numParametersToModulate; i++)
+			{
+				auto mv = modChains[i].getOneModulationValue(startSample);
+				
+				auto p = opaqueNode->getParameter(i);
+
+				if (modChains[i].getChain()->getMode() == Modulation::PanMode)
+				{
+					if (!modChains[i].getChain()->shouldBeProcessedAtAll())
+						mv = 1.0f;
+
+					if(auto ptr = getParameterPtr(i))
+						p->callback.call((double)*ptr);
+				}
+				else
+				{
+					auto r = p->toRange();
+
+					if(auto ptr = getParameterPtr(i))
+					{
+						auto normMaxValue = r.convertTo0to1(*ptr, false);
+						normMaxValue *= mv;
+						auto value = r.convertFrom0to1(normMaxValue, false);
+
+						p->callback.call((double)value);
+					}
+				}
+			}
+		}
+
+	#endif
+		
+		ok &= processHardcoded(b, nullptr, startSample, numThisTime);
+
+		startSample += numThisTime;
+		numToDo -= numThisTime;
+	}
+
+
 
 	getMatrix().handleDisplayValues(b, b, false);
 
@@ -1422,6 +1526,29 @@ void HardcodedPolyphonicFX::renderData(ProcessDataDyn& data)
 	HardcodedSwappableEffect::renderData(data);
 
 	checkPostSuspension(voiceIndex, data);
+}
+
+void HardcodedPolyphonicFX::handleHiseEvent(const HiseEvent& m)
+{
+#if NUM_HARDCODED_POLY_FX_MODS
+	VoiceEffectProcessor::handleHiseEvent(m);
+#endif
+
+	// Already handled...
+	if(m.isNoteOn())
+		return;
+        
+	if (opaqueNode != nullptr)
+		voiceStack.handleHiseEvent(*opaqueNode, polyHandler, m);
+}
+
+void HardcodedPolyphonicFX::renderVoice(int voiceIndex, AudioSampleBuffer& b, int startSample, int numSamples)
+{
+#if NUM_HARDCODED_POLY_FX_MODS
+	preVoiceRendering(voiceIndex, startSample, numSamples);
+#endif
+
+	applyEffect(voiceIndex, b, startSample, numSamples);
 }
 
 HardcodedSwappableEffect::DataWithListener::DataWithListener(HardcodedSwappableEffect& parent, ComplexDataUIBase* p, int index_, OpaqueNode* nodeToInitialise) :
