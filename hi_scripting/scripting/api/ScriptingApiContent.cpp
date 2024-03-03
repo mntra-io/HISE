@@ -1537,32 +1537,13 @@ void ScriptingApi::Content::ScriptComponent::setKeyPressCallback(var keyboardFun
 	keyboardCallback.setThisObject(this);
 }
 
+
+
 bool ScriptingApi::Content::ScriptComponent::handleKeyPress(const KeyPress& k)
 {
 	if (keyboardCallback)
 	{
-		auto obj = new DynamicObject();
-		var args(obj);
-
-		obj->setProperty("isFocusChange", false);
-
-		auto c = k.getTextCharacter();
-
-		auto printable    = CharacterFunctions::isPrintable(c);
-		auto isWhitespace = CharacterFunctions::isWhitespace(c);
-		auto isLetter     = CharacterFunctions::isLetter(c);
-		auto isDigit      = CharacterFunctions::isDigit(c);
-		
-		obj->setProperty("character", printable ? String::charToString(c) : "");
-		obj->setProperty("specialKey", !printable);
-		obj->setProperty("isWhitespace", isWhitespace);
-		obj->setProperty("isLetter", isLetter);
-		obj->setProperty("isDigit", isDigit);
-		obj->setProperty("keyCode", k.getKeyCode());
-		obj->setProperty("description", k.getTextDescription());
-		obj->setProperty("shift", k.getModifiers().isShiftDown());
-		obj->setProperty("cmd", k.getModifiers().isCommandDown() || k.getModifiers().isCtrlDown());
-		obj->setProperty("alt", k.getModifiers().isAltDown());
+		auto args = Content::createKeyboardCallbackObject(k);
 
 		var rv;
 
@@ -3098,6 +3079,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	ADD_SCRIPT_PROPERTY(i03, "showValueOverlay");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 	ADD_SCRIPT_PROPERTY(i05, "SliderPackIndex");  
 	ADD_SCRIPT_PROPERTY(i06, "mouseUpCallback"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+	ADD_SCRIPT_PROPERTY(i07, "stepSequencerMode"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 
 	setDefaultValue(ScriptComponent::Properties::x, x);
 	setDefaultValue(ScriptComponent::Properties::y, y);
@@ -3109,6 +3091,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	setDefaultValue(itemColour2, 0x77FFFFFF);
 	setDefaultValue(textColour, 0x33FFFFFF);
 	setDefaultValue(CallbackOnMouseUpOnly, false);
+	setDefaultValue(StepSequencerMode, false);
 
 	setDefaultValue(SliderAmount, 0);
 	setDefaultValue(StepSize, 0);
@@ -3132,6 +3115,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	initInternalPropertyFromValueTreeOrDefault(ScriptComponent::Properties::processorId);
 	initInternalPropertyFromValueTreeOrDefault(SliderPackIndex);
 	initInternalPropertyFromValueTreeOrDefault(CallbackOnMouseUpOnly);
+	initInternalPropertyFromValueTreeOrDefault(StepSequencerMode);
 
 	updateCachedObjectReference();
 
@@ -5837,6 +5821,7 @@ colour(Colour(0xff777777))
 	setMethod("createPath", Wrapper::createPath);
 	setMethod("createShader", Wrapper::createShader);
 	setMethod("setSuspendTimerCallback", Wrapper::setSuspendTimerCallback);
+    setMethod("setKeyPressCallback", Wrapper::setKeyPressCallback);
 	setMethod("createMarkdownRenderer", Wrapper::createMarkdownRenderer);
     setMethod("createSVG", Wrapper::createSVG);
 	setMethod("getScreenBounds", Wrapper::getScreenBounds);
@@ -6075,6 +6060,7 @@ void ScriptingApi::Content::beginInitialization()
 
 	updateWatcher = nullptr;
 	guides.clear();
+	registeredKeyPresses.clear();
 }
 
 
@@ -7089,6 +7075,50 @@ String ScriptingApi::Content::getComponentUnderDrag()
 
 	return obj.toString();
 }
+
+void ScriptingApi::Content::setSuspendTimerCallback(var suspendFunction)
+{
+	if(HiseJavascriptEngine::isJavascriptFunction(suspendFunction))
+	{
+		suspendCallback = WeakCallbackHolder(getScriptProcessor(), nullptr, suspendFunction, 1);
+	}
+}
+
+void ScriptingApi::Content::setKeyPressCallback(const var& keyPress, var keyPressCallback)
+{
+	auto r = Result::ok();
+	auto k = ApiHelpers::getKeyPress(keyPress, &r);
+
+	if(!r.wasOk())
+		reportScriptError(r.getErrorMessage());
+
+	if(HiseJavascriptEngine::isJavascriptFunction(keyPressCallback))
+	{
+		for(auto& rkp: registeredKeyPresses)
+		{
+			if(rkp.first == k)
+			{
+				rkp.second = keyPressCallback;
+				return;
+			}
+		}
+
+		registeredKeyPresses.add({k, keyPressCallback});
+	}
+	else
+	{
+		for(const auto& rkp: registeredKeyPresses)
+		{
+			if(rkp.first == k)
+			{
+				registeredKeyPresses.remove(&rkp);
+				return;
+			}
+		}
+	}
+}
+
+
 
 #undef ADD_TO_TYPE_SELECTOR
 #undef ADD_AS_SLIDER_TYPE
