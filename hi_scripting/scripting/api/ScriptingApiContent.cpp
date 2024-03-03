@@ -948,10 +948,7 @@ void ScriptingApi::Content::ScriptComponent::sendValueListenerMessage()
 void ScriptingApi::Content::ScriptComponent::changed()
 {
 	if (!parent->asyncFunctionsAllowed())
-	{
-		debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), "Skipping changed() callback during onInit for " + getId());
 		return;
-	}
 
 	ScopedValueSetter<bool> svs(getScriptProcessor()->getMainController_()->getDeferNotifyHostFlag(), true);
 	
