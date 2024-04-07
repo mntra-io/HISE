@@ -120,6 +120,7 @@ bool MainController::unitTestMode = false;
 	customTypeFaceData(ValueTree("CustomFonts")),
 	masterEventBuffer(),
 	eventIdHandler(masterEventBuffer),
+	currentlyRenderingThread({false, Thread::ThreadID()}),
 	lockfreeDispatcher(this),
 	moduleStateManager(this),
 	userPresetHandler(this),
@@ -131,7 +132,8 @@ bool MainController::unitTestMode = false;
 	globalAsyncModuleHandler(this),
 	//presetLoadRampFlag(OldUserPresetHandler::Active),
 	controlUndoManager(new UndoManager()),
-	xyzPool(new MultiChannelAudioBuffer::XYZPool())
+	xyzPool(new MultiChannelAudioBuffer::XYZPool()),
+	defaultFont(GLOBAL_FONT().getTypefacePtr(), "Oxygen")
 {
 	PresetHandler::setCurrentMainController(this);
 
@@ -346,16 +348,14 @@ void MainController::loadPresetFromValueTree(const ValueTree &v, Component* /*ma
     ignoreUnused(isCommandLine, isSampleLoadingThread);
 #endif
 
-	if (v.isValid() && v.getProperty("Type", var::undefined()).toString() == "SynthChain")
+
+	if (v.isValid() )
 	{
+		auto isExtendedSnippet = v.getType() == Identifier("extended_snippet");
+		auto isValidPreset = (v.getType() == Identifier("Processor") && v.getProperty("Type", var::undefined()).toString() == "SynthChain");
 
-		if (v.getType() != Identifier("Processor"))
-		{
-			jassertfalse;
-			
-		}
-
-		loadPresetInternal(v);
+		if(isExtendedSnippet || isValidPreset)
+			loadPresetInternal(v);
 	}
 	else
 	{
@@ -364,9 +364,9 @@ void MainController::loadPresetFromValueTree(const ValueTree &v, Component* /*ma
 }
 
 
-void MainController::loadPresetInternal(const ValueTree& v)
+void MainController::loadPresetInternal(const ValueTree& valueTreeToLoad)
 {
-	auto f = [this, v](Processor* )
+	auto f = [this, valueTreeToLoad](Processor* )
 	{
 		LockHelpers::freeToGo(this);
 
@@ -390,7 +390,22 @@ void MainController::loadPresetInternal(const ValueTree& v)
 
 			getSampleManager().setShouldSkipPreloading(true);
 
-			
+			ValueTree v;
+
+			if(valueTreeToLoad.getType() == Identifier("Processor"))
+			{
+				v = valueTreeToLoad;
+			}
+			else
+			{
+				v = valueTreeToLoad.getChildWithName("Processor");
+
+				// restore the included files now...
+
+				restoreIncludedScriptFilesFromSnippet(valueTreeToLoad);
+			}
+
+			jassert(v.isValid());
 
 			// Reset the sample rate so that prepareToPlay does not get called in restoreFromValueTree
 			// synthChain->setCurrentPlaybackSampleRate(-1.0);
@@ -1008,6 +1023,8 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 	ModulatorSynthChain *synthChain = getMainSynthChain();
 
 
+	ScopedValueSetter renderFlag(currentlyRenderingThread, {true, Thread::getCurrentThreadId()} );
+
 #if ENABLE_CPU_MEASUREMENT
 	startCpuBenchmark(getOriginalBufferSize());
 #endif
@@ -1090,6 +1107,13 @@ void MainController::processBlockCommon(AudioSampleBuffer &buffer, MidiBuffer &m
 
 	if (getMasterClock().shouldCreateInternalInfo(newTime) || insideInternalExport)
 	{
+		if(insideInternalExport)
+		{
+			// we need to make sure that the BPM is not reset to 120BPM
+			newTime.bpm = bpm;
+		}
+			
+
 		auto externalTime = newTime;
 
 		gridInfo = getMasterClock().processAndCheckGrid(buffer.getNumSamples(), newTime);
@@ -1732,9 +1756,7 @@ float MainController::getStringWidthFromEmbeddedFont(const String& text, const S
 			return tf.getStringWidthFloat(text, fontSize, kerningFactor);
 	}
 
-	getConsoleHandler().writeToConsole("Warning: default font used for getStringWidth() method (might cause race conditions on Windows)", 0, getMainSynthChain(), Colours::white);
-
-	return Font(fontName, fontSize, Font::plain).withExtraKerningFactor(kerningFactor).getStringWidthFloat(text);
+	return defaultFont.getStringWidthFloat(text, fontSize, kerningFactor);
 }
 
 Font MainController::getFontFromString(const String& fontName, float fontSize) const
@@ -2015,6 +2037,17 @@ ReferenceCountedObject* MainController::getGlobalPreprocessor()
     }
     
     return preprocessor.get();
+}
+
+bool MainController::isInsideAudioRendering() const
+{
+	if(currentlyRenderingThread.first)
+	{
+		auto t = Thread::getCurrentThreadId();
+		return currentlyRenderingThread.second == t;
+	}
+
+	return false;
 }
 
 float MainController::getGlobalCodeFontSize() const

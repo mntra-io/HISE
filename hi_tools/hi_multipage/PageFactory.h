@@ -66,8 +66,26 @@ private:
         Dialog::PageInfo::CreateFunction f;
     };
 
+
     Array<Item> items;
 };
+
+struct PlaceholderContentBase
+{
+	virtual ~PlaceholderContentBase() {};
+
+    PlaceholderContentBase(Dialog& r, const var& obj):
+      rootDialog(r),
+      infoObject(obj)
+    {}
+
+    virtual void postInit() = 0;
+    virtual Result checkGlobalState(var state) = 0;
+
+    Dialog& rootDialog;
+    var infoObject;
+};
+
 
 namespace factory
 {
@@ -92,7 +110,7 @@ struct Spacer: public Dialog::PageBase
 {
 	DEFAULT_PROPERTIES(Spacer)
     {
-        return { { mpid::Padding, 30 } };
+        return { };
     }
 
     static String getCategoryId() { return "Layout"; }
@@ -100,9 +118,7 @@ struct Spacer: public Dialog::PageBase
     Spacer(Dialog& r, int width, const var& d):
       PageBase(r, width, d)
 	{
-		padding =(int)d[mpid::Padding];
-
-        setSize(width, padding);
+        setSize(width, 0);
 	}
 
     void createEditor(Dialog::PageInfo& rootList) override;
@@ -117,19 +133,14 @@ struct Spacer: public Dialog::PageBase
 	    }
     }
     Result checkGlobalState(var) override { return Result::ok(); }
-
-private:
-
-    int padding = 0;
+    
 };
-
-
 
 struct EventLogger: public Dialog::PageBase
 {
     DEFAULT_PROPERTIES(EventLogger)
     {
-        return { { mpid::Padding, 30 } };
+        return { };
     }
 
     EventLogger(Dialog& r, int w, const var& obj):
@@ -152,6 +163,22 @@ struct EventLogger: public Dialog::PageBase
     EventConsole console;
 };
 
+struct SimpleText: public Dialog::PageBase
+{
+    DEFAULT_PROPERTIES(SimpleText)
+    {
+        return { { mpid::Text, "### funkyNode" } };
+    }
+
+	SimpleText(Dialog& r, int width, const var& obj);
+    
+    static String getCategoryId() { return "Layout"; }
+
+    void createEditor(Dialog::PageInfo& rootList) override;
+
+    Result checkGlobalState(var) override { return Result::ok(); }
+};
+
 struct MarkdownText: public Dialog::PageBase
 {
     DEFAULT_PROPERTIES(MarkdownText)
@@ -162,22 +189,297 @@ struct MarkdownText: public Dialog::PageBase
     static String getCategoryId() { return "Layout"; }
     static String getString(const String& markdownText, Dialog& parent);
 
-
-
     MarkdownText(Dialog& r, int width, const var& d);
 
     void createEditor(Dialog::PageInfo& rootList) override;
-    void editModeChanged(bool isEditMode) override;
+    
     void postInit() override;
-    void paint(Graphics& g) override;
+
+    void resized() override;
+    //void paint(Graphics& g) override;
     Result checkGlobalState(var) override;
 
 private:
 
-    int padding = 0;
-    bool isComment = false;
     var obj;
-    MarkdownRenderer r;
+    float width = 0.0f;
+    SimpleMarkdownDisplay display;
+
+    //MarkdownRenderer r;
+};
+
+
+
+struct DummyContent: public Component,
+					 public PlaceholderContentBase
+{
+    DummyContent(Dialog& r, const var& infoObject):
+      PlaceholderContentBase(r, infoObject)
+    {
+	    classId = infoObject[mpid::ContentType].toString();
+    }
+
+    void paint(Graphics& g) override
+    {
+	    g.fillAll(Colours::white.withAlpha(0.1f));
+        g.setColour(Colours::white.withAlpha(0.7f));
+        g.setFont(GLOBAL_MONOSPACE_FONT());
+        g.drawRect(getLocalBounds(), 1);
+        g.drawText("Placeholder for " + classId, getLocalBounds().toFloat(), Justification::centred);
+    }
+
+    void postInit() override {};
+    Result checkGlobalState(var state) override { return Result::ok(); }
+
+    String classId;
+
+	static void createEditor(const var& infoObject, Dialog::PageInfo& rootList);
+};
+
+template <typename ContentType> struct Placeholder: public Dialog::PageBase
+{
+    struct Content: public Component
+    {
+	    virtual Result check(const var& state) = 0;
+    };
+
+    DEFAULT_PROPERTIES(Placeholder)
+    {
+        return {};
+    }
+
+    static String getCategoryId() { return "Layout"; }
+
+    Placeholder(Dialog& r, int width, const var& d):
+      PageBase(r, width, d)
+    {
+        static_assert(std::is_base_of<PlaceholderContentBase, ContentType>(),
+                      "not a base of multipage::factory::PlaceholderContentBase");
+
+        static_assert(std::is_base_of<juce::Component, ContentType>(),
+					  "not a base of juce::Component");
+
+        content = new ContentType(r, d);
+
+        Helpers::setFallbackStyleSheet(*this, "display:flex;min-height:32px;width:100%;");
+        Helpers::setFallbackStyleSheet(*content, "width:100%;height:100%;");
+
+	    addFlexItem(*content);
+        setSize(width, 0);
+    };
+
+    void createEditor(Dialog::PageInfo& rootList) override
+    {
+	    DummyContent::createEditor(infoObject, rootList);
+    }
+    
+    void postInit() override
+    {
+	    content->postInit();
+    }
+
+    void resized() override
+    {
+        FlexboxComponent::resized();
+    }
+    Result checkGlobalState(var state) override
+    {
+	    return content->checkGlobalState(state);
+    }
+
+private:
+
+    var obj;
+    float width = 0.0f;
+    ScopedPointer<ContentType> content;
+
+    //MarkdownRenderer r;
+};
+
+struct TagList: public Dialog::PageBase,
+                public Button::Listener
+{
+    DEFAULT_PROPERTIES(TagList)
+    {
+        return { { mpid::Text, "### funkyNode" } };
+    }
+    
+    static String getCategoryId() { return "UI Elements"; }
+    
+    TagList(Dialog& parent, int w, const var& obj);
+
+    void buttonClicked(juce::Button*) override;
+
+    void createEditor(Dialog::PageInfo& rootList) override;
+
+    void postInit() override;
+
+    Result checkGlobalState(var state) override
+    {
+        return Result::ok();
+    }
+
+    OwnedArray<TextButton> buttons;
+};
+
+struct Table: public Dialog::PageBase,
+              public juce::TableListBoxModel
+{
+    struct CellComponent: public Component
+    {
+        CellComponent(Table& parent_);
+
+        void update(Point<int> newPos, const String& newContent);
+
+        void mouseDown(const MouseEvent& event) override
+        {
+            parent.table.selectRowsBasedOnModifierKeys(cellPosition.y, event.mods, false);
+        }
+
+        void mouseUp(const MouseEvent& event) override
+        {
+            parent.table.selectRowsBasedOnModifierKeys(cellPosition.y, event.mods, true);
+        }
+
+        void paint(Graphics& g) override;
+
+        Point<int> cellPosition;
+
+        Table& parent;
+        String content;
+    };
+    
+    Table(Dialog& parent, int w, const var& obj);
+
+    ScrollbarFader sf;
+    
+    Array<var> items;
+    
+    void rebuildColumns();
+
+    DEFAULT_PROPERTIES(Table)
+    {
+        return { { mpid::Text, "### funkyNode" } };
+    }
+    
+    static String getCategoryId() { return "UI Elements"; }
+
+    String getCellContent(int columnId, int rowNumber) const;
+
+    void resized() override
+    {
+        auto b = getLocalBounds();
+        FlexboxComponent::resized();
+    }
+    
+    Component* refreshComponentForCell (int rowNumber, int columnId, bool isRowSelected,
+                                                Component* existingComponentToUpdate) override;
+
+    static String itemsToString(const var& data)
+    {
+        if(data.isString())
+            return data;
+        
+        if(auto items = data.getArray())
+        {
+            String s;
+            for(auto& rows: *items)
+            {
+                if(auto cells = rows.getArray())
+                {
+                    for(auto& cell: *cells)
+                        s << cell.toString() << " | ";
+                    
+                    s << "\n";
+                }
+            }
+            
+            return s;
+        }
+        
+        return {};
+    }
+    
+    static Array<var> stringToItems(const var& data)
+    {
+        if(data.isArray())
+            return *data.getArray();
+        
+        Array<var> rows;
+        
+        for(auto& l: StringArray::fromLines(data.toString()))
+        {
+            Array<var> row;
+            
+            for(auto& c: StringArray::fromTokens(l, "|", "\"'"))
+            {
+                row.add(var(c.trim()));
+            }
+            
+            rows.add(var(row));
+        }
+        
+        return rows;
+    }
+    
+    void createEditor(Dialog::PageInfo& rootList) override;
+
+    int getNumRows() override
+    {
+        return items.size();
+    }
+
+    void postInit() override
+    {
+        init();
+        rebuildColumns();
+        
+        items = stringToItems(infoObject[mpid::Items]);
+        
+        table.updateContent();
+    }
+
+    void paintCell (Graphics&,
+                            int rowNumber,
+                            int columnId,
+                            int width, int height,
+                            bool rowIsSelected) override {};
+    
+    void paintRowBackground (Graphics& g, int rowNumber, int width, int height, bool rowIsSelected) override;
+
+    Result checkGlobalState(var state) override;
+
+    void paint(Graphics& g) override;
+
+    TableListBox table;
+
+    struct TableRepainter: public MouseListener
+    {
+        TableRepainter(TableListBox& t):
+          MouseListener(),
+          table(t)
+        {
+            t.addMouseListener(this, true);
+        }
+        
+        void mouseMove(const MouseEvent& event) override
+        {
+            if(event.eventComponent != lastComponent)
+            {
+                if(lastComponent != nullptr)
+                    lastComponent->repaint();
+
+                lastComponent = event.eventComponent;
+                table.repaint();
+
+                if(lastComponent != nullptr)
+                    lastComponent->repaint();
+            }
+        }
+
+        Component::SafePointer<Component> lastComponent = nullptr;
+        TableListBox& table;
+    } repainter;
 };
 
 }

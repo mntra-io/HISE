@@ -205,6 +205,9 @@ public:
                                                                           .findColour (ResizableWindow::backgroundColourId),
                                                     DocumentWindow::allButtons)
         {
+            UnitTestRunner r;
+			r.runTestsInCategory("ui");
+
             setUsingNativeTitleBar (true);
             setContentOwned (new MainComponent(), true);
 
@@ -215,11 +218,13 @@ public:
             centreWithSize (getWidth(), getHeight());
            #endif
             setVisible (true);
+
+            
         }
 
         void closeButtonPressed() override
         {
-            dynamic_cast<MainComponent*>(getContentComponent())->checkSave();
+            //dynamic_cast<MainComponent*>(getContentComponent())->checkSave();
             
             // This is called when the user tries to close this window. Here, we'll just
             // ask the app to quit when this happens, but you can change this to do

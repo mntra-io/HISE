@@ -320,6 +320,28 @@ ApiProviderBase* State::getProviderBase()
 }
 
 
+simple_css::StyleSheet::Collection State::getStyleSheet(const String& name, const String& additionalStyle) const
+{
+	if(name.startsWith("${"))
+	{
+		auto id = name.substring(2, name.length() - 1);
+
+		for(auto a: assets)
+		{
+			if(a->id == id)
+				return a->toStyleSheet(additionalStyle);
+		}
+	}
+
+	auto list = StringArray::fromLines(DefaultCSSFactory::getTemplateList());
+
+	auto idx = list.indexOf(name);
+
+	if(idx != -1)
+		return DefaultCSSFactory::getTemplateCollection((DefaultCSSFactory::Template)idx, additionalStyle);
+
+	return {};
+}
 
 std::unique_ptr<JavascriptEngine> State::createJavascriptEngine(const var& infoObject)
 {
@@ -339,11 +361,13 @@ std::unique_ptr<JavascriptEngine> State::createJavascriptEngine(const var& infoO
 
 		var setError(const var::NativeFunctionArgs& args)
 		{
-			expectArguments(args, 1);
+			expectArguments(args, 2);
 
-			if(auto p = state.currentDialog->findPageBaseForInfoObject(infoObject))
+			auto id = args.arguments[0].toString();
+			
+			if(auto p = id.isEmpty() ? state.currentDialog->findPageBaseForInfoObject(infoObject) : state.currentDialog->findPageBaseForID(id))
 			{
-				p->setModalHelp(args.arguments[0].toString());
+				p->setModalHelp(args.arguments[1].toString());
 				state.currentDialog->setCurrentErrorPage(p);
 			}
 
@@ -369,6 +393,7 @@ std::unique_ptr<JavascriptEngine> State::createJavascriptEngine(const var& infoO
 			setMethodWithHelp("updateElement", BIND_MEMBER_FUNCTION_1(Dom::updateElement), "Refreshes the element (call this after you change any property).");
 			setMethodWithHelp("getStyleData", BIND_MEMBER_FUNCTION_1(Dom::getStyleData), "Returns the global markdown style data.");
 			setMethodWithHelp("setStyleData", BIND_MEMBER_FUNCTION_1(Dom::setStyleData), "Sets the global markdown style data");
+			setMethodWithHelp("getClipboardContent", BIND_MEMBER_FUNCTION_1(Dom::getClipboardContent), "Returns the current clipboard content");
 		}
 
 		var getElementByType(const var::NativeFunctionArgs& args)
@@ -392,6 +417,11 @@ std::unique_ptr<JavascriptEngine> State::createJavascriptEngine(const var& infoO
 			return var(matches);
 		}
 
+		var getClipboardContent(const var::NativeFunctionArgs& args) const
+		{
+			return var(SystemClipboard::getTextFromClipboard());
+		}
+
 		var updateElement(const var::NativeFunctionArgs& args)
 		{
 			expectArguments(args, 1);
@@ -408,6 +438,7 @@ std::unique_ptr<JavascriptEngine> State::createJavascriptEngine(const var& infoO
 						if(pb->getId() == id)
 						{
 							pb->postInit();
+							dialog->body.rebuildLayout();
 							factory::Container::recalculateParentSize(pb);
 							dialog->refreshBroadcaster.sendMessage(sendNotificationAsync, dialog->getState().currentPageIndex);
 						}
@@ -490,6 +521,21 @@ std::unique_ptr<JavascriptEngine> State::createJavascriptEngine(const var& infoO
 	engine->registerNativeObject("state", globalState.getDynamicObject());
 	
 	return engine;
+}
+
+String State::getAssetReferenceList(Asset::Type t) const
+{
+	String s = "None\n";
+
+	for(auto a: assets)
+	{
+		if(a->type == t)
+		{
+			s << a->toReferenceVariable() << "\n";
+		}
+	}
+
+	return s;
 }
 
 State::Job::Job(State& rt, const var& obj):
@@ -627,7 +673,7 @@ void State::addJob(Job::Ptr b, bool addFirst)
 	{
 		if(currentDialog != nullptr)
 		{
-			currentDialog->currentErrorElement = nullptr;
+			currentDialog->setCurrentErrorPage(nullptr);
 			currentDialog->repaint();
 			//currentDialog->errorComponent.setError(Result::ok());
 			currentDialog->nextButton.setEnabled(false);

@@ -45,14 +45,11 @@ struct LabelledComponent: public Dialog::PageBase
     virtual Result loadFromInfoObject(const var& obj);
 
     void postInit() override;
-    void paint(Graphics& g) override;
     void resized() override;
 
     void callOnValueChange();
 
     static String getCategoryId() { return "UI Elements"; }
-
-    void editModeChanged(bool isEditMode) override;
 
     template <typename T> T& getComponent() { return *dynamic_cast<T*>(component.get()); }
     template <typename T> const T& getComponent() const { return *dynamic_cast<T*>(component.get()); }
@@ -62,8 +59,9 @@ protected:
     String label;
     bool required = false;
 
-    bool visible = true;
     bool enabled = true;
+
+    std::unique_ptr<JavascriptEngine> engine;
 
 private:
 
@@ -116,6 +114,8 @@ struct TextInput: public LabelledComponent,
 
 private:
 
+    bool useDynamicAutocomplete = false;
+    
     String emptyText;
 
     void showAutocomplete(const String& currentText);
@@ -130,9 +130,8 @@ private:
     JUCE_DECLARE_WEAK_REFERENCEABLE(TextInput);
 };
 
-struct Button: public LabelledComponent,
-                public ButtonListener,
-				public PathFactory
+struct Button:  public ButtonListener,
+				public LabelledComponent
 {
     DEFAULT_PROPERTIES(Button)
     {
@@ -146,7 +145,7 @@ struct Button: public LabelledComponent,
 
     Button(Dialog& r, int width, const var& obj);;
 
-    Path createPath(const String& url) const override;
+    
     void createEditor(Dialog::PageInfo& info) override;
 
     void postInit() override;
@@ -157,10 +156,40 @@ struct Button: public LabelledComponent,
 
 private:
 
+    struct IconFactory: public PathFactory
+    {
+        IconFactory(Dialog* r, const var& obj_):
+          obj(obj_),
+          d(r)
+        {};
+
+        Dialog* d;
+        var obj;
+
+	    Path createPath(const String& url) const override
+	    {
+		    Path p;
+
+            auto b64 = obj[mpid::Icon].toString();
+
+            if(d != nullptr)
+                b64 = d->getState().loadText(b64);
+
+            MemoryBlock mb;
+            mb.fromBase64Encoding(b64);
+
+            if(mb.getSize() == 0)
+                mb.fromBase64Encoding("844.t01G.z.QfCheCwV..d.QfCheCwV..d.QbVhXCIV..d.QL0zSCAyTKPDV..zPCk.DDgE..MDajeuEDgE..MDajeuEDQIvVMDae.PCDQIvVMDae.PCDANH9MzXs4S7aPDk.a0Pr4S7aPDV..zProYojPDV..zProYojPDk.a0Pr4S7aPDk.a0Pi0F8dlBQTBrUCwF8dlBQXA.PCwFTSICQXA.PCwFTSICQTBrUCwF8dlBQTBrUCMVa3xzMDQIvVMDa3xzMDgE..MDa8ZOODgE..MjXQyZPDgE..MT..VDQL0zSCE.fEQDmkH1PrE.fEQD3f32PrI9++PD3f32PrI9++PDk.a0PrgKS2PDk.a0Pi0l3++CQjLPhCwV..VDQjLPhCwV..VDQbullCwl3++CQbullCwl3++CQjLPhCMVah++ODQvWjNDaA.XQDQvWjNDaA.XQDQsw0NDah++ODQsw0NDah++ODQvWjNzXsI9++PD+496PrE.fEQD+496PrE.fEQDhsq7PhE.fEQjHZQ8PQyZPDA8+aOTu1yCQP++1CwFtLcCQP++1CwFtLcCQN+IzCwl3++CQN+IzCwl3++CQ7m6uCMVaPMkLD47mPODaPMkLDA8+aODaz6YJDA8+aODaz6YJD47mPODaPMkLD47mPOzXsoYojPjyeB8ProYojPDz+u8Pr4S7aPDz+u8Pr4S7aPjyeB8ProYojPjyeB8Pi0F42aAQN+IzCwF42aAQP++1Cw1PI.AQP++1CIFLSs.QP++1CE.fGPjHZQ8PA.3ADgX6JODaA.3ADwet+NDae.PCDwet+NDae.PCD47mPODajeuED47mPOzXs8A.MPD0FW6PrE.fGPD0FW6PrE.fGPDAeQ5Pr8A.MPDAeQ5Pr8A.MPD0FW6Pi01G.z.QbullCwV..d.QbullCwV..d.QjLPhCw1G.z.QjLPhCw1G.z.QbullCMVa3QyHDAI.dNDaJpeFDwEiKNDaKXTGD4S8DNDa4+mIDoQZWNDa2m6KD4S8DNDa3UvLDwEiKNDaHtbJDAI.dNDa3UvLDAEcvNDa2m6KDg7B2NDa4+mIDItkjNDaKXTGDg7B2NDaJpeFDAEcvNDa3QyHDAI.dNzXkA");
+            else
+				p.loadPathFromData(mb.getData(), mb.getSize());
+            
+			return p;
+	    }
+    };
+    
     String getStringForButtonType() const;
 
     bool isTrigger = false;
-    MemoryBlock pathData;
 	juce::Button* createButton(const var& obj);
     Array<juce::Button*> groupedButtons;
     int thisRadioIndex = -1;
@@ -299,27 +328,33 @@ struct CodeEditor: public LabelledComponent
             std::unique_ptr<JavascriptEngine> engine;
         };
 
-        AllEditor():
+        AllEditor(const String& syntax):
           codeDoc(doc),
           editor(new mcl::TextEditor(codeDoc))
         {
-            editor->tokenCollection = new mcl::TokenCollection("Javascript");
-            editor->tokenCollection->setUseBackgroundThread(false);
-        	editor->tokenCollection->addTokenProvider(new TokenProvider(this));
+            if(syntax == "CSS")
+            {
+	            editor->tokenCollection = new mcl::TokenCollection("CSS");
+                editor->tokenCollection->setUseBackgroundThread(false);
+	            editor->setLanguageManager(new simple_css::LanguageManager(codeDoc));
+            }
+            else
+            {
+	            editor->tokenCollection = new mcl::TokenCollection("Javascript");
+		        editor->tokenCollection->setUseBackgroundThread(false);
+		        editor->tokenCollection->addTokenProvider(new TokenProvider(this));
+            }
+            
 	        addAndMakeVisible(editor);
         }
 
         ~AllEditor()
         {
-            
-
 	        editor->tokenCollection = nullptr;
             editor = nullptr;
         }
 
         void resized() override { editor->setBounds(getLocalBounds()); };
-
-        
 
 	    juce::CodeDocument doc;
 	    mcl::TextDocument codeDoc;
@@ -327,8 +362,9 @@ struct CodeEditor: public LabelledComponent
     };
 
 	CodeEditor(Dialog& r, int w, const var& obj):
-      LabelledComponent(r, w, obj, new AllEditor())
+      LabelledComponent(r, w, obj, new AllEditor(obj[mpid::Syntax].toString()))
 	{
+        Helpers::writeInlineStyle(getComponent<AllEditor>(), "height: 360px;");
 		setSize(w, 360);
 	};
 
@@ -354,26 +390,58 @@ struct CodeEditor: public LabelledComponent
 
     Result compile()
     {
-	    auto code = getComponent<AllEditor>().doc.getAllContent();
+        auto syntax = infoObject[mpid::Syntax].toString();
+
+        auto& editor = *getComponent<AllEditor>().editor.get();
+
+        auto code = getComponent<AllEditor>().doc.getAllContent();
 
         auto* state = findParentComponentOfClass<ComponentWithSideTab>()->getMainState();
 
         if(code.startsWith("${"))
             code = state->loadText(code);
 
-        auto infoObject = findParentComponentOfClass<Dialog>()->getState().globalState;
+        if(syntax == "CSS")
+        {
+            simple_css::Parser p(code);
+            auto ok = p.parse();
+			editor.clearWarningsAndErrors();
+			editor.setError(ok.getErrorMessage());
 
-        auto e = state->createJavascriptEngine(infoObject);
-        auto ok = e->execute(code);
+			for(const auto& w: p.getWarnings())
+				editor.addWarning(w);
 
-        getComponent<AllEditor>().editor->setError(ok.getErrorMessage());
+            if(ok.wasOk())
+            {
+	            writeState(code);
 
-        if(ok.wasOk())
-            writeState(code);
+	            if(auto d = state->currentDialog.get())
+	            {
+		            d->positionInfo.additionalStyle = code;
+					d->loadStyleFromPositionInfo();
+	            }
+            }
+            else
+                state->eventLogger.sendMessage(sendNotificationSync, MessageType::Javascript, ok.getErrorMessage());
+            
+            return ok;
+        }
         else
-            state->eventLogger.sendMessage(sendNotificationSync, MessageType::Javascript, ok.getErrorMessage());
+        {
+	        auto infoObject = findParentComponentOfClass<Dialog>()->getState().globalState;
 
-        return ok;
+	        auto e = state->createJavascriptEngine(infoObject);
+	        auto ok = e->execute(code);
+
+	        getComponent<AllEditor>().editor->setError(ok.getErrorMessage());
+
+	        if(ok.wasOk())
+	            writeState(code);
+	        else
+	            state->eventLogger.sendMessage(sendNotificationSync, MessageType::Javascript, ok.getErrorMessage());
+
+	        return ok;
+        }
     }
 
     Result checkGlobalState(var globalState) override
