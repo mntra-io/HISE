@@ -209,11 +209,13 @@ public:
 		*/
 		const ValueTree getLoadedSampleMap(const String &fileName) const;
 
-		NativeFileHandler &getProjectHandler() { return projectHandler; }
+		
+
+		NativeFileHandler &getProjectHandler();
 
 		void setDiskMode(DiskMode mode) noexcept;
 
-		const NativeFileHandler &getProjectHandler() const { return projectHandler; }
+		const NativeFileHandler &getProjectHandler() const;
 
 		bool isUsingHddMode() const noexcept{ return hddMode; };
 
@@ -1861,7 +1863,9 @@ public:
 	}
 
     ReferenceCountedObject* getGlobalPreprocessor();
-    
+
+	bool isInsideAudioRendering() const;
+
 	bool shouldAbortMessageThreadOperation() const noexcept
 	{
 		return false;
@@ -1983,6 +1987,10 @@ public:
     void setBpm(double bpm_);
     
 private: // Never call this directly, but wrap it through DelayedRenderer...
+
+	// except for the audio rendererbase as this does not need to use the outer interface
+	// (in order to avoid messing with the leftover sample logic from misbehFL!avinStudio!!1!g hosts...)
+	friend class AudioRendererBase;
 
 	/** This is the main processing loop that is shared among all subclasses. */
 	void processBlockCommon(AudioSampleBuffer &b, MidiBuffer &mb);
@@ -2193,6 +2201,8 @@ private:
 	double originalSampleRate = 0.0;
 	
 	Array<CustomTypeFace> customTypeFaces;
+
+	CustomTypeFace defaultFont;
 	ValueTree customTypeFaceData;
 	ValueTree embeddedMarkdownDocs;
 
@@ -2276,7 +2286,9 @@ private:
 	bool enablePluginParameterUpdate = true;
 
     double globalPitchFactor;
-    
+
+	std::pair<bool, Thread::ThreadID> currentlyRenderingThread;
+
     std::atomic<double> bpm;
 
 	std::atomic<bool> hostIsPlaying;

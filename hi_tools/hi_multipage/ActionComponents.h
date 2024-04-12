@@ -55,15 +55,10 @@ struct Action: public Dialog::PageBase
     void postInit() override;
     void perform();
     Result checkGlobalState(var globalState) override;
-
-    void editModeChanged(bool isEditMode) override;
-
     Result r;
 
 	bool callOnNext = false;
 };
-
-
 
 /** A base class for an action that will be performed on page load. */
 struct ImmediateAction: public Action
@@ -81,13 +76,13 @@ struct Skip: public ImmediateAction
 
     Skip(Dialog& r, int w, const var& obj);
 
-
-
     bool skipIfStateIsFalse() const override { return true; }
 
     void createEditor(Dialog::PageInfo& rootList) override;
     Result onAction() override;
     String getDescription() const override { return "skipPage()"; };
+
+    bool invert = false;
 };
 
 struct JavascriptFunction: public ImmediateAction
@@ -107,11 +102,11 @@ struct JavascriptFunction: public ImmediateAction
 	String getDescription() const override { return "function() {...}"; };
 };
 
-struct LinkFileWriter: public ImmediateAction
+struct AppDataFileWriter: public ImmediateAction
 {
-	HISE_MULTIPAGE_ID("LinkFileWriter");
+	HISE_MULTIPAGE_ID("AppDataFileWriter");
 
-    LinkFileWriter(Dialog& r, int w, const var& obj);
+    AppDataFileWriter(Dialog& r, int w, const var& obj);
 
     bool skipIfStateIsFalse() const override { return false; }
 
@@ -120,7 +115,7 @@ struct LinkFileWriter: public ImmediateAction
     void createEditor(Dialog::PageInfo& rootList) override;
 
     Result onAction() override;
-	String getDescription() const override { return "writeLinkFile(" + infoObject[mpid::ID].toString() + ")"; };
+	String getDescription() const override { return "writeAppDataFile(" + infoObject[mpid::ID].toString() + ")"; };
 
     File targetFile;
 };
@@ -288,6 +283,18 @@ struct UnzipTask: public BackgroundTask
     bool overwrite = true;
 };
 
+// TODO: Parses a install log from a file and then removes all files
+
+struct UninstallTask //: public BackgroundTask
+{
+	
+};
+
+// TODO: Writes the list of all file operations to a given file to be picked up the an uninstall task
+struct LogFileCreator: public ImmediateAction
+{
+	
+};
 
 struct CopyAsset: public BackgroundTask
 {

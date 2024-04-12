@@ -80,8 +80,13 @@ public:
 		WorkspaceCustom,
 		numToolbarButtons,
 		MenuFileOffset = 0x20000,
+
+		MenuSnippetFileNew,
+		MenuSnippetFileImport,
+		MenuSnippetClose,
 		MenuNewFile,
 		MenuOpenFile,
+		MenuFileBrowseExamples,
 		MenuOpenFileFromProjectOffset,
 		MenuSaveFile = 0x23000,
 		MenuSaveFileAs,
@@ -94,6 +99,7 @@ public:
 		MenuCloseProject,
 		MenuFileArchiveProject,
 		MenuFileImportProjectFromHXI,
+		MenuFileExtractEmbeddeSnippetFiles,
 		MenuFileDownloadNewProject,
 		MenuFileCreateRecoveryXml,
 		MenuProjectShowInFinder,
@@ -144,6 +150,7 @@ public:
 		MenuViewAddInterfacePreview,
         MenuViewGotoUndo,
         MenuViewGotoRedo,
+		MenuViewToggleSnippetBrowser,
 		MenuOneColumn,
 		MenuTwoColumns,
 		MenuThreeColumns,
@@ -166,7 +173,7 @@ public:
 		MenuToolsRecompileScriptsOnReload,
 		MenuToolsEnableCallStack,
 		MenuToolsCheckCyclicReferences,
-		MenuToolsCreateToolbarPropertyDefinition,
+		MenuToolsBroadcasterWizard,
 		MenuToolsCreateExternalScriptFile,
 		MenuToolsConvertSVGToPathData,
 		MenuToolsRestoreToDefault,
@@ -276,21 +283,7 @@ public:
 		menuItemsChanged();
 	}
 
-	void setCopyPasteTarget(CopyPasteTarget *newTarget)
-	{
-        if (currentCopyPasteTarget.get() != nullptr)
-		{
-			currentCopyPasteTarget->deselect();
-		}
-		else
-		{
-			mainCommandManager->setFirstCommandTarget(this);
-		}
-        
-		currentCopyPasteTarget = newTarget;
-
-		updateCommands();
-	}
+	void setCopyPasteTarget(CopyPasteTarget *newTarget);
 
 	void createMenuBarNames();
 
@@ -311,6 +304,9 @@ public:
 		static void openFile(BackendRootWindow *bpe);
 		static void saveFile(BackendRootWindow *bpe, bool forceRename);
 		static void replaceWithClipboardContent(BackendRootWindow *bpe);
+
+		static void loadSnippet(BackendRootWindow *bpe, const String& snippet);
+
 		static void createScriptVariableDeclaration(CopyPasteTarget *currentCopyPasteTarget);
 		static void recompileAllScripts(BackendRootWindow * bpe);
 		static void toggleFullscreen(BackendRootWindow * bpe);
@@ -347,7 +343,7 @@ public:
 		static void saveFileXml(BackendRootWindow * bpe);
 		static void saveFileAsXml(BackendRootWindow * bpe);
 		static void openFileFromXml(BackendRootWindow * bpe, const File &fileToLoad);
-		static void exportFileAsSnippet(BackendProcessor* bp);
+		static void exportFileAsSnippet(BackendRootWindow* bpe);
 		static void showFilePresetSettings(BackendRootWindow * bpe);
 		static void showFileProjectSettings(BackendRootWindow * bpe);
 		static void showFileUserSettings(BackendRootWindow * bpe);
@@ -404,6 +400,10 @@ public:
 
 		static void createThirdPartyNode(BackendRootWindow* bpe);
 		static void restoreToDefault(BackendRootWindow * bpe);
+
+		static void extractEmbeddedFilesFromSnippet(BackendRootWindow* bpe);
+
+		static void showExampleBrowser(BackendRootWindow* bpe);
 	};
 
 private:

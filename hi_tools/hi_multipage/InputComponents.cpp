@@ -40,13 +40,27 @@ using namespace juce;
 
 void addOnValueCodeEditor(const var& infoObject, Dialog::PageInfo& rootList)
 {
+    rootList.addChild<Button>({
+        { mpid::ID, "UseOnValue" },
+        { mpid::Text, "UseOnValue" },
+        { mpid::Value, infoObject[mpid::UseOnValue]},
+        { mpid::Help, "Whether to use the `element.onValue(value)` function defined in the `Code` property"}
+    });
+
+    auto code = infoObject[mpid::Code].toString();
+
+    if(code.isEmpty())
+    {
+	    code << "// initialisation, will be called on page load\nConsole.print(\"init\");\n\nelement.onValue = function(value)\n{\n\t// Will be called whenever the value changes\n\tConsole.print(value);\n}\n";
+        infoObject.getDynamicObject()->setProperty(mpid::Code, code);
+    }
+
 	rootList.addChild<CodeEditor>({
 		{ mpid::ID, "Code" },
 		{ mpid::Text, "Code" },
 		{ mpid::Value, infoObject[mpid::Code] },
-		{ mpid::Help, "The JS code that will be executed whenever the value changes. This is not HiseScript but vanilla JS!  \n> If you want to log something to the console, use `Console.print(message);`." } 
+        { mpid::Help, "This can be used to attach a callback to any value change. This is not HiseScript but vanilla JS!  \n> If you want to log something to the console, use `Console.print(message);`." } 
 	});
-
     
 }
 
@@ -64,13 +78,6 @@ template <typename T> void addBasicComponents(T& obj, Dialog::PageInfo& rootList
         { mpid::Value, "" },
 		{ mpid::Help, "The ID for the element (used as key in the state `var`.\n>" }
 	});
-
-    rootList.addChild<Button>({
-        { mpid::ID, "Visible" },
-        { mpid::Text, "Visible" },
-        { mpid::Value, obj.getPropertyFromInfoObject(mpid::Visible) },
-        { mpid::Help, "Whether to show the UI element at all (in non-edit mode)." }
-    });
 
     rootList.addChild<Button>({
         { mpid::ID, "Enabled" },
@@ -103,45 +110,59 @@ template <typename T> void addBasicComponents(T& obj, Dialog::PageInfo& rootList
 		{ mpid::Help, "The label next to the " + T::getStaticId() }
 	});
 
-    col.addChild<Choice>({
-        { mpid::ID, "LabelPosition" },
-        { mpid::Text, "LabelPosition" },
-        { mpid::Items, Dialog::PositionInfo::getLabelPositionNames().joinIntoString("\n") },
-        { mpid::Value, obj.getDefaultPositionName() },
-        { mpid::Help, "The position of the text label. This overrides the value of the global layout data. " }
-    });
-
     rootList.addChild<TextInput>({
         { mpid::ID, "Help" },
         { mpid::Text, "Help" },
         { mpid::Multiline, true },
         { mpid::Help, "The markdown content that will be shown when you click on the help button" }
     });
+
+    col1.addChild<TextInput>({
+		{ mpid::ID, mpid::Class.toString() },
+		{ mpid::Text, mpid::Class.toString() },
+        { mpid::Value, obj.getPropertyFromInfoObject(mpid::Class) },
+		{ mpid::Help, "The CSS class selectors for the UI element" }
+	});
+
+    col1.addChild<TextInput>({
+		{ mpid::ID, mpid::Style.toString() },
+		{ mpid::Text, mpid::Style.toString() },
+        { mpid::Value, obj.getPropertyFromInfoObject(mpid::Style) },
+		{ mpid::Help, "Additional inline properties that will be used by the UI element" }
+	});
+}
+
+void tut(Component& c, const String& styleCode)
+{
+	
 }
 
 LabelledComponent::LabelledComponent(Dialog& r, int width, const var& obj, Component* c):
 	PageBase(r, width, obj),
 	component(c)
 {
-    if(!obj.hasProperty(mpid::Visible))
-        obj.getDynamicObject()->setProperty(mpid::Visible, true);
+    Helpers::setFallbackStyleSheet(*this, "display: flex; flex-direction: row; width: 100%; height: auto; gap: 10px;");
 
     if(!obj.hasProperty(mpid::Enabled))
         obj.getDynamicObject()->setProperty(mpid::Enabled, true);
 
-	addAndMakeVisible(c);
-	label = obj[mpid::Text].toString();
-    
-    required = obj[mpid::Required];
+    this->setTextElementSelector(simple_css::ElementType::Label);
 
+    label = obj[mpid::Text].toString();
+
+    auto lc = addTextElement({  }, label);
+    
+    Helpers::setFallbackStyleSheet(*c, "flex-grow: 1; height: 32px;");
+	addFlexItem(*c);
+	
+    required = obj[mpid::Required];
+    
     setWantsKeyboardFocus(false);
     setInterceptsMouseClicks(false, true);
 
-    auto h = positionInfo.getHeightForComponent(32);
+    //auto h = positionInfo.getHeightForComponent(32);
 
-    
-
-	setSize(width, h);
+	//setSize(width, h);
 }
 
 Result LabelledComponent::loadFromInfoObject(const var& obj)
@@ -152,6 +173,29 @@ Result LabelledComponent::loadFromInfoObject(const var& obj)
 
 void LabelledComponent::postInit()
 {
+    if(engine == nullptr)
+    {
+        if(infoObject[mpid::UseOnValue])
+	    {
+	        auto code = infoObject[mpid::Code].toString();
+
+		    if(code.startsWithChar('$'))
+		        code = rootDialog.getState().loadText(code);
+
+		    if(code.isNotEmpty())
+		    {
+			    engine = rootDialog.getState().createJavascriptEngine(infoObject);
+
+		        auto ok = engine->execute(code);
+
+		        if(ok.failed())
+		        {
+			        jassertfalse;
+		        }
+		    }
+	    }
+    }
+
     if(infoObject.hasProperty(mpid::Enabled))
         enabled = infoObject[mpid::Enabled];
 
@@ -164,14 +208,18 @@ void LabelledComponent::postInit()
 
 	init();
 
+    
+    
     getComponent<Component>().setEnabled(enabled);
 
-    setVisible(infoObject[mpid::Visible] || rootDialog.isEditModeEnabled());
+    //setVisible(infoObject[mpid::Visible] || rootDialog.isEditModeEnabled());
     repaint();
 }
 
+    #if 0
 void LabelledComponent::paint(Graphics& g)
 {
+
     auto b = getArea(AreaType::Label);
 
     if(rootDialog.isEditModeEnabled())
@@ -185,10 +233,15 @@ void LabelledComponent::paint(Graphics& g)
 		g.setColour(df.second.withAlpha(enabled ? 1.0f : 0.6f));
         g.drawText(label, b.toFloat(), Justification::left);
     }
+
 }
+    #endif
 
 void LabelledComponent::resized()
 {
+    FlexboxComponent::resized();
+
+#if 0
     PageBase::resized();
     
 	auto b = getArea(AreaType::Component);
@@ -200,20 +253,43 @@ void LabelledComponent::resized()
 	}
 
     component->setBounds(b);
+#endif
 }
 
 void LabelledComponent::callOnValueChange()
 {
-    auto ms = findParentComponentOfClass<ComponentWithSideTab>()->getMainState();
-    auto code = infoObject[mpid::Code].toString();
-    if(code.startsWithChar('$'))
-        code = ms->loadText(code);
-
-    if(code.isNotEmpty())
+    auto state = &rootDialog.getState();
+    
+    if(auto ms = findParentComponentOfClass<ComponentWithSideTab>())
+        state = ms->getMainState();
+    
+    if(engine != nullptr && infoObject[mpid::UseOnValue])
     {
-	    auto engine = ms->createJavascriptEngine(infoObject);
+        auto ok = Result::ok();
+        
+        if(auto element = engine->getRootObjectProperties()["element"].getDynamicObject())
+        {
+            if(element->hasProperty("onValue"))
+            {
+	            var a[1];
+		        a[0] = getValueFromGlobalState();
+		        
+		        var::NativeFunctionArgs args(infoObject, a, 1);
 
-	    auto ok = engine->execute(code);
+		        try
+		        {
+	                engine->callFunctionObject(element, element->getProperty("onValue"), args, &ok);
+	            }
+	            catch(String& r)
+	            {
+		            jassertfalse;
+	            }
+            }
+            else
+            {
+	            ok = Result::fail("the element does not have a `onValue()` function");
+            }
+        }
         
 	    if(ok.failed())
 	    {
@@ -224,34 +300,7 @@ void LabelledComponent::callOnValueChange()
 }
 
 
-void LabelledComponent::editModeChanged(bool isEditMode)
-{
-#if HISE_MULTIPAGE_INCLUDE_EDIT
-	PageBase::editModeChanged(isEditMode);
 
-	if(overlay != nullptr)
-	{
-        auto pos = positionInfo;
-
-		overlay->localBoundFunction = [pos](Component* c)
-		{
-            return dynamic_cast<LabelledComponent*>(c)->getArea(AreaType::Label);
-			auto b = c->getLocalBounds();
-
-			return b.removeFromLeft(pos.getWidthForLabel(c->getWidth()));
-		};
-
-		overlay->setOnClick([this](bool isRightClick)
-		{
-            this->showDeletePopup(isRightClick);
-                
-
-			
-
-		});
-	}
-#endif
-}
 
 
 void Button::createEditor(Dialog::PageInfo& rootList)
@@ -270,8 +319,15 @@ void Button::createEditor(Dialog::PageInfo& rootList)
         { mpid::ID, "ButtonType" },
         { mpid::Text, "ButtonType" },
         { mpid::Items, "Toggle\nText\nIcon" },
-        { mpid::Help, "The appearance of the button. " },
+        { mpid::Help, "The appearance of the button. " }
+    });
 
+    col.addChild<Choice>({
+        { mpid::ID, "Icon" },
+        { mpid::Text, "Icon" },
+        { mpid::Value, infoObject[mpid::Icon]},
+        { mpid::Items, rootDialog.getState().getAssetReferenceList(Asset::Type::Text) },
+        { mpid::Help, "The SVG data for the icon (only used with `ButtonType == Icon`). Must be a Base64 encoded SVG path." }
     });
 
     col.addChild<Button>({
@@ -285,23 +341,14 @@ void Button::createEditor(Dialog::PageInfo& rootList)
 
 
 Button::Button(Dialog& r, int width, const var& obj):
+    ButtonListener(),
 	LabelledComponent(r, width, obj, createButton(obj))
 {
-    positionInfo.setDefaultPosition(Dialog::PositionInfo::LabelPositioning::None);
+    getComponent<Component>().setWantsKeyboardFocus(false);
 
-	
-
+	Helpers::writeSelectorsToProperties(getComponent<juce::Button>(), { ".toggle-button" });
+    
 	loadFromInfoObject(obj);
-}
-
-Path Button::createPath(const String& url) const
-{
-	Path p;
-
-	if(pathData.getSize() > 0)
-		p.loadPathFromData(pathData.getData(), pathData.getSize());
-
-	return p;
 }
 
 void Button::buttonClicked(juce::Button* b)
@@ -335,7 +382,18 @@ void Button::buttonClicked(juce::Button* b)
         }
 
 	    for(auto tb: groupedButtons)
-			tb->setToggleState(b == tb, dontSendNotification);
+	    {
+            auto thisValue = b == tb;
+		    if(auto sb = dynamic_cast<HiseShapeButton*>(tb))
+		    {
+			    sb->setToggleStateAndUpdateIcon(thisValue, true);
+		    }
+            else
+            {
+	            tb->setToggleState(thisValue, dontSendNotification);
+            }
+	    }
+			
     }
 
     callOnValueChange();
@@ -348,13 +406,7 @@ Result Button::loadFromInfoObject(const var& obj)
     isTrigger = obj[mpid::Trigger];
 
     getComponent<juce::Button>().setClickingTogglesState(!isTrigger);
-
-    if(obj.hasProperty(mpid::Icon))
-    {
-	    auto b64 = rootDialog.getState().loadText(obj[mpid::Icon].toString());
-        pathData.fromBase64Encoding(b64);
-    }
-
+    
     if(obj.hasProperty(mpid::Required))
 		requiredOption = true;
 
@@ -384,8 +436,11 @@ juce::Button* Button::createButton(const var& obj)
 	if(buttonType == "Text")
 		return new TextButton(obj[mpid::Text]);
 	if(buttonType == "Icon")
-		return new HiseShapeButton("icon", this, *this);
-    
+	{
+		IconFactory f(nullptr, obj);
+		return new HiseShapeButton("icon", this, f);
+	}
+	
     return new ToggleButton();
 }
 
@@ -394,11 +449,23 @@ void Button::postInit()
 {
     LabelledComponent::postInit();
 
-    if(positionInfo.LabelPosition == Dialog::PositionInfo::LabelPositioning::None &&
-       findParentComponentOfClass<Dialog::ModalPopup>() == nullptr)
-        getComponent<juce::Button>().setButtonText(infoObject[mpid::Text]);
+    if(auto sb = dynamic_cast<HiseShapeButton*>(&getComponent<juce::Button>()))
+    {
+        IconFactory f(&rootDialog, infoObject);
 
+        auto icon = f.createPath("");
+
+        sb->setShapes(icon, icon);
+
+        sb->offColour = rootDialog.getStyleData().textColour;
+        sb->onColour = rootDialog.getStyleData().headlineColour;
+        sb->setToggleModeWithColourChange(true);
+        sb->refreshShape();
+		sb->refreshButtonColours();
+    }
+    
     auto& button = this->getComponent<juce::Button>();
+    button.setButtonText(infoObject[mpid::Text].toString());
     
     Component* root = getParentComponent();
     
@@ -479,12 +546,10 @@ Result Button::checkGlobalState(var globalState)
 Choice::Choice(Dialog& r, int width, const var& obj):
 	LabelledComponent(r, width, obj, new SubmenuComboBox())
 {
-    positionInfo.setDefaultPosition(Dialog::PositionInfo::LabelPositioning::Left);
-
     if(obj.hasProperty(mpid::ValueMode))
     {
 	    valueMode = (ValueMode)getValueModeNames().indexOf(obj[mpid::ValueMode].toString());
-    }
+    } 
 
     loadFromInfoObject(obj);
     auto& combobox = getComponent<SubmenuComboBox>();
@@ -499,10 +564,14 @@ Result Choice::loadFromInfoObject(const var& obj)
 {
 	auto ok = LabelledComponent::loadFromInfoObject(obj);
 
-    auto& combobox = getComponent<ComboBox>();
+    auto& combobox = getComponent<SubmenuComboBox>();
 	auto s = obj[mpid::Items].toString();
     combobox.clear(dontSendNotification);
 	combobox.addItemList(StringArray::fromLines(s), 1);
+
+    if(custom)
+        combobox.rebuildPopupMenu();
+
     return ok;
 
 }
@@ -597,14 +666,11 @@ void Choice::createEditor(Dialog::PageInfo& rootList)
 ColourChooser:: ColourChooser(Dialog& r, int w, const var& obj):
 	LabelledComponent(r, w, obj, new ColourSelector(ColourSelector::ColourSelectorOptions::showColourspace | ColourSelector::showColourAtTop | ColourSelector::showAlphaChannel | ColourSelector::ColourSelectorOptions::editableColour, 2, 0))
 {
-    positionInfo.setDefaultPosition(Dialog::PositionInfo::LabelPositioning::Above);
-    
 	auto& selector = getComponent<ColourSelector>();
 	selector.setColour(ColourSelector::ColourIds::backgroundColourId, Colours::transparentBlack);
 	selector.setLookAndFeel(&laf);
     selector.addChangeListener(this);
-
-	setSize(w, positionInfo.getHeightForComponent(130));
+    Helpers::appendToElementStyle(selector, "height: 130px");
 }
 
 ColourChooser::~ColourChooser()
@@ -959,10 +1025,6 @@ TextInput::TextInput(Dialog& r, int width, const var& obj):
 	LabelledComponent(r, width, obj, new TextEditor()),
     navigator(*this)
 {
-    juce::Value::ValueSource;
-
-    positionInfo.setDefaultPosition(Dialog::PositionInfo::LabelPositioning::Left);
-    
     parseInputAsArray = obj[mpid::ParseArray];
 
     auto& editor = getComponent<TextEditor>();
@@ -981,6 +1043,8 @@ TextInput::TextInput(Dialog& r, int width, const var& obj):
     editor.setIgnoreUpDownKeysWhenSingleLine(true);
     editor.setTabKeyUsedAsCharacter(false);
 
+    r.stateWatcher.registerComponentToUpdate(&editor);
+
     loadFromInfoObject(obj);
 
     editor.addListener(this);
@@ -988,7 +1052,7 @@ TextInput::TextInput(Dialog& r, int width, const var& obj):
     auto mlHeight = (int)obj.getProperty(mpid::Height, 80);
 
     if(editor.isMultiLine())
-        setSize(width, positionInfo.getHeightForComponent(mlHeight));
+        Helpers::appendToElementStyle(editor, "height:" + String(mlHeight) + "px;");
     else
         resized();
 }
@@ -1113,7 +1177,6 @@ void TextInput::createEditor(Dialog::PageInfo& rootList)
 	col.addChild<Button>({
 		{ mpid::ID, "Required" },
 		{ mpid::Text, "Required" },
-        { mpid::LabelPosition, "Left" },
 		{ mpid::Help, "If this is enabled, the text input must be a non-empty String" },
         { mpid::Value, required }
 	});
@@ -1121,7 +1184,6 @@ void TextInput::createEditor(Dialog::PageInfo& rootList)
     col.addChild<Button>({
 		{ mpid::ID, "ParseArray" },
 		{ mpid::Text, "ParseArray" },
-        { mpid::LabelPosition, "Left" },
 		{ mpid::Help, "If this is enabled, the text input will parse comma separated values as Array." },
         { mpid::Value, parseInputAsArray }
 	});
@@ -1129,7 +1191,6 @@ void TextInput::createEditor(Dialog::PageInfo& rootList)
     col.addChild<Button>({
         { mpid::ID, "Multiline" },
         { mpid::Text, "Multiline" },
-        { mpid::LabelPosition, "Left" },
         { mpid::Help, "If this is enabled, the text editor will allow multiline editing" },
         { mpid::Value, infoObject[mpid::Multiline] }
     });
@@ -1171,15 +1232,10 @@ Result TextInput::loadFromInfoObject(const var& obj)
 
 	if(obj.hasProperty(mpid::Items))
 	{
-		autocompleteItems = StringArray::fromLines(obj[mpid::Items].toString());
-	}
-
-	
-	
-	
-	if(obj.hasProperty(mpid::Items))
-	{
-		autocompleteItems = StringArray::fromLines(obj[mpid::Items].toString());
+        auto items = obj[mpid::Items].toString();
+        
+        useDynamicAutocomplete = items == "{DYNAMIC}";
+		autocompleteItems = StringArray::fromLines(items);
 	}
 
     return ok;
@@ -1187,6 +1243,14 @@ Result TextInput::loadFromInfoObject(const var& obj)
 
 void TextInput::showAutocomplete(const String& currentText)
 {
+    if(useDynamicAutocomplete)
+    {
+        if(auto hd = findParentComponentOfClass<HardcodedDialogWithState>())
+            autocompleteItems = hd->getAutocompleteItems(id);
+        else
+            autocompleteItems = {};
+    }
+    
 	if(!autocompleteItems.isEmpty() && currentAutocomplete == nullptr && currentText.isNotEmpty())
 	{
 		currentAutocomplete = new Autocomplete(*this);
@@ -1246,20 +1310,22 @@ void FileSelector::createEditor(Dialog::PageInfo& rootList)
 }
 
     
-struct BetterFileSelector: public Component,
+struct BetterFileSelector: public simple_css::FlexboxComponent,
 						   public TextEditor::Listener
 {
     BetterFileSelector(const String& name, const File& initialFile, bool unused, bool isDirectory, bool save, const String& wildcard):
-      Component(name),
+      FlexboxComponent(simple_css::Selector(".fileselector")),
       browseButton("Browse"),
       currentFile(initialFile)
     {
-	    addAndMakeVisible(browseButton);
+        setName(name);
+
         addAndMakeVisible(fileLabel);
+        addAndMakeVisible(browseButton);
 
-        GlobalHiseLookAndFeel::setTextEditorColours(fileLabel);
-        hise::GlobalHiseLookAndFeel::setDefaultColours(*this);
-
+        setDefaultStyleSheet("display: flex; gap: 10px; height: auto; flex-grow: 1;");
+        Helpers::setFallbackStyleSheet(fileLabel, "flex-grow: 1; height: 100%;");
+        
 	    fileLabel.setWantsKeyboardFocus(true);
         fileLabel.setTextToShowWhenEmpty("No file selected", Colours::black.withAlpha(0.3f));
         fileLabel.setEscapeAndReturnKeysConsumed(true);
@@ -1315,18 +1381,7 @@ struct BetterFileSelector: public Component,
             findParentComponentOfClass<Dialog>()->grabKeyboardFocusAsync();
         };
     }
-
-    void resized() override
-    {
-	    auto b = getLocalBounds();
-        b.removeFromRight(5);
-
-        browseButton.setBounds(b.removeFromRight(128));
-        b.removeFromRight(10);
-        fileLabel.setBounds(b);
-    }
-
-
+    
     void setCurrentFile(const File& f, NotificationType n)
     {
 	    if(f != currentFile)
@@ -1353,10 +1408,9 @@ struct BetterFileSelector: public Component,
 FileSelector::FileSelector(Dialog& r, int width, const var& obj):
 	LabelledComponent(r, width, obj, createFileComponent(obj))
 {
-    
-    positionInfo.setDefaultPosition(Dialog::PositionInfo::LabelPositioning::Left);
-
     auto& fileSelector = getComponent<BetterFileSelector>();
+
+    r.stateWatcher.registerComponentToUpdate(&fileSelector.fileLabel);
 
     fileSelector.fileBroadcaster.addListener(*this, [](FileSelector& f, File nf)
     {
@@ -1367,7 +1421,7 @@ FileSelector::FileSelector(Dialog& r, int width, const var& obj):
 	isDirectory = obj[mpid::Directory];
 	addAndMakeVisible(fileSelector);
         
-	setSize(width, positionInfo.getHeightForComponent(32));
+	setSize(width, 32);
     resized();
 }
 
@@ -1408,12 +1462,11 @@ Result FileSelector::checkGlobalState(var globalState)
 
         if(isDirectory && !f.isDirectory())
         {
-            rootDialog.createModalPopup<MarkdownText>({
+            auto i = rootDialog.createModalPopup<MarkdownText>({
                 { mpid::Text, "Do you want to create the directory  \n> " + String(f.getFullPathName()) }
             });
-
-            jassertfalse;
-	        rootDialog.showModalPopup(true);
+            
+	        rootDialog.showModalPopup(true, i);
         }
     }
 
@@ -1425,6 +1478,13 @@ Result FileSelector::checkGlobalState(var globalState)
 
     if(required)
     {
+        auto isSave = (bool)infoObject[mpid::SaveFile];
+        
+        auto allowNewFile = isSave && f != File();
+        
+        if(allowNewFile)
+            return Result::ok();
+        
 	    String message;
 		message << "You need to select a ";
 		if(isDirectory)

@@ -5848,7 +5848,7 @@ bool ScriptingObjects::ScriptedMidiPlayer::setFile(var fileName, bool clearExist
 			PoolReference r(pl->getMainController(), fileName, FileHandlerBase::MidiFiles);
 			pl->loadMidiFile(r);
 			if (selectNewSequence)
-				pl->setAttribute(MidiPlayer::CurrentSequence, (float)pl->getNumSequences(), sendNotification);
+				pl->setAttribute(MidiPlayer::CurrentSequence, (float)pl->getNumSequences(), sendNotificationAsync);
 
 			return r.isValid();
 

@@ -58,7 +58,9 @@ struct CodeGenerator
       className(className_),
       rootDirectory(rootDirectory_),
       numTabs(numTabs_)
-	{}
+	{
+        className = totalData[mpid::Properties][mpid::ProjectName].toString();
+    }
 
     void write(OutputStream& output, FileType t, State::Job* job) const;
 
@@ -84,12 +86,20 @@ struct CodeGenerator
         }
     }
 
+    void setUseRawMode(bool shouldUseRawMode)
+    {
+        rawMode = shouldUseRawMode;
+    }
+    
     String company;
     String version;
     String hisePath;
 
 private:
 
+    mutable StringArray lambdaLocalIds;
+    mutable StringArray lambdaIds;
+    
     struct ScopedTabSetter
     {
 	    ScopedTabSetter(const CodeGenerator& cg):
@@ -116,6 +126,8 @@ private:
     
     mutable StringArray existingVariables;
 
+    bool rawMode = false;
+    
     mutable int idCounter = 0;
     mutable int numTabs;
     var data;
@@ -124,63 +136,7 @@ private:
 
 
 
-struct EditorOverlay: public Component,
-				      public SettableTooltipClient
-{
-    struct Updater: public ComponentMovementWatcher
-    {
-	    Updater(EditorOverlay& parent_, Component* attachedComponent);
 
-        void componentMovedOrResized (bool wasMoved, bool wasResized) override;
-
-	    void componentPeerChanged() override {};
-
-	    void componentVisibilityChanged() override
-	    {
-		    parent.setVisible(getComponent()->isVisible());
-	    }
-
-        EditorOverlay& parent;
-    };
-
-    ScopedPointer<Updater> watcher;
-
-    
-
-    void setAttachToComponent(Component* c)
-    {
-	    watcher = new Updater(*this, c);
-    }
-
-    EditorOverlay(Dialog& parent);
-
-    void mouseWheelMove(const MouseEvent& event, const MouseWheelDetails& wheel) override;
-
-    void resized() override;
-
-    void mouseUp(const MouseEvent& e) override;
-
-    void paint(Graphics& g) override;
-
-    static void onEditChange(EditorOverlay& c, bool isOn)
-    {
-	    c.setVisible(isOn);
-    }
-
-    void setOnClick(const std::function<void(bool)>& f)
-    {
-	    cb = f;
-    }
-
-    std::function<Rectangle<int>(Component*)> localBoundFunction;
-
-    std::function<void(bool)> cb;
-
-    Path outline;
-    Rectangle<float> bounds;
-	
-    JUCE_DECLARE_WEAK_REFERENCEABLE(EditorOverlay);
-};
 
 } // multipage
 } // hise

@@ -1527,7 +1527,7 @@ double ScriptingApi::Engine::getQuarterBeatsForMilliSecondsWithTempo(double mill
 
 double ScriptingApi::Engine::getSamplesForQuarterBeatsWithTempo(double quarterBeats, double bpm)
 {
-	auto samplesPerQuarter = (double)TempoSyncer::getTempoInSamples(bpm, getSampleRate(), TempoSyncer::Quarter);
+	auto samplesPerQuarter = TempoSyncer::getTempoInSamples(bpm, getSampleRate(), TempoSyncer::Quarter);
 
 	return samplesPerQuarter * quarterBeats;
 }
@@ -6941,6 +6941,7 @@ struct ScriptingApi::FileSystem::Wrapper
     API_METHOD_WRAPPER_2(FileSystem, encryptWithRSA);
     API_METHOD_WRAPPER_0(FileSystem, findFileSystemRoots);
     API_METHOD_WRAPPER_2(FileSystem, decryptWithRSA);
+	API_VOID_METHOD_WRAPPER_0(FileSystem, loadExampleAssets);
 };
 
 ScriptingApi::FileSystem::FileSystem(ProcessorWithScriptingContent* pwsc):
@@ -6973,6 +6974,7 @@ ScriptingApi::FileSystem::FileSystem(ProcessorWithScriptingContent* pwsc):
     ADD_API_METHOD_2(encryptWithRSA);
     ADD_API_METHOD_2(decryptWithRSA);
     ADD_API_METHOD_0(findFileSystemRoots);
+	ADD_API_METHOD_0(loadExampleAssets);
 }
 
 ScriptingApi::FileSystem::~FileSystem()
@@ -7185,6 +7187,13 @@ String ScriptingApi::FileSystem::decryptWithRSA(const String& dataToDecrypt, con
     }
     
     return {};
+}
+
+void ScriptingApi::FileSystem::loadExampleAssets()
+{
+#if USE_BACKEND
+	dynamic_cast<BackendProcessor*>(getMainController())->getAssetManager();
+#endif
 }
 
 
@@ -7939,12 +7948,32 @@ void ScriptingApi::TransportHandler::setEnableGrid(bool shouldBeEnabled, int tem
 
 void ScriptingApi::TransportHandler::startInternalClock(int timestamp)
 {
-	getMainController()->getMasterClock().changeState(timestamp, true, true);
+	auto& clock = getMainController()->getMasterClock();
+
+	if(clock.changeState(timestamp, true, true))
+	{
+		if(getMainController()->isInsideAudioRendering())
+		{
+			auto gi = clock.processAndCheckGrid(getMainController()->getBufferSizeForCurrentBlock(), {});
+			auto ph = clock.createInternalPlayHead();
+			getMainController()->handleTransportCallbacks(ph, gi);
+		}
+	}
 }
 
 void ScriptingApi::TransportHandler::stopInternalClock(int timestamp)
 {
-	getMainController()->getMasterClock().changeState(timestamp, true, false);
+	auto& clock = getMainController()->getMasterClock();
+
+	if(clock.changeState(timestamp, true, false))
+	{
+		if(getMainController()->isInsideAudioRendering())
+		{
+			auto gi = clock.processAndCheckGrid(getMainController()->getBufferSizeForCurrentBlock(), {});
+			auto ph = clock.createInternalPlayHead();
+			getMainController()->handleTransportCallbacks(ph, gi);
+		}
+	}
 }
 
 void ScriptingApi::TransportHandler::setSyncMode(int syncMode)
