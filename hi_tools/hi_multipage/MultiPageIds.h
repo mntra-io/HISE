@@ -66,8 +66,10 @@ namespace mpid
     DECLARE_ID(Assets);
     DECLARE_ID(Args);
     DECLARE_ID(ButtonType);
+    DECLARE_ID(BinaryName);
     DECLARE_ID(CallOnNext);
     DECLARE_ID(CallType);
+    DECLARE_ID(Cleanup);
     DECLARE_ID(Code);
     DECLARE_ID(Children);
     DECLARE_ID(Company);
@@ -76,6 +78,7 @@ namespace mpid
     DECLARE_ID(Data);
     DECLARE_ID(Directory);
     DECLARE_ID(EmptyText);
+    DECLARE_ID(Enabled);
     DECLARE_ID(ExtraHeaders);
     DECLARE_ID(FailIndex);
     DECLARE_ID(Filename);
@@ -86,7 +89,7 @@ namespace mpid
     DECLARE_ID(Header);
     DECLARE_ID(Help);
     DECLARE_ID(Height);
-    DECLARE_ID(IconData);
+    DECLARE_ID(Icon);
     DECLARE_ID(Image);
     DECLARE_ID(ID);
     DECLARE_ID(InitValue);
@@ -96,6 +99,7 @@ namespace mpid
     DECLARE_ID(Multiline);
     DECLARE_ID(NumTodo);
     DECLARE_ID(Overwrite);
+    DECLARE_ID(OperatingSystem);
     DECLARE_ID(Padding);
     DECLARE_ID(Parameters);
     DECLARE_ID(ParseArray);
@@ -115,6 +119,7 @@ namespace mpid
     DECLARE_ID(Text);
     DECLARE_ID(Trigger);
     DECLARE_ID(Type);
+    DECLARE_ID(UseChildState);
     DECLARE_ID(UseGlobalAppData);
     DECLARE_ID(UseInitValue);
     DECLARE_ID(UseLabel);

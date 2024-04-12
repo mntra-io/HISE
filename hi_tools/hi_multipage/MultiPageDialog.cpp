@@ -934,6 +934,9 @@ Dialog::Dialog(const var& obj, State& rt, bool addEmptyPage):
 		po->setProperty(mpid::ProjectName, "MyProject");
 		po->setProperty(mpid::Company, "MyCompany");
 		po->setProperty(mpid::Version, "1.0.0");
+		po->setProperty(mpid::BinaryName, "My Binary");
+		po->setProperty(mpid::Icon, "");
+		po->setProperty(mpid::UseGlobalAppData, false);
     }
 
 	backgroundImage = getState().loadImage(properties[mpid::Image].toString());
@@ -1293,6 +1296,7 @@ void Dialog::showMainPropertyEditor()
 	{
 	    auto& propList = introPage.addChild<List>({
 	        { mpid::Padding, 10 },
+            { mpid::UseChildState, true },
 	        { mpid::ID, mpid::Properties.toString() }
 	    });
 
@@ -1315,11 +1319,12 @@ void Dialog::showMainPropertyEditor()
 			{ mpid::Value, properties[mpid::Subtitle] }
 	    });
 
-		col0.addChild<TextInput>({
+		col0.addChild<Choice>({
 	        { mpid::ID, mpid::Image.toString() },
 	        { mpid::Text, mpid::Image.toString() },
 	        { mpid::Help, "The background image used for the dialog (will be scaled to fit the entire area)." },
-			{ mpid::Value, properties[mpid::Image] }
+			{ mpid::Value, properties[mpid::Image] },
+			{ mpid::Items, getState().getAssetReferenceList(Asset::Type::Image) }
 	    });
 
 		auto& col1 = propList;//
@@ -1327,25 +1332,51 @@ void Dialog::showMainPropertyEditor()
 		col1.addChild<TextInput>({
 	        { mpid::ID, mpid::ProjectName.toString() },
 	        { mpid::Text, mpid::ProjectName.toString() },
-			{ mpid::Value, properties[mpid::ProjectName] }
+			{ mpid::Value, properties[mpid::ProjectName] },
+			{ mpid::Help, "Your project ID. If you're using some high level actions this must be the same as your plugin" }
 	    });
 
 		col1.addChild<TextInput>({
 	        { mpid::ID, mpid::Company.toString() },
 	        { mpid::Text, mpid::Company.toString() },
-			{ mpid::Value, properties[mpid::Company] }
+			{ mpid::Value, properties[mpid::Company] },
+			{ mpid::Help, "Your company ID" }
 	    });
 
 		col1.addChild<TextInput>({
 	        { mpid::ID, mpid::Version.toString() },
 	        { mpid::Text, mpid::Version.toString() },
-			{ mpid::Value, properties[mpid::Version] }
+			{ mpid::Value, properties[mpid::Version] },
+			{ mpid::Help, "The project version that can be queried with the ProjectInfo constants"}
+		});
+
+		col1.addChild<TextInput>({
+	        { mpid::ID, mpid::BinaryName.toString() },
+	        { mpid::Text, mpid::BinaryName.toString() },
+			{ mpid::Value, properties[mpid::BinaryName] },
+			{ mpid::Help, "The filename of the compiled executable (without the OS dependent file extension like `.exe`)." }
 	    });
 
+		col1.addChild<Button>({
+	        { mpid::ID, mpid::UseGlobalAppData.toString() },
+	        { mpid::Text, mpid::UseGlobalAppData.toString() },
+			{ mpid::Value, properties[mpid::UseGlobalAppData] },
+			{ mpid::Help, "Whether to use the global app data or the user app data directory.  \n> This setting must be consistent with your project's setting in order to work correctly." }
+	    });
+
+		col1.addChild<Choice>({
+	        { mpid::ID, mpid::Icon.toString() },
+	        { mpid::Text, mpid::Icon.toString() },
+			{ mpid::Items, getState().getAssetReferenceList(Asset::Type::Image) },
+			{ mpid::Value,  properties[mpid::Icon] },
+			{ mpid::Help, "The image asset that should be used as icon" }
+	    });
+		
 	    auto& styleProperties = introPage.addChild<List>({
 	        { mpid::ID, mpid::StyleData.toString(), },
 	        { mpid::Text, mpid::StyleData.toString(), },
 	        { mpid::Padding, 10 },
+            { mpid::UseChildState, true },
 	        { mpid::Foldable, true },
 	        { mpid::Folded, true }
 	    });
@@ -1400,6 +1431,7 @@ void Dialog::showMainPropertyEditor()
 	            { mpid::ID, mpid::LayoutData.toString() },
 	            { mpid::Text, mpid::LayoutData.toString() },
 	            { mpid::Padding, 10 },
+                { mpid::UseChildState, true },
 	            { mpid::Foldable, true },
 	            { mpid::Folded, true }
 	        });
@@ -1869,7 +1901,9 @@ void Dialog::containerPopup(const var& infoObject)
 
 	m.addSeparator();
 	m.addItem(90000, "Edit " + typeName, tp != nullptr, tp == currentlyEditedPage);
+	
 	m.addItem(924, "Delete " + typeName, tp != nullptr && tp->findParentComponentOfClass<factory::Container>() != nullptr);
+	m.addItem(90001, "Copy info JSON", tp != nullptr);
 
 	if(auto r = m.show())
 	{
@@ -1889,6 +1923,10 @@ void Dialog::containerPopup(const var& infoObject)
 
 			showModalPopup(true);
 #endif
+		}
+		else if (r == 90001)
+		{
+			SystemClipboard::copyTextToClipboard(JSON::toString(tp->getInfoObject(), false));
 		}
 		else if (r == 924)
 		{

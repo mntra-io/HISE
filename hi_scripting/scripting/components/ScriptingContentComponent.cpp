@@ -523,6 +523,8 @@ void ScriptContentComponent::prepareScreenshot()
 void ScriptContentComponent::contentWasRebuilt()
 {
 	contentRebuildNotifier.notify(processor->getScriptingContent());
+
+	setWantsKeyboardFocus(processor->getScriptingContent()->hasKeyPressCallbacks());
 }
 
 
@@ -642,8 +644,14 @@ void ScriptContentComponent::refreshContentButton()
 
 }
 
-bool ScriptContentComponent::keyPressed(const KeyPress &/*key*/)
+bool ScriptContentComponent::keyPressed(const KeyPress& k)
 {
+	if(contentData != nullptr && contentData->hasKeyPressCallbacks())
+	{
+		if(contentData->handleKeyPress(k))
+			return true;
+	}
+
 	return false;
 }
 

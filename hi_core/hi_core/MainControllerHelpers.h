@@ -582,14 +582,16 @@ protected:
 	void initAfterFillingEventBuffer();
 
 	Array<VariantBuffer::Ptr> channels;
-	HiseEventBuffer events;
-
+	OwnedArray<HiseEventBuffer> eventBuffers;
+	
     bool skipCallbacks = true;
 	bool sendArtificialTransportMessages = false;
 
 private:
 
-	static constexpr int NumThrowAwayBuffers = 4;
+	static constexpr int NumThrowAwayBuffers = 12;
+
+	int thisNumThrowAway = 0;
 
 	void cleanup();
 	void run() override;

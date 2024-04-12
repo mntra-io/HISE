@@ -1528,11 +1528,18 @@ AudioRendererBase::~AudioRendererBase()
 
 void AudioRendererBase::initAfterFillingEventBuffer()
 {
-	if (!events.isEmpty())
+	if (!eventBuffers.isEmpty() && !eventBuffers.getLast()->isEmpty())
 	{
 		if ((bufferSize = getMainController()->getMainSynthChain()->getLargestBlockSize()) != 0)
 		{
-			numSamplesToRender = (int)events.getEvent(events.getNumUsed() - 1).getTimeStamp();
+			auto numSamplesTill80Ms = getMainController()->getMainSynthChain()->getSampleRate() * 0.08;
+
+			auto numBuffersTill80Ms = roundToInt(numSamplesTill80Ms / (double)bufferSize);
+
+			thisNumThrowAway = jmax(NumThrowAwayBuffers, numBuffersTill80Ms);
+
+			auto& lb = *eventBuffers.getLast();
+			numSamplesToRender = (int)lb.getEvent(lb.getNumUsed() - 1).getTimeStamp();
 
 			// we'll trim it later
 			numActualSamples = numSamplesToRender;
@@ -1547,10 +1554,12 @@ void AudioRendererBase::initAfterFillingEventBuffer()
 
 			numChannelsToRender = getMainController()->getMainSynthChain()->getMatrix().getNumSourceChannels();
 
-			events.subtractFromTimeStamps(-bufferSize * NumThrowAwayBuffers);
-
-			events.template alignEventsToRaster<HISE_EVENT_RASTER>(numSamplesToRender);
-
+			for(auto events: eventBuffers)
+			{
+				events->subtractFromTimeStamps(-bufferSize * thisNumThrowAway);
+				events->alignEventsToRaster<HISE_EVENT_RASTER>(numSamplesToRender);
+			}
+			
 			for (int i = 0; i < numChannelsToRender; i++)
 				channels.add(new VariantBuffer(numSamplesToRender));
 
@@ -1564,7 +1573,7 @@ void AudioRendererBase::cleanup()
 	getMainController()->getKillStateHandler().setCurrentExportThread(nullptr);
 	channels.clear();
 	memset(splitData, 0, sizeof(float*) * NUM_MAX_CHANNELS);
-	events.clear();
+	eventBuffers.clear();
 }
 
 void AudioRendererBase::run()
@@ -1613,7 +1622,7 @@ bool AudioRendererBase::renderAudio()
 		int numTodo = numSamplesToRender;
 		int pos = 0;
 
-		int numThrowAway = NumThrowAwayBuffers;
+		int numThrowAway = thisNumThrowAway;
 
 		AudioSampleBuffer nirvana(numChannelsToRender, bufferSize);
 
@@ -1628,7 +1637,10 @@ bool AudioRendererBase::renderAudio()
 
 			AudioSampleBuffer ab = getChunk(pos, numThisTime);
 			HiseEventBuffer thisBuffer;
-			events.moveEventsBelow(thisBuffer, pos + numThisTime);
+
+			for(auto events: eventBuffers)
+				events->moveEventsBelow(thisBuffer, pos + numThisTime);
+
 			thisBuffer.subtractFromTimeStamps(pos);
 
 			MidiBuffer mb;
@@ -1643,7 +1655,9 @@ bool AudioRendererBase::renderAudio()
 			if (numThrowAway > 0)
 			{
 				--numThrowAway;
-				events.subtractFromTimeStamps(numThisTime);
+
+				for(auto events: eventBuffers)
+					events->subtractFromTimeStamps(numThisTime);
 			}
 			else
 			{
