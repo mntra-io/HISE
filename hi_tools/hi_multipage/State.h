@@ -127,6 +127,8 @@ struct Asset: public ReferenceCountedObject
 	    case Type::numTypes: break;
 	    default: ;
 	    }
+
+        return {};
     }
 
     static Type getType(const File& f)
@@ -135,7 +137,7 @@ struct Asset: public ReferenceCountedObject
 
         if(auto format = ImageFileFormat::findImageFormatForFileExtension(f))
 	        return Type::Image;
-        else if(extension == ".txt" || extension == ".md")
+        else if(extension == ".txt" || extension == ".md" || extension == ".js" || extension == ".html")
 	        return Type::Text;
         else if(extension == ".ttf" || extension == ".otf")
             return Type::Font;
@@ -152,7 +154,7 @@ struct Asset: public ReferenceCountedObject
 	    if(type == Type::Image)
 	    {
 		    MemoryInputStream mis(data, false);
-			return ImageFileFormat::loadFrom(mis);
+            return ImageCache::getFromMemory(data.getData(), data.getSize());
 	    }
         else
             return {};
@@ -173,7 +175,7 @@ struct Asset: public ReferenceCountedObject
 	    return "${" + id + "}";
     }
 
-    String toText() const;
+    String toText(bool reloadIfPossible=false);
 
     simple_css::StyleSheet::Collection toStyleSheet(const String& additionalStyle) const
     {
@@ -288,7 +290,13 @@ struct Asset: public ReferenceCountedObject
       filename(f.getFullPathName())
     {
         
+	    loadFromFile();
+    }
+
+    void loadFromFile()
+    {
 	    MemoryOutputStream mos;
+        File f(filename);
         FileInputStream fis(f);
         
         if(fis.openedOk())
@@ -296,7 +304,7 @@ struct Asset: public ReferenceCountedObject
             mos.writeFromInputStream(fis, fis.getTotalLength());
             data = mos.getMemoryBlock();
         }
-    };
+    }
 
     bool matchesOS() const
     {
@@ -346,6 +354,8 @@ public:
 
     Font loadFont(String fontName) const
     {
+        jassert(fontName != "default");
+
         if(fontName.startsWith("${"))
         {
 	        auto id = fontName.substring(2, fontName.length() - 1);
@@ -363,13 +373,75 @@ public:
 	    return Font(fontName, 13.0f, Font::plain);
     }
 
+    void addEventListener(const String& eventType, const var& functionObject)
+    {
+        addCurrentEventGroup();
+        
+        eventListeners[currentEventGroup].addIfNotAlreadyThere({eventType, functionObject});
+    }
+    
+    void removeEventListener(const String& eventType, const var& functionObject)
+    {
+        addCurrentEventGroup();
+
+        for(auto& map: eventListeners)
+        {
+            map.second.removeAllInstancesOf({eventType, functionObject});
+        }
+    }
+    
+    void addCurrentEventGroup()
+    {
+        if(eventListeners.find(currentEventGroup) == eventListeners.end())
+        {
+            eventListeners[currentEventGroup] = {};
+        }
+    }
+    
+    void clearAndSetGroup(const String& groupId)
+    {
+        currentEventGroup = groupId;
+        addCurrentEventGroup();
+        eventListeners[currentEventGroup] = {};
+    }
+    
+    void callEventListeners(const String& eventType, const Array<var>& args)
+    {
+        auto ok = Result::ok();
+
+        addCurrentEventGroup();
+        
+        auto engine = createJavascriptEngine();
+
+        for(auto& map: eventListeners)
+        {
+            for(auto& v: map.second)
+            {
+                if(v.first == eventType)
+                {
+                    auto to = new DynamicObject();
+                    
+                    engine->callFunctionObject(to, v.second, var::NativeFunctionArgs(var(to), args.getRawDataPointer(), args.size()), &ok);
+                }
+
+                if(ok.failed())
+                    break;
+            }
+        }
+
+        if(ok.failed())
+        {
+            jassertfalse;
+        }
+    }
+    
     simple_css::StyleSheet::Collection getStyleSheet(const String& name, const String& additionalStyle) const;
 
-    std::unique_ptr<JavascriptEngine> createJavascriptEngine(const var& infoObject);
+    JavascriptEngine* createJavascriptEngine();
 
     String getAssetReferenceList(Asset::Type t) const;
 
-    String loadText(const String& assetVariable) const
+    String loadText(const String& assetVariable, bool forceReload) const
     {
 	    if(assetVariable.isEmpty() || assetVariable == "None")
             return {};
@@ -378,9 +450,12 @@ public:
 
         for(auto a: assets)
         {
-	        if(a->id == id && a->type == Asset::Type::Text)
+            if(!(a->type == Asset::Type::Text || a->type == Asset::Type::Stylesheet))
+                continue;
+
+	        if(a->id == id || a->filename.endsWith(assetVariable))
 	        {
-		        return a->toText();
+		        return a->toText(forceReload);
 	        }
         }
 
@@ -478,6 +553,7 @@ public:
         State& parent;
         double progress = 0.0;
         var localObj;
+
         bool callOnNextEnabled = false;
     };
 
@@ -536,8 +612,35 @@ public:
 	    fileOperations.add(fileOp);
     }
 
+    void bindCallback(const String& functionName, const var::NativeFunction& f)
+    {
+	    jsLambdas[functionName] = f;
+    }
+
+    bool callNativeFunction(const String& functionName, const var::NativeFunctionArgs& args, var* returnValue)
+    {
+	    if(jsLambdas.find(functionName) != jsLambdas.end())
+	    {
+            auto rv = jsLambdas[functionName](args);
+
+            if(returnValue != nullptr)
+                *returnValue = rv;
+
+            return true;
+	    }
+
+        return false;
+    }
+
+    String currentEventGroup;
+    
+    std::map<String, Array<std::pair<String, var>>> eventListeners;
+    
 private:
 
+    std::unique_ptr<JavascriptEngine> javascriptEngine;
+
+    std::map<String, var::NativeFunction> jsLambdas;
     Array<std::pair<File, bool>> fileOperations;
 
     OwnedArray<TemporaryFile> tempFiles;
@@ -613,42 +716,7 @@ struct UndoableVarAction: public UndoableAction
 
 class Dialog;    
 
-struct ApiObject: public DynamicObject
-{
-	ApiObject(State&state_):
-	  state(state_)
-	{}
 
-	void setMethodWithHelp(const Identifier& id, var::NativeFunction f, const String& helpText)
-	{
-		setMethod(id, f);
-		help[id] = helpText;
-	}
-
-	void expectArguments(const var::NativeFunctionArgs& args, int numArgs, const String& customErrorMessage={})
-	{
-		if(args.numArguments != numArgs)
-		{
-			if(customErrorMessage.isNotEmpty())
-				throw customErrorMessage;
-			else
-				throw "Argument amount mismatch: Expected " + String(numArgs);
-		}
-	}
-
-    String getHelp(Identifier methodName) const
-	{
-		return help.at(methodName);
-	}
-
-protected:
-
-	State& state;
-
-private:
-
-    std::map<Identifier, String> help;
-};
 
 struct HardcodedDialogWithState: public Component
 {

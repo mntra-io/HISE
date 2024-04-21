@@ -1,26 +1,6 @@
 // Put in the header definitions of every dialog here...
 
-namespace hise {
-namespace multipage {
-namespace library {
-using namespace juce;
-struct SnippetExporter: public HardcodedDialogWithState,
-                        public hise::QuasiModalComponent
-{
-    var createMarkdownFile(State::Job& t, const var& state);
-    SnippetExporter()
-    {
-        closeFunction = BIND_MEMBER_FUNCTION_0(SnippetExporter::destroy);
-        setSize(800, 600);
-
-    };
-    
-    Dialog* createDialog(State& state) override;
-    
-};
-} // namespace library
-} // namespace multipage
-} // namespace hise
+#include "hi_backend/backend/BackendApplicationCommands.h"
 
 
 
@@ -42,6 +22,40 @@ struct BroadcasterWizard: public HardcodedDialogWithState,
     Dialog* createDialog(State& state) override;
     
 };
+} // namespace library
+} // namespace multipage
+} // namespace hise
+
+namespace hise {
+namespace multipage {
+namespace library {
+using namespace juce;
+struct SnippetBrowser: public HardcodedDialogWithState
+{
+	SnippetBrowser(BackendRootWindow* brw):
+	  bpe(brw)
+	{
+		//closeFunction = BIND_MEMBER_FUNCTION_0(SnippetBrowser::destroy);
+		setSize(450, 1200);
+		state.bindCallback("loadSnippet", BIND_MEMBER_FUNCTION_1(SnippetBrowser::loadSnippet));
+		state.bindCallback("exportSnippet", BIND_MEMBER_FUNCTION_1(SnippetBrowser::exportSnippet));
+	}
+
+    var exportSnippet(const var::NativeFunctionArgs& args)
+	{
+		auto content = BackendCommandTarget::Actions::exportFileAsSnippet(bpe, false);
+        return var(content);
+	}
+
+	BackendRootWindow* bpe;
+
+	var loadSnippet(const var::NativeFunctionArgs& args);
+
+	Dialog* createDialog(State& state) override;
+	
+};
+
+
 } // namespace library
 } // namespace multipage
 } // namespace hise

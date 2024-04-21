@@ -1153,6 +1153,9 @@ public:
         if(sideDialog->dialog != nullptr && dialogState != nullptr &&
            sideDialog->state->globalState.getDynamicObject() == dialogState->globalState.getDynamicObject())
         {
+            delete newDialog;
+            delete dialogState;
+            
             sideDialog->set(nullptr, nullptr);
 	        return false;
         }
@@ -1172,6 +1175,7 @@ public:
 	    {
 		    if(currentFile.existsAsFile() && AlertWindow::showOkCancelBox(MessageBoxIconType::QuestionIcon, "Save changes", "Do you want to save the changes"))
 	        { 
+                c->getState().callEventListeners("save", {});
 		        currentFile.replaceWithText(JSON::toString(c->exportAsJSON()));
                 setSavePoint();
 	        }

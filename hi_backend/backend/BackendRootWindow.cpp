@@ -46,6 +46,7 @@ namespace hise { using namespace juce;
 		bpe->setCurrentlyActiveProcessor();
 	}
 
+#if 0
 	SnippetBrowser::SnippetBrowser(Component* parent):
 		HeaderContentFooter(false),
 		closeButton("Close"),
@@ -329,6 +330,7 @@ namespace hise { using namespace juce;
 
 		
 	}
+#endif
 
 	TextLayout BackendRootWindow::TooltipLookAndFeel::layoutTooltipText(const String& text, Colour colour) noexcept
 	{
@@ -648,6 +650,22 @@ BackendRootWindow::~BackendRootWindow()
 	}
 	else
 	{
+#if JUCE_MAC
+        for(auto w: allWindowsAndBrowsers)
+        {
+            auto brw = w.getComponent();
+            
+            if(brw != nullptr && brw != this &&
+               !brw->getBackendProcessor()->isSnippetBrowser())
+            {
+                MenuBarModel::setMacMainMenu(nullptr);
+                MenuBarModel::setMacMainMenu(brw);
+                brw->updateCommands();
+                break;
+            }
+        }
+#endif
+        
 		// I know what I'm doing...
 		saved = true;
 	}
@@ -678,7 +696,8 @@ BackendRootWindow::~BackendRootWindow()
 	// Remove the menu
 
 #if JUCE_MAC && IS_STANDALONE_APP
-	MenuBarModel::setMacMainMenu(nullptr);
+    if(!getBackendProcessor()->isSnippetBrowser())
+    	MenuBarModel::setMacMainMenu(nullptr);
 #else
 	menuBar->setModel(nullptr);
 	menuBar = nullptr;
@@ -902,7 +921,13 @@ void BackendRootWindow::resized()
 
 	if(snippetBrowser != nullptr && snippetBrowser->isVisible())
 	{
-		snippetBrowser->setBounds(b.removeFromLeft(400));
+        auto sb = b.removeFromLeft(400);
+        
+#if JUCE_MAC
+        sb.setTop(-20);
+#endif
+        
+		snippetBrowser->setBounds(sb);
 	}
 
 	if(suspendedOverlay != nullptr)
@@ -993,6 +1018,12 @@ void BackendRootWindow::loadNewContainer(ValueTree & v)
 	while (auto p = iter.getNextPanel())
 		p->setContentWithUndo(nullptr, 0);
 
+	Component::callRecursive<PatchBrowser>(this, [](PatchBrowser* b)
+	{
+		b->clearCollections();
+		return false;
+	});
+
 	mainEditor->loadNewContainer(v);
 
 	
@@ -1014,7 +1045,7 @@ void BackendRootWindow::newHisePresetLoaded()
 
 	switch(currentCategory)
 	{
-	case SnippetBrowser::Category::Scriptnode: 
+	case SnippetBrowserHelpers::Category::Scriptnode: 
 		p = ProcessorHelpers::getFirstProcessorWithType<JavascriptMasterEffect>(getMainSynthChain());
 		break;
 	default:
@@ -1033,7 +1064,7 @@ void BackendRootWindow::newHisePresetLoaded()
 		}, 500);
 	}
 
-	if(currentCategory == SnippetBrowser::Category::UI)
+	if(currentCategory == SnippetBrowserHelpers::Category::UI)
 		{
 		Component::callRecursive<MainTopBar>(this, [](MainTopBar* t)
 		{

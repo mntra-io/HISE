@@ -15,9 +15,13 @@
 namespace hise {
 namespace multipage {
 
+
+
+
 struct CSSDebugger: public Component,
                     public Timer,
-                    public PathFactory
+                    public PathFactory,
+				    public simple_css::CSSRootComponent
 {
     CSSDebugger(MainComponent& c):
       parent(c),
@@ -38,11 +42,23 @@ struct CSSDebugger: public Component,
         setSize(450, 800);
         setOpaque(true);
         startTimer(1000);
-        
+
+        css = DefaultCSSFactory::getTemplateCollection(DefaultCSSFactory::Template::PropertyEditor);
+        laf = new simple_css::StyleSheetLookAndFeel(*this);
+        hierarchy.setLookAndFeel(laf);
+        addAndMakeVisible(hierarchy);
         addAndMakeVisible(powerButton);
         powerButton.setToggleModeWithColourChange(true);
         powerButton.setToggleStateAndUpdateIcon(true);
-        
+        hierarchy.setTextWhenNothingSelected("Select parent component");
+        addAndMakeVisible(powerButton);
+
+        hierarchy.onChange = [&]()
+        {
+	        auto pd = parentData[hierarchy.getSelectedItemIndex()];
+            updateWithInspectorData(pd);
+        };
+
         powerButton.onClick = [this]()
         {
             if(powerButton.getToggleState())
@@ -80,7 +96,20 @@ struct CSSDebugger: public Component,
     {
         g.fillAll(Colour(0xFF222222));
     }
-    
+
+    simple_css::HeaderContentFooter::InspectorData createInspectorData(Component* c)
+    {
+	    auto b = root.getComponent()->getLocalArea(c, c->getLocalBounds()).toFloat();
+        auto data = simple_css::FlexboxComponent::Helpers::dump(*c);
+
+        simple_css::HeaderContentFooter::InspectorData id;
+        id.first = b;
+        id.second = data;
+        id.c = c;
+
+        return id;
+    }
+
     void timerCallback() override
     {
         root = parent.getMainState()->currentDialog;
@@ -89,22 +118,54 @@ struct CSSDebugger: public Component,
             return;
         
         auto* target = Desktop::getInstance().getMainMouseSource().getComponentUnderMouse();
-        
+
+        bool change = false;
+
         if(target != nullptr && target->findParentComponentOfClass<simple_css::CSSRootComponent>() == root.getComponent())
         {
             currentTarget = target;
+            change = true;
         }
         
-        if(currentTarget.getComponent() != nullptr)
+        if(currentTarget.getComponent() != nullptr && change)
         {
-            auto b = root.getComponent()->getLocalArea(currentTarget, currentTarget->getLocalBounds()).toFloat();
-            auto data = simple_css::FlexboxComponent::Helpers::dump(*currentTarget);
-            root->setCurrentInspectorData({b, data});
-            auto s = root->css.getDebugLogForComponent(currentTarget);
-            
-            if(doc.getAllContent() != s)
-                doc.replaceAllContent(s);
+            auto id = createInspectorData(currentTarget.getComponent());
+            auto tc = id.c.getComponent();
+
+            StringArray items;
+
+            parentData.clear();
+
+            while(tc != nullptr)
+            {
+                if(dynamic_cast<CSSRootComponent*>(tc) != nullptr)
+                    break;
+
+                parentData.add(createInspectorData(tc));
+	            tc = tc->getParentComponent();
+            }
+
+            hierarchy.clear(dontSendNotification);
+
+            int idx = 1;
+            for(const auto& pd: parentData)
+                hierarchy.addItem(pd.second, idx++);
+
+            hierarchy.setText("", dontSendNotification);
+
+            updateWithInspectorData(id);
         }
+    }
+
+    Array<simple_css::HeaderContentFooter::InspectorData> parentData;
+
+    void updateWithInspectorData(const simple_css::HeaderContentFooter::InspectorData& id)
+    {
+	    root->setCurrentInspectorData(id);
+        auto s = root->css.getDebugLogForComponent(id.c.getComponent());
+        
+        if(doc.getAllContent() != s)
+            doc.replaceAllContent(s);
     }
     
     Component::SafePointer<Component> currentTarget = nullptr;
@@ -113,15 +174,20 @@ struct CSSDebugger: public Component,
     {
         auto b = getLocalBounds();
         auto topArea = b.removeFromTop(24);
-        
+
         powerButton.setBounds(topArea.removeFromLeft(topArea.getHeight()).reduced(2));
+        hierarchy.setBounds(b.removeFromBottom(32));
         editor.setBounds(b);
     }
 
     juce::CodeDocument doc;
     mcl::TextDocument codeDoc;
     mcl::TextEditor editor;
-    
+
+    ComboBox hierarchy;
+
+    ScopedPointer<LookAndFeel> laf;
+
     Component::SafePointer<simple_css::HeaderContentFooter> root;
 };
 
@@ -336,6 +402,8 @@ void MainComponent::menuItemSelected(int menuItemID, int)
 		}
 	case FileSave:
 		{
+            c->getState().callEventListeners("save", {});
+            
 			if(currentFile.existsAsFile())
 				currentFile.replaceWithText(JSON::toString(c->exportAsJSON()));
 
@@ -350,6 +418,9 @@ void MainComponent::menuItemSelected(int menuItemID, int)
 			if(fc.browseForFileToSave(true))
 			{
 				currentFile = fc.getResult();
+                
+                c->getState().callEventListeners("save", {});
+                
 				currentFile.replaceWithText(JSON::toString(c->exportAsJSON()));
 				rt.currentRootDirectory = currentFile.getParentDirectory();
 				setSavePoint();
@@ -359,7 +430,7 @@ void MainComponent::menuItemSelected(int menuItemID, int)
 		}
 	case FileExportAsProjucerProject:
 	{
-		addAndMakeVisible(modalDialog = new ModalDialog(*this, new multipage::projucer_exporter(rt.currentRootDirectory, rt)));
+		addAndMakeVisible(modalDialog = new ModalDialog(*this, new multipage::library::ProjectExporter(rt.currentRootDirectory, rt)));
 		
 		break;
 	}
@@ -406,6 +477,7 @@ void MainComponent::menuItemSelected(int menuItemID, int)
 		doc.removeListener(this);
 		c->setVisible(false);
 		stateViewer.setVisible(true);
+        c->getState().callEventListeners("save", {});
 		doc.replaceAllContent(JSON::toString(c->exportAsJSON()));
 		doc.addListener(this);
 		break;
@@ -417,6 +489,7 @@ void MainComponent::menuItemSelected(int menuItemID, int)
 	case ViewShowCpp:
 		{
 #if HISE_MULTIPAGE_INCLUDE_EDIT
+            c->getState().callEventListeners("save", {});
 			multipage::CodeGenerator cg(rt.currentRootDirectory, "MyClass", c->exportAsJSON());
 			manualChange = false;
             cg.setUseRawMode(true),
