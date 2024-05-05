@@ -84,6 +84,7 @@ void Type::paint(Graphics& g)
 	g.drawText(m, b, Justification::centred);
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void Spacer::createEditor(Dialog::PageInfo& rootList)
 {
     rootList.addChild<Type>({
@@ -92,6 +93,7 @@ void Spacer::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "A simple spacer for convenient layouting." }
     });
 }
+#endif
 
 void Spacer::paint(Graphics& g)
 {
@@ -153,6 +155,7 @@ void HtmlElement::postInit()
     }
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void HtmlElement::createEditor(Dialog::PageInfo& rootList)
 {
 	rootList.addChild<Type>({
@@ -190,8 +193,7 @@ void HtmlElement::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "Additional inline properties that will be used by the UI element" }
 	});
 }
-
-
+#endif
 
 
 Image::Image(Dialog& r, int width, const var& d):
@@ -203,6 +205,7 @@ Image::Image(Dialog& r, int width, const var& d):
 	Helpers::setFallbackStyleSheet(img, "width:100%;height:100%;");
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void Image::createEditor(Dialog::PageInfo& rootList)
 {
 	rootList.addChild<Type>({
@@ -240,6 +243,7 @@ void Image::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "Additional inline properties that will be used by the UI element" }
 	});
 }
+#endif
 
 void Image::postInit()
 {
@@ -284,6 +288,7 @@ void SimpleText::postInit()
 	}
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void SimpleText::createEditor(Dialog::PageInfo& rootList)
 {
 	rootList.addChild<Type>({
@@ -323,6 +328,7 @@ void SimpleText::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "Additional inline properties that will be used by the UI element" }
 	});
 }
+#endif
 
 String MarkdownText::getString(const String& markdownText, Dialog& parent)
 {
@@ -480,24 +486,7 @@ void MarkdownText::resized()
 	display.resized();
 }
 
-#if 0
-void MarkdownText::paint(Graphics& g)
-{
-
-	if(isComment)
-	{
-		auto c = Colour(HISE_OK_COLOUR);
-		g.setColour(c.withAlpha(0.05f));
-		g.fillRoundedRectangle(getLocalBounds().toFloat(), 3.0f);
-		g.setColour(c.withAlpha(0.2f));
-		g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2.0f), 3.0f, 2.0f);
-	}
-
-	r.draw(g, getLocalBounds().toFloat().reduced(padding + isComment * 10));
-
-}
-	#endif
-
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void MarkdownText::createEditor(Dialog::PageInfo& rootList)
 {
     
@@ -538,7 +527,7 @@ void MarkdownText::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "Additional inline properties that will be used by the UI element" }
 	});
 }
-
+#endif
 
 
 Result MarkdownText::checkGlobalState(var)
@@ -546,6 +535,7 @@ Result MarkdownText::checkGlobalState(var)
 	return Result::ok();
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void DummyContent::createEditor(const var& infoObject, Dialog::PageInfo& rootList)
 {
 	rootList.addChild<Type>({
@@ -584,6 +574,7 @@ void DummyContent::createEditor(const var& infoObject, Dialog::PageInfo& rootLis
 		{ mpid::Help, "Additional inline properties that will be used by the UI element" }
 	});
 }
+#endif
 
 TagList::TagList(Dialog& parent, int w, const var& obj):
 	PageBase(parent, w, obj)
@@ -713,7 +704,7 @@ Table::Table(Dialog& parent, int w, const var& obj):
 
 
 	sf.addScrollBarToAnimate(table.getViewport()->getVerticalScrollBar());
-	table.getViewport()->setScrollBarThickness(14);
+	table.getViewport()->setScrollBarThickness(13);
 
 }
 
@@ -737,7 +728,6 @@ void Table::rebuildColumns()
 		int width = 100;
 		int minWidth = 30;
 		int maxWidth = -1;
-		int flags = 0;
 
 		enum class Properties
 		{
@@ -867,6 +857,52 @@ Component* Table::refreshComponentForCell(int rowNumber, int columnId, bool isRo
 	return nullptr;
 }
 
+String Table::itemsToString(const var& data)
+{
+	if(data.isString())
+		return data;
+        
+	if(auto items = data.getArray())
+	{
+		String s;
+		for(auto& rows: *items)
+		{
+			if(auto cells = rows.getArray())
+			{
+				for(auto& cell: *cells)
+					s << cell.toString() << " | ";
+                    
+				s << "\n";
+			}
+		}
+            
+		return s;
+	}
+        
+	return {};
+}
+
+Array<var> Table::stringToItems(const var& data)
+{
+	if(data.isArray())
+		return *data.getArray();
+        
+	Array<var> rows;
+        
+	for(auto& l: StringArray::fromLines(data.toString()))
+	{
+		Array<var> row;
+            
+		for(auto& c: StringArray::fromTokens(l, "|", "\"'"))
+		{
+			row.add(var(c.trim()));
+		}
+            
+		rows.add(var(row));
+	}
+        
+	return rows;
+}
 
 
 int Table::getNumRows()
@@ -933,6 +969,23 @@ void Table::rebuildRows()
 	}
 }
 
+void Table::postInit()
+{
+	if(auto ss = rootDialog.css.getForComponent(&table.getHeader()))
+	{
+		rootDialog.stateWatcher.checkChanges(&table.getHeader(), ss, 0);
+	}
+        
+	init();
+        
+	rebuildColumns();
+	items = stringToItems(infoObject[mpid::Items]);
+	rebuildRows();
+	table.updateContent();
+	table.setWantsKeyboardFocus(true);
+
+}
+
 void Table::paintRowBackground(Graphics& g, int rowNumber, int width, int height, bool rowIsSelected)
 {
 	using namespace simple_css;
@@ -985,6 +1038,83 @@ void Table::paint(Graphics& g)
 		r.drawBackground(g, table.getBoundsInParent().toFloat(), ss);
 	}
 }
+
+void Table::updateValue(EventType t, int row, int column)
+{
+	if(row == -1)
+	{
+		if(getFilterFunctionId().isValid())
+			originalSelectionIndex = visibleItems[row].first;
+		else
+			originalSelectionIndex = row;
+	}
+	else
+		originalSelectionIndex = -1;
+
+	enum class ValueMode
+	{
+		Row,
+		Grid,
+		FirstColumnText
+	};
+
+	static const StringArray ValueModes = 
+	{
+		"Row",
+		"Grid",
+		"FirstColumnText"
+	};
+
+	auto idx = infoObject[mpid::ValueMode].toString();
+	auto vm = ValueModes.indexOf(idx);
+
+	if(vm == -1)
+		return;
+
+	static const StringArray EventTypes =
+	{
+		"click",
+		"click",
+		"dblclick",
+		"select",
+		"keydown"
+	};
+        
+	auto etype = EventTypes[(int)t];
+
+	auto toValue = [&]()
+	{
+		DynamicObject::Ptr v = new DynamicObject();
+
+		v->setProperty("eventType", etype);
+		v->setProperty("row", row);
+		v->setProperty("originalRow", getFilterFunctionId().isValid() ? visibleItems[row].first : row);
+		v->setProperty("column", column);
+		return v;
+	};
+
+	if(t == EventType::DoubleClick || t == EventType::ReturnKey)
+	{
+		writeState(row);
+	}
+
+	callOnValueChange(etype, toValue());
+}
+
+void Table::TableRepainter::mouseMove(const MouseEvent& event)
+{
+	if(event.eventComponent != lastComponent)
+	{
+		if(lastComponent != nullptr)
+			lastComponent->repaint();
+
+		lastComponent = event.eventComponent;
+		table.repaint();
+
+		if(lastComponent != nullptr)
+			lastComponent->repaint();
+	}
+}
 } // factory
 
 
@@ -1033,6 +1163,7 @@ Factory::Factory()
 	registerPage<factory::PluginDirectories>();
 	registerPage<factory::PersistentSettings>();
 	registerPage<factory::CopyAsset>();
+    registerPage<factory::CopySiblingFile>();
 	registerPage<factory::OperatingSystem>();
 	registerPage<factory::EventLogger>();
 	registerPage<factory::FileLogger>();
@@ -1151,6 +1282,7 @@ bool Factory::needsIdAtCreation(const String& id) const
 	return false;
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 namespace Icons
 {
 
@@ -1493,6 +1625,9 @@ static const unsigned char HtmlElement[] = { 110,109,48,44,40,68,128,141,126,67,
 } // Icons
 
 #define LOAD_MULTIPAGE_PATH(Class) if(url == factory::Class::getStaticId().toString()) p.loadPathFromData(Icons::Class, sizeof(Icons::Class));
+#else
+#define LOAD_MULTIPAGE_PATH(Class);
+#endif
 
 Path Factory::createPath(const String& url) const
 {
@@ -1506,7 +1641,11 @@ Path Factory::createPath(const String& url) const
     LOAD_MULTIPAGE_PATH(List);
 	LOAD_MULTIPAGE_PATH(Spacer);
     LOAD_MULTIPAGE_PATH(MarkdownText);
+
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 	if(url == factory::SimpleText::getStaticId().toString()) p.loadPathFromData(Icons::MarkdownText, sizeof(Icons::MarkdownText));;
+#endif
+
     LOAD_MULTIPAGE_PATH(Button);
     LOAD_MULTIPAGE_PATH(TextInput);
     LOAD_MULTIPAGE_PATH(Skip);

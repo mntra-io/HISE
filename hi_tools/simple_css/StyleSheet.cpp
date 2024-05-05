@@ -115,11 +115,6 @@ void StyleSheet::copyPropertiesFrom(Ptr other, bool overwriteExisting, const Str
 
 		for(const auto& v: p.values)
 		{
-			if(p.name == "font-family")
-			{
-				int x = 5;
-			}
-
             if(p.name == "all")
             {
                 auto valueToUse = p.values[0].second;
@@ -325,6 +320,17 @@ StyleSheet::Ptr StyleSheet::Collection::operator[](const Selector& s) const
 	}
 
 	return all;
+}
+
+String StyleSheet::Collection::getDebugLogForComponent(Component* c) const
+{
+	for(auto& cm: cachedMaps)
+	{
+		if(cm.first.getComponent() == c)
+			return cm.debugLog;
+	}
+            
+	return {};
 }
 
 StyleSheet::Ptr StyleSheet::Collection::getForComponent(Component* c)
@@ -1505,13 +1511,6 @@ AffineTransform StyleSheet::getTransform(Rectangle<float> totalArea, PseudoState
 		TransformParser p1(keywords, tv.startValue);
 		TransformParser p2(keywords, tv.endValue);
 
-		auto lastEmpty = tv.endValue.isEmpty();
-
-		if(lastEmpty)
-		{
-			int x = 5;
-		}
-
 		auto l1 = p1.parse(totalArea);
 		auto l2 = p2.parse(totalArea);
 
@@ -1983,6 +1982,19 @@ FlexItem StyleSheet::getFlexItem(Component* c, Rectangle<float> fullArea) const
 		item.flexBasis = ExpressionParser::evaluate(pv.getValue(varProperties), {});
 	
 	return item;
+}
+
+String StyleSheet::getURLFromProperty(const PropertyKey& key) const
+{
+	auto n = getPropertyValueString(key);
+	if(n.startsWith("url"))
+	{
+		n = n.fromFirstOccurrenceOf("url(", false, false);
+		n = n.upToLastOccurrenceOf(")", false, false);
+		return n.unquoted();
+	}
+
+	return {};
 }
 
 Rectangle<float> StyleSheet::getLocalBoundsFromText(const String& text) const

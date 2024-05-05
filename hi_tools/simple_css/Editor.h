@@ -50,35 +50,9 @@ struct Editor: public Component,
 		TopLevelWindowWithKeyMappings::saveKeyPressMap();
 	}
 
-	void userTriedToCloseWindow() override
-	{
+	void userTriedToCloseWindow() override;
 
-		MessageManager::callAsync([this]()
-		{
-			delete this;
-		});
-	}
-	
-
-	static void showEditor(Component* t, const CompileCallback& f)
-	{
-		auto e = new Editor(t, f);
-		e->setVisible(true);
-
-		int flags = 0;
-
-		flags |= ComponentPeer::StyleFlags::windowAppearsOnTaskbar;
-		flags |= ComponentPeer::StyleFlags::windowHasCloseButton;
-		flags |= ComponentPeer::StyleFlags::windowHasDropShadow;
-		flags |= ComponentPeer::StyleFlags::windowHasMaximiseButton;
-		flags |= ComponentPeer::StyleFlags::windowHasTitleBar;
-		flags |= ComponentPeer::StyleFlags::windowIsResizable;
-
-		e->setName("Live CSS Editor");
-		e->addToDesktop(flags, nullptr);
-		e->centreWithSize(900, 600);
-
-	}
+	static void showEditor(Component* t, const CompileCallback& f);
 
 	File getKeyPressSettingFile() const override { return File::getSpecialLocation(File::SpecialLocationType::userDesktopDirectory).getChildFile("something.js"); }
 	bool keyPressed(const KeyPress& key) override;

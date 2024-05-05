@@ -122,11 +122,30 @@ bool ApiObject::callForEachInfoObject(const std::function<bool(const var& obj)>&
 	}
 	else
 	{
-		Component::callRecursive<Dialog::PageBase>(state.currentDialog, [&](Dialog::PageBase* pb)
+		return Component::callRecursive<Dialog::PageBase>(state.currentDialog, [&](Dialog::PageBase* pb)
 		{
 			return f(pb->getInfoObject());
 		});
 	}
+}
+
+void HtmlParser::HeaderInformation::appendStyle(DataType t, const String& text)
+{
+	code[(int)t] << text;
+}
+
+Result HtmlParser::HeaderInformation::flush(DataProvider* d, State& state)
+{
+	simple_css::Parser p(code[(int)DataType::StyleSheet]);
+	auto ok = p.parse();
+
+	if(!ok.wasOk())
+		return ok;
+
+	css = p.getCSSValues();
+	css.performAtRules(d);
+
+	return state.createJavascriptEngine()->execute(code[(int)DataType::ScriptCode]);
 }
 
 HtmlParser::HtmlParser()
@@ -340,6 +359,8 @@ Identifier HtmlParser::IDConverter::convert(const Identifier& id) const
 		if(i.multipageId == id)
 			return i.htmlId;
 	}
+
+	return {};
 }
 
 void HtmlParser::IDConverter::set(const Identifier& html, const Identifier& mp)

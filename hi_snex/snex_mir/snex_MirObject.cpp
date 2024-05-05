@@ -31,7 +31,6 @@
 */
 
 
-
 #include "src/mir.h"
 #include "src/mir-gen.h"
 
@@ -497,11 +496,6 @@ MirCompiler::~MirCompiler()
 {
 	
 }
-
-
-
-
-
 
 
 }

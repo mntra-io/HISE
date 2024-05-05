@@ -39,6 +39,7 @@ using namespace juce;
 template <typename T>
 void Action::createBasicEditor(T& t, Dialog::PageInfo& rootList, const String& helpText)
 {
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 	rootList.addChild<Type>({
 		{ mpid::ID, "Type"},
 		{ mpid::Type, T::getStaticId().toString() },
@@ -73,6 +74,7 @@ void Action::createBasicEditor(T& t, Dialog::PageInfo& rootList, const String& h
 		{ mpid::Help, "If enabled, the action will launched when you press the next button (otherwise it will be executed on page load." },
 		{ mpid::Value, callOnNext }
 	});
+#endif
 }
 
 Action::Action(Dialog& r, int w, const var& obj):
@@ -125,6 +127,8 @@ void Action::perform()
 
 	auto shouldPerform = getValueFromGlobalState(var(true));
 
+    setActive(shouldPerform);
+    
 	if(!shouldPerform)
 	{
 		rootDialog.logMessage(MessageType::ActionEvent, "Skip deactivated action: " + getDescription());
@@ -189,10 +193,12 @@ Skip::Skip(Dialog& r, int w, const var& obj):
 	ImmediateAction(r, w, obj)
 {}
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void Skip::createEditor(Dialog::PageInfo& rootList)
 {
 	createBasicEditor(*this, rootList, "An action element that simply skips the page that contains this element. This can be used in order to skip a page with a branch (eg. if one of the options doesn't require additional information.)");
 }
+#endif
 
 Result Skip::onAction()
 {
@@ -207,6 +213,7 @@ Result Skip::onAction()
 	return Result::ok();
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void JavascriptFunction::createEditor(Dialog::PageInfo& rootList)
 {
 	createBasicEditor(*this, rootList, "An action element that will perform a block of Javascript code. You can read / write data from the global state using the `state.variableName` syntax.");
@@ -218,7 +225,7 @@ void JavascriptFunction::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "The JS code that will be evaluated. This is not HiseScript but vanilla JS!  \n> If you want to log something to the console, use `Console.print(message);`." } 
 	});
 }
-
+#endif
 
 
 Result JavascriptFunction::onAction()
@@ -300,6 +307,7 @@ void AppDataFileWriter::paint(Graphics& g)
 	g.drawText(text2, getLocalBounds().toFloat().reduced(3), Justification::centredBottom);
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void AppDataFileWriter::createEditor(Dialog::PageInfo& rootList)
 {
 	createBasicEditor(*this, rootList, "Writes a string to a file from the app data folder.  \n> This takes the global property UseGlobalAppDataFolder into account so make sure that this aligns with your project settings!");
@@ -315,6 +323,7 @@ void AppDataFileWriter::createEditor(Dialog::PageInfo& rootList)
 	});
 	
 }
+#endif
 
 Result AppDataFileWriter::onAction()
 {
@@ -342,6 +351,7 @@ RelativeFileLoader::RelativeFileLoader(Dialog& r, int w, const var& obj):
 	ImmediateAction(r, w, obj)
 {}
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void RelativeFileLoader::createEditor(Dialog::PageInfo& rootList)
 {
 	createBasicEditor(*this, rootList, "Writes the absolute path of a relative file reference into the state object");
@@ -371,6 +381,7 @@ void RelativeFileLoader::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "An (optional) subpath that will be applied to the file path" }
 	});
 }
+#endif
 
 StringArray RelativeFileLoader::getSpecialLocations()
 {
@@ -440,6 +451,7 @@ Launch::Launch(Dialog& r, int w, const var& obj):
 	args = obj[mpid::Args].toString();
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void Launch::createEditor(Dialog::PageInfo& rootList)
 {
 	createBasicEditor(*this, rootList, "Shows either a file in the OS file browser or opens an internet browser to load a URL");
@@ -460,6 +472,7 @@ void Launch::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "Additional (command-line) arguments. If this is not empty, the string will be passed as argument" }
 	});
 }
+#endif
 
 Result Launch::onAction()
 {
@@ -594,7 +607,7 @@ BackgroundTask::BackgroundTask(Dialog& r, int w, const var& obj):
         
 	label = obj[mpid::Text].toString();
 
-	addTextElement({ ".label"}, label);
+	textLabel = addTextElement({ ".label"}, label);
 
         
 	addFlexItem(*progress);
@@ -618,38 +631,12 @@ void BackgroundTask::paint(Graphics& g)
 
 	if(job != nullptr)
 		job->updateProgressBar(progress);
-
-#if 0
-	if(label.isNotEmpty())
-	{
-		auto b = getArea(AreaType::Label);
-
-	    if(rootDialog.isEditModeEnabled())
-    		b.reduce(10, 0);
-
-	    auto df = Dialog::getDefaultFont(*this);
-
-	    if(!b.isEmpty())
-	    {
-			g.setFont(df.first);
-			g.setColour(df.second);
-	        g.drawText(label, b.toFloat(), Justification::left);
-	    }
-	}
-#endif
+	
 }
 
 void BackgroundTask::resized()
 {
 	Action::resized();
-#if 0
-	auto b = getArea(AreaType::Component);
-	
-	if(retryButton.isVisible())
-		retryButton.setBounds(b.removeFromRight(b.getHeight()).withSizeKeepingCentre(24, 24));
-	
-	progress->setBounds(b.reduced(0, 2));
-#endif
 }
 
 void BackgroundTask::postInit()
@@ -672,6 +659,7 @@ Result BackgroundTask::checkGlobalState(var globalState)
 	return Action::checkGlobalState(globalState);
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void BackgroundTask::addSourceTargetEditor(Dialog::PageInfo& rootList)
 {
 	rootList.addChild<TextInput>(
@@ -692,6 +680,7 @@ void BackgroundTask::addSourceTargetEditor(Dialog::PageInfo& rootList)
 			{ mpid::Value, infoObject[mpid::Target] }
 		});
 }
+#endif
 
 URL BackgroundTask::getSourceURL() const
 {
@@ -788,6 +777,7 @@ String LambdaTask::getDescription() const
 	return "Lambda Task";
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void LambdaTask::createEditor(Dialog::PageInfo& rootList)
 {
 	createBasicEditor(*this, rootList, "An action element that will perform a customizable task.)");
@@ -807,6 +797,7 @@ void LambdaTask::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "The full function class name (`Class::functionName`) that will be used as lambda" }
 	});
 }
+#endif
 
 HttpRequest::HttpRequest(Dialog& r, int w, const var& obj):
 	BackgroundTask(r, w, obj)
@@ -910,6 +901,7 @@ Result HttpRequest::performTask(State::Job& t)
 	}
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void HttpRequest::createEditor(Dialog::PageInfo& rootList)
 {
 	createBasicEditor(*this, rootList, "An action element that will perform a HTTP request.)");
@@ -975,7 +967,7 @@ void HttpRequest::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "The extra headers that are supplied with the HTTP request." }
 	});
 }
-
+#endif
 
 DownloadTask::DownloadTask(Dialog& r, int w, const var& obj):
 	BackgroundTask(r, w, obj)
@@ -1113,6 +1105,7 @@ Result DownloadTask::performTask(State::Job& t)
 	return Result::ok();
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void DownloadTask::createEditor(Dialog::PageInfo& rootList)
 {
 	BackgroundTask::createEditor(rootList);
@@ -1145,6 +1138,7 @@ void DownloadTask::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "Whether to use a POST or GET request for the download" }
 	});
 }
+#endif
 
 String DownloadTask::getDescription() const
 {
@@ -1246,6 +1240,26 @@ Result UnzipTask::performTask(State::Job& t)
 
 		auto thisFile = targetDirectory.getChildFile(zipFile->getEntry(i)->filename);
 
+#if JUCE_MAC
+        
+        auto p1 =thisFile.getParentDirectory();
+        auto p2 = p1.getParentDirectory();
+        
+        auto isBinary = p1.getFileName() == "MacOS" &&
+                        p2.getFileName() == "Contents";
+        
+        if(isBinary)
+        {
+            String permissionCommand = "chmod +x " + thisFile.getFullPathName().quoted();
+            system(permissionCommand.getCharPointer());
+            String message;
+
+            message << "  Setting execution permissions for  " << thisFile.getFullPathName();
+            rootDialog.logMessage(MessageType::FileOperation, message);
+        }
+        
+#endif
+        
 		rootDialog.getState().addFileToLog({thisFile, true});
 
 		if(rootDialog.getEventLogger().getNumListenersWithClass<EventConsole>() > 0)
@@ -1275,6 +1289,7 @@ Result UnzipTask::performTask(State::Job& t)
 	return Result::ok();
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void UnzipTask::createEditor(Dialog::PageInfo& rootList)
 {
 	BackgroundTask::createEditor(rootList);
@@ -1299,6 +1314,7 @@ void UnzipTask::createEditor(Dialog::PageInfo& rootList)
 	rootList.addChild<Button>(DefaultProperties::getForSetting(infoObject, mpid::SkipIfNoSource, 
 		"Whether to silently skip the extraction process or throw an error message if the source doesn't exist. Use this option if you conditionally download the archive before extracting."));
 }
+#endif
 
 Result CopyAsset::performTask(State::Job& t)
 {
@@ -1340,6 +1356,7 @@ Result CopyAsset::performTask(State::Job& t)
 	return Result::fail("Can't find asset");
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void CopyAsset::createEditor(Dialog::PageInfo& rootList)
 {
 	BackgroundTask::createEditor(rootList);
@@ -1363,6 +1380,83 @@ void CopyAsset::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "Whether the file should overwrite the existing file or not" }
 	});
 }
+#endif
+
+Result CopySiblingFile::performTask(State::Job& t)
+{
+    auto sourceFile = getSourceFile();
+    auto target = getTargetFile();
+    
+    if(!target.isDirectory())
+        return Result::fail("Target is not a directory");
+    
+    if(sourceFile.existsAsFile())
+    {
+        auto ok = sourceFile.copyFileTo(target.getChildFile(sourceFile.getFileName()));
+        
+        if(ok)
+            return Result::ok();
+        else
+            return Result::fail("Can't copy file to target");
+    }
+    else if(sourceFile.isDirectory())
+    {
+        auto list = sourceFile.findChildFiles(File::findFiles, true);
+        
+        target.getChildFile(sourceFile.getFileName()).createDirectory();
+        
+        for(auto sf: list)
+        {
+            auto p = sf.getRelativePathFrom(sourceFile.getParentDirectory());
+            auto tf = target.getChildFile(p);
+            tf.getParentDirectory().createDirectory();
+            auto ok = sf.copyFileTo(tf);
+            
+            if(!ok)
+            {
+                return Result::fail("Error at writing file " + tf.getFullPathName());
+            }
+        }
+    }
+    else
+    {
+        return Result::fail("Can't find source file " + sourceFile.getFullPathName());
+    }
+    
+    for(int i = 0; i < 30; i++)
+    {
+        t.getProgress() = (double)i / 30.0;
+        Thread::getCurrentThread()->sleep(30);
+    }
+    
+    return Result::ok();
+}
+
+#if HISE_MULTIPAGE_INCLUDE_EDIT
+void CopySiblingFile::createEditor(Dialog::PageInfo& rootList)
+{
+    BackgroundTask::createEditor(rootList);
+    createBasicEditor(*this, rootList, "An action element that will copy an embedded file to a given location.)");
+
+    auto& col = rootList;
+
+    col.addChild<TextInput>({
+        { mpid::ID, "Text" },
+        { mpid::Text, "Text" },
+        { mpid::Help, "The label text that will be shown next to the progress bar." }
+    });
+        
+    addSourceTargetEditor(rootList);
+
+    rootList.addChild<Button>({
+        { mpid::ID, "Overwrite" },
+        { mpid::Text, "Overwrite" },
+        { mpid::Required, false },
+        { mpid::Value, overwrite },
+        { mpid::Help, "Whether the file should overwrite the existing file or not" }
+    });
+}
+#endif
 
 HlacDecoder::HlacDecoder(Dialog& r_, int w, const var& obj):
   BackgroundTask(r_, w, obj),
@@ -1427,6 +1521,7 @@ void HlacDecoder::logVerboseMessage(const String& verboseMessage)
 	rootDialog.logMessage(MessageType::Hlac, verboseMessage);
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void HlacDecoder::createEditor(Dialog::PageInfo& rootList)
 {
 	createBasicEditor(*this, rootList, "An action element that will extract a HR1 archive to the specified target directory.");
@@ -1455,6 +1550,7 @@ void HlacDecoder::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "Whether to support the HLAC Full Dynamics mode." }
 	});
 }
+#endif
 
 String HlacDecoder::getDescription() const
 { return "HLAC Decoder"; }
@@ -1478,6 +1574,7 @@ DummyWait::DummyWait(Dialog& r, int w, const var& obj):
 		failIndex = numTodo + 2;
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void DummyWait::createEditor(Dialog::PageInfo& rootList)
 {
 	createBasicEditor(*this, rootList, "An action element that simulates a background task with a progress bar. You can use that during development to simulate the UX before implementing the actual logic.)");
@@ -1508,6 +1605,7 @@ void DummyWait::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "The duration in milliseconds between each iteration. This makes the duration of the entire task `WaitTime * NumTodo`" }
 	});
 }
+#endif
 
 String DummyWait::getDescription() const
 {
@@ -1585,11 +1683,16 @@ void CopyProtection::loadConstants()
 void PluginDirectories::loadConstants()
 {
 #if JUCE_MAC
-	auto auDir = File("~/Library/Audio/Components");
-	auto vstDir = File("~/Library/Audio/VST");
-	auto vst3Dir = File("~/Library/Audio/VST3");
+	auto auDir = File("~/Library/Audio/Plug-Ins/Components");
+	auto vstDir = File("~/Library/Audio/Plug-Ins/VST");
+	auto vst3Dir = File("~/Library/Audio/Plug-Ins/VST3");
 	auto aaxDir = File("/Library/Application Support/Avid/Audio/Plug-Ins");
 
+    vstDir.createDirectory();
+    auDir.createDirectory();
+    vst3Dir.createDirectory();
+    aaxDir.createDirectory();
+    
 	setConstant("auDirectory", auDir.getFullPathName());
 	setConstant("vstDirectory", vstDir.getFullPathName());
 	setConstant("vst3Directory", vst3Dir.getFullPathName());
@@ -1644,6 +1747,7 @@ void OperatingSystem::loadConstants()
 #endif
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void FileLogger::createEditor(Dialog::PageInfo& rootList)
 {
 	rootList.addChild<Type>({
@@ -1659,12 +1763,24 @@ void FileLogger::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "The target name. This can be a combination of a state variable and a child path, eg. `$targetDirectory/Logfile.txt`" }
 	});
 }
+#endif
+
+void FileLogger::loadConstants()
+{
+	auto fileName = MarkdownText::getString(infoObject[mpid::Filename].toString(), rootDialog);
+
+	if(File::isAbsolutePath(fileName))
+	{
+		rootDialog.getState().setLogFile(File(fileName));
+	}
+}
 
 DirectoryScanner::DirectoryScanner(Dialog& r, int w, const var& obj):
 	Constants(r, w, obj)
 {
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void DirectoryScanner::createEditor(Dialog::PageInfo& rootList)
 {
 	rootList.addChild<Type>({
@@ -1688,6 +1804,7 @@ void DirectoryScanner::createEditor(Dialog::PageInfo& rootList)
 	rootList.addChild<Button>(DefaultProperties::getForSetting(infoObject, mpid::Directory, 
 		"Whether to look for child files or child directories"));
 }
+#endif
 
 void DirectoryScanner::loadConstants()
 {
@@ -1778,6 +1895,7 @@ File PersistentSettings::getSettingFile() const
 	return projectFolder.getChildFile(settingName).withFileExtension(shouldUseJson() ? ".json" : ".xml");
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void PersistentSettings::createEditor(Dialog::PageInfo& rootList)
 {
 	// mpid::Filename, mpid::ParseJSON, mpid::UseChildState, mpid::ID, mpid::Items, 
@@ -1808,6 +1926,7 @@ void PersistentSettings::createEditor(Dialog::PageInfo& rootList)
 
 	items[mpid::Multiline] = true;
 }
+#endif
 
 void PersistentSettings::loadConstants()
 {
