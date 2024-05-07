@@ -1620,10 +1620,7 @@ namespace ScriptingObjects
 		void loadPytorchModel(const var& modelJSON);
 
 		/** Returns the model JSON. */
-		var getModelJSON()
-		{
-			return nn->getModelJSON();
-		}
+		var getModelJSON();
 
 		// ================================================================================ API Methods
 
@@ -1647,7 +1644,9 @@ namespace ScriptingObjects
 
 		struct Wrapper;
 
+#if HISE_INCLUDE_RT_NEURAL
 		NeuralNetwork::Ptr nn;
+#endif
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(ScriptNeuralNetwork);
 	};
