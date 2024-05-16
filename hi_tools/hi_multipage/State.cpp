@@ -132,6 +132,41 @@ DebugInformationBase::Ptr State::StateProvider::createRecursive(const String& na
 }
 #endif
 
+String Asset::getTypeString(Type t)
+{
+	switch(t)
+	{
+	case Type::Image: return "Image";
+	case Type::File: return "File";
+	case Type::Font: return "Font";
+	case Type::Text: return "Text";
+	case Type::Stylesheet: return "CSS";
+	case Type::Archive: return "Archive";
+	case Type::numTypes: break;
+	default: ;
+	}
+
+	return {};
+}
+
+Asset::Type Asset::getType(const File& f)
+{
+	auto extension = f.getFileExtension();
+
+	if(auto format = ImageFileFormat::findImageFormatForFileExtension(f))
+		return Type::Image;
+	else if(extension == ".txt" || extension == ".md" || extension == ".js" || extension == ".html")
+		return Type::Text;
+	else if(extension == ".ttf" || extension == ".otf")
+		return Type::Font;
+	else if(extension == ".css")
+		return Type::Stylesheet;
+	else if(extension == ".zip")
+		return Type::Archive;
+	else
+		return Type::File;
+}
+
 String Asset::toText(bool reload)
 {
 	if(type == Type::Text || type == Type::Stylesheet)
@@ -147,7 +182,7 @@ String Asset::toText(bool reload)
 		return {};
 }
 
-void Asset::writeCppLiteral(OutputStream& c, const String& newLine, ReferenceCountedObject* job_) const
+void Asset::writeCppLiteral(OutputStream& c, const String& nl, ReferenceCountedObject* job_) const
 {
 	auto& job = *static_cast<State::Job*>(job_);
 
@@ -166,18 +201,18 @@ void Asset::writeCppLiteral(OutputStream& c, const String& newLine, ReferenceCou
 
 		job.setMessage("Embedding " + id);
 
-		numBytes = compressed.getSize();
+		numBytes = static_cast<int>(compressed.getSize());
 	}
 	else
 	{
-		c << newLine << "// do not include for current OS...";
+		c << nl << "// do not include for current OS...";
 
 		char x1[1] = { 0 };
 		compressed.append(x1, 1);
 		numBytes = 1;
 	}
 	
-	c << newLine << "static const unsigned char " << id << "[" << String(numBytes) << "] = { ";
+	c << nl << "static const unsigned char " << id << "[" << String(numBytes) << "] = { ";
 	
 	auto bytePtr = static_cast<const uint8*>(compressed.getData());
 
@@ -191,16 +226,37 @@ void Asset::writeCppLiteral(OutputStream& c, const String& newLine, ReferenceCou
 		if ((i % 40) == 39)
 		{
 			job.getProgress() = 0.5 + 0.5 * ((double)i / (double)numBytes);
-			c << newLine;
+			c << nl;
 		}
 	}
 
 	c << " };";
 
-	c << newLine << "static constexpr char " << id << "_Filename[" << String(filename.length()+1) << "] = ";
+	c << nl << "static constexpr char " << id << "_Filename[" << String(filename.length()+1) << "] = ";
 	c << filename.replaceCharacter('\\', '/').quoted() << ";";
 
-	c << newLine << "static constexpr Asset::Type " << id << "_Type = Asset::Type::" << getTypeString(type) << ";";
+	c << nl << "static constexpr Asset::Type " << id << "_Type = Asset::Type::" << getTypeString(type) << ";";
+}
+
+var Asset::toJSON(bool embedData, const File& currentRoot) const
+{
+	auto v = new DynamicObject();
+
+	v->setProperty(mpid::Type, (int)type);
+	v->setProperty(mpid::ID, id);
+	v->setProperty(mpid::RelativePath, useRelativePath);
+	v->setProperty(mpid::OperatingSystem, (int)os);
+
+	if(embedData)
+	{
+		MemoryBlock compressed;
+		zstd::ZDefaultCompressor comp;
+		comp.compress(data, compressed);
+		v->setProperty(mpid::Data, var(compressed));
+	}
+	else
+		v->setProperty(mpid::Filename, getFilePath(currentRoot));
+	return var(v);
 }
 
 String Asset::getFilePath(const File& currentRoot) const
@@ -249,6 +305,63 @@ bool Asset::writeToFile(const File& targetFile, ReferenceCountedObject* job_) co
 	return ok;
 }
 
+String Asset::getOSName(TargetOS os)
+{
+	switch(os)
+	{
+	case TargetOS::All: return "All";
+	case TargetOS::Windows: return "Win";
+	case TargetOS::macOS: return "Mac";
+	case TargetOS::Linux: return "Linux";
+	case TargetOS::numTargetOS:;
+	default: return "All";
+	}
+}
+
+Asset::Ptr Asset::fromVar(const var& obj, const File& currentRoot)
+{
+	auto t = (Type)(int)obj[mpid::Type];
+	auto id = obj[mpid::ID].toString();
+
+	if(obj.hasProperty(mpid::Filename))
+	{
+		auto filePath = obj[mpid::Filename].toString();
+
+		File f;
+
+		if(obj[mpid::RelativePath])
+		{
+			f = currentRoot.getChildFile(filePath);
+		}
+		else
+			f = File(filePath);
+
+		auto a = fromFile(f);
+		jassert(a->type == t);
+		a->id = id;
+		a->useRelativePath = obj[mpid::RelativePath];
+		a->os = (TargetOS)(int)obj[mpid::OperatingSystem];
+		return a;
+	}
+	else
+	{
+		return fromMemory(std::move(*obj[mpid::Data].getBinaryData()), t, obj[mpid::Filename].toString(), id);
+	}
+}
+
+void Asset::loadFromFile()
+{
+	MemoryOutputStream mos;
+	File f(filename);
+	FileInputStream fis(f);
+        
+	if(fis.openedOk())
+	{
+		mos.writeFromInputStream(fis, fis.getTotalLength());
+		data = mos.getMemoryBlock();
+	}
+}
+
 State::State(const var& obj, const File& currentRootDirectory_):
 	Thread("Tasks"),
 	currentRootDirectory(currentRootDirectory_),
@@ -271,8 +384,6 @@ State::~State()
 
 void State::run()
 {
-	navigateOnFinish = false;
-
 	for(int i = 0; i < jobs.size(); i++)
 	{
 		currentJob = jobs[i];
@@ -286,7 +397,6 @@ void State::run()
 			navigateOnFinish = false;
 			break;
 		}
-			
             
 		totalProgress = (double)i / (double)jobs.size();
 	}
@@ -324,6 +434,89 @@ void State::reset(const var& obj)
 ApiProviderBase* State::getProviderBase()
 {
 	return stateProvider.get();
+}
+
+Font State::loadFont(String fontName) const
+{
+	jassert(fontName != "default");
+
+	if(fontName.startsWith("${"))
+	{
+		auto id = fontName.substring(2, fontName.length() - 1);
+
+		for(auto a: assets)
+		{
+			if(a->id == id)
+			{
+				return a->toFont();
+			}
+		}
+	}
+
+
+	return Font(fontName, 13.0f, Font::plain);
+}
+
+void State::addEventListener(const String& eventType, const var& functionObject)
+{
+	addCurrentEventGroup();
+        
+	eventListeners[currentEventGroup].addIfNotAlreadyThere({eventType, functionObject});
+}
+
+void State::removeEventListener(const String& eventType, const var& functionObject)
+{
+	addCurrentEventGroup();
+
+	for(auto& map: eventListeners)
+	{
+		map.second.removeAllInstancesOf({eventType, functionObject});
+	}
+}
+
+void State::addCurrentEventGroup()
+{
+	if(eventListeners.find(currentEventGroup) == eventListeners.end())
+	{
+		eventListeners[currentEventGroup] = {};
+	}
+}
+
+void State::clearAndSetGroup(const String& groupId)
+{
+	currentEventGroup = groupId;
+	addCurrentEventGroup();
+	eventListeners[currentEventGroup] = {};
+}
+
+void State::callEventListeners(const String& eventType, const Array<var>& args)
+{
+	auto ok = Result::ok();
+
+	addCurrentEventGroup();
+        
+	auto engine = createJavascriptEngine();
+
+	for(auto& map: eventListeners)
+	{
+		for(auto& v: map.second)
+		{
+			if(v.first == eventType)
+			{
+				auto to = new DynamicObject();
+                    
+				engine->callFunctionObject(to, v.second, var::NativeFunctionArgs(var(to), args.getRawDataPointer(), args.size()), &ok);
+			}
+
+			if(ok.failed())
+				break;
+		}
+	}
+
+	if(ok.failed())
+	{
+		jassertfalse;
+	}
 }
 
 
@@ -382,31 +575,78 @@ String State::getAssetReferenceList(Asset::Type t) const
 	return s;
 }
 
+String State::loadText(const String& assetVariable, bool forceReload) const
+{
+	if(assetVariable.isEmpty() || assetVariable == "None")
+		return {};
+
+	auto id = assetVariable.substring(2, assetVariable.length() - 1);
+
+	for(auto a: assets)
+	{
+		if(!(a->type == Asset::Type::Text || a->type == Asset::Type::Stylesheet))
+			continue;
+
+		if(a->id == id || a->filename.endsWith(assetVariable))
+		{
+			return a->toText(forceReload);
+		}
+	}
+
+	return assetVariable;
+}
+
+Image State::loadImage(const String& assetVariable) const
+{
+	if(assetVariable.isEmpty() || assetVariable == "None")
+		return {};
+
+	auto id = assetVariable.substring(2, assetVariable.length() - 1);
+
+	for(auto a: assets)
+	{
+		if(a->id == id)
+		{
+			return a->toImage();
+		}
+	}
+
+	return Image();
+}
+
+void State::setLogFile(const File& newLogFile)
+{
+	if(logFile != File())
+		return;
+
+	logFile = newLogFile;
+
+	eventLogger.sendMessage(sendNotificationSync, MessageType::Navigation, "Added file logger " + logFile.getFullPathName());
+
+	if(logFile != File())
+	{
+		logFile.replaceWithText("Logfile " + Time::getCurrentTime().toISO8601(true) + "\n\n");
+        
+		this->eventLogger.addListener(*this, [](State& s, MessageType t, const String& message)
+		{
+			FileOutputStream fos(s.logFile);
+
+			if(fos.openedOk())
+			{
+				fos << message << "\n";
+				fos.flush();
+			}
+		});
+	}
+}
+
 State::Job::Job(State& rt, const var& obj):
 	parent(rt),
-	localObj(obj),
-	callOnNextEnabled(obj[mpid::CallOnNext])
-{
-	
-}
+	localObj(obj)
+{}
 
 State::Job::~Job()
 {}
-
-void State::Job::postInit()
-{
-	if(!callOnNextEnabled)
-		parent.addJob(this);
-}
-
-void State::Job::callOnNext()
-{
-	if(callOnNextEnabled)
-	{
-		parent.addJob(this);
-		throw CallOnNextAction();
-	}
-}
 
 bool State::Job::matches(const var& obj) const
 {
@@ -462,30 +702,27 @@ void State::onFinish()
 		currentDialog->nextButton.setEnabled(currentDialog->currentErrorElement == nullptr);
 		currentDialog->prevButton.setEnabled(true);
 
+		auto p = currentDialog->currentPage.get();
+		
 		if(navigateOnFinish)
 		{
 			currentDialog->navigate(true);
+			navigateOnFinish = false;
 		}
 	}
 }
 
 Result State::Job::runJob()
 {
-	parent.navigateOnFinish |= callOnNextEnabled;
-
-
 	try
 	{
 		auto ok = run();
             
-		if(auto p = parent.currentDialog)
+		if(auto p = parent.currentDialog.get())
 		{
-			MessageManager::callAsync([p, ok]()
-			{
-				p->repaint();
-				//p->errorComponent.setError(ok);
-			});
+			SafeAsyncCall::repaint(p);
 		}
+
 		return ok;
 	}
 	catch(Result& r)
@@ -496,9 +733,7 @@ Result State::Job::runJob()
 
 			MessageManager::callAsync([p]()
 			{
-				
 				p->repaint();
-				//p->errorComponent.setError(ok);
 			});
 		}
 
@@ -519,13 +754,37 @@ void State::addJob(Job::Ptr b, bool addFirst)
 		{
 			currentDialog->setCurrentErrorPage(nullptr);
 			currentDialog->repaint();
-			//currentDialog->errorComponent.setError(Result::ok());
 			currentDialog->nextButton.setEnabled(false);
 			currentDialog->prevButton.setEnabled(false);
 		}
             
 		startThread(6);
 	}
+}
+
+void State::addFileToLog(const std::pair<File, bool>& fileOp)
+{
+	fileOperations.add(fileOp);
+}
+
+void State::bindCallback(const String& functionName, const var::NativeFunction& f)
+{
+	jsLambdas[functionName] = f;
+}
+
+bool State::callNativeFunction(const String& functionName, const var::NativeFunctionArgs& args, var* returnValue)
+{
+	if(jsLambdas.find(functionName) != jsLambdas.end())
+	{
+		auto rv = jsLambdas[functionName](args);
+
+		if(returnValue != nullptr)
+			*returnValue = rv;
+
+		return true;
+	}
+
+	return false;
 }
 
 var CallableAction::operator()(const var::NativeFunctionArgs& args)

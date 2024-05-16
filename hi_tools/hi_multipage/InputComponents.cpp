@@ -38,6 +38,7 @@ namespace multipage {
 namespace factory {
 using namespace juce;
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void addOnValueCodeEditor(const var& infoObject, Dialog::PageInfo& rootList)
 {
     rootList.addChild<Button>({
@@ -144,11 +145,7 @@ template <typename T> void addBasicComponents(T& obj, Dialog::PageInfo& rootList
 		{ mpid::Help, "Whether to attach a label to the UI element and wrap it into a div.  \n> If this is disabled, the style / class will be applied directly to the UI element, otherwise it will be applied to the wrapper div" }
 	});
 }
-
-void tut(Component& c, const String& styleCode)
-{
-	
-}
+#endif
 
 LabelledComponent::LabelledComponent(Dialog& r, int width, const var& obj, Component* c):
 	PageBase(r, width, obj),
@@ -239,52 +236,14 @@ void LabelledComponent::postInit()
     repaint();
 }
 
-    #if 0
-void LabelledComponent::paint(Graphics& g)
-{
-
-    auto b = getArea(AreaType::Label);
-
-    if(rootDialog.isEditModeEnabled())
-    	b.reduce(10, 0);
-
-    auto df = Dialog::getDefaultFont(*this);
-
-    if(!b.isEmpty())
-    {
-		g.setFont(df.first);
-		g.setColour(df.second.withAlpha(enabled ? 1.0f : 0.6f));
-        g.drawText(label, b.toFloat(), Justification::left);
-    }
-
-}
-    #endif
+    
 
 void LabelledComponent::resized()
 {
     FlexboxComponent::resized();
-
-#if 0
-    PageBase::resized();
-    
-	auto b = getArea(AreaType::Component);
-
-	if(helpButton != nullptr)
-	{
-		helpButton->setBounds(b.removeFromRight(24).withSizeKeepingCentre(24, 24));
-		b.removeFromRight(10);
-	}
-
-    component->setBounds(b);
-#endif
 }
 
-
-
-
-
-
-
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void Button::createEditor(Dialog::PageInfo& rootList)
 {
     addBasicComponents<Button>(*this, rootList, "A Button lets you enable / disable a boolean option or can be grouped together with other tickboxes to create a radio group with an exclusive selection option");
@@ -320,6 +279,7 @@ void Button::createEditor(Dialog::PageInfo& rootList)
 
     addOnValueCodeEditor(infoObject, rootList);
 }
+#endif
 
 
 Button::Button(Dialog& r, int width, const var& obj):
@@ -327,8 +287,10 @@ Button::Button(Dialog& r, int width, const var& obj):
 	LabelledComponent(r, width, obj, createButton(obj))
 {
     getComponent<Component>().setWantsKeyboardFocus(false);
-    
-	Helpers::writeClassSelectors(getComponent<juce::Button>(), { ".toggle-button" }, true);
+
+    auto isText = infoObject[mpid::ButtonType].toString() == "Text";
+
+    Helpers::writeClassSelectors(getComponent<juce::Button>(), { (isText ? ".text-button" : ".toggle-button") }, true);
     
 	loadFromInfoObject(obj);
 }
@@ -395,6 +357,26 @@ Result Button::loadFromInfoObject(const var& obj)
 		requiredOption = true;
 
     return ok;
+}
+
+Path Button::IconFactory::createPath(const String& url) const
+{
+	Path p;
+
+	auto b64 = obj[mpid::Icon].toString();
+
+	if(d != nullptr)
+		b64 = d->getState().loadText(b64, false);
+
+	MemoryBlock mb;
+	mb.fromBase64Encoding(b64);
+
+	if(mb.getSize() == 0)
+		mb.fromBase64Encoding("844.t01G.z.QfCheCwV..d.QfCheCwV..d.QbVhXCIV..d.QL0zSCAyTKPDV..zPCk.DDgE..MDajeuEDgE..MDajeuEDQIvVMDae.PCDQIvVMDae.PCDANH9MzXs4S7aPDk.a0Pr4S7aPDV..zProYojPDV..zProYojPDk.a0Pr4S7aPDk.a0Pi0F8dlBQTBrUCwF8dlBQXA.PCwFTSICQXA.PCwFTSICQTBrUCwF8dlBQTBrUCMVa3xzMDQIvVMDa3xzMDgE..MDa8ZOODgE..MjXQyZPDgE..MT..VDQL0zSCE.fEQDmkH1PrE.fEQD3f32PrI9++PD3f32PrI9++PDk.a0PrgKS2PDk.a0Pi0l3++CQjLPhCwV..VDQjLPhCwV..VDQbullCwl3++CQbullCwl3++CQjLPhCMVah++ODQvWjNDaA.XQDQvWjNDaA.XQDQsw0NDah++ODQsw0NDah++ODQvWjNzXsI9++PD+496PrE.fEQD+496PrE.fEQDhsq7PhE.fEQjHZQ8PQyZPDA8+aOTu1yCQP++1CwFtLcCQP++1CwFtLcCQN+IzCwl3++CQN+IzCwl3++CQ7m6uCMVaPMkLD47mPODaPMkLDA8+aODaz6YJDA8+aODaz6YJD47mPODaPMkLD47mPOzXsoYojPjyeB8ProYojPDz+u8Pr4S7aPDz+u8Pr4S7aPjyeB8ProYojPjyeB8Pi0F42aAQN+IzCwF42aAQP++1Cw1PI.AQP++1CIFLSs.QP++1CE.fGPjHZQ8PA.3ADgX6JODaA.3ADwet+NDae.PCDwet+NDae.PCD47mPODajeuED47mPOzXs8A.MPD0FW6PrE.fGPD0FW6PrE.fGPDAeQ5Pr8A.MPDAeQ5Pr8A.MPD0FW6Pi01G.z.QbullCwV..d.QbullCwV..d.QjLPhCw1G.z.QjLPhCw1G.z.QbullCMVa3QyHDAI.dNDaJpeFDwEiKNDaKXTGD4S8DNDa4+mIDoQZWNDa2m6KD4S8DNDa3UvLDwEiKNDaHtbJDAI.dNDa3UvLDAEcvNDa2m6KDg7B2NDa4+mIDItkjNDaKXTGDg7B2NDaJpeFDAEcvNDa3QyHDAI.dNzXkA");
+	else
+		p.loadPathFromData(mb.getData(), mb.getSize());
+            
+	return p;
 }
 
 String Button::getStringForButtonType() const
@@ -609,6 +591,7 @@ Result Choice::checkGlobalState(var globalState)
 	return Result::ok();
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void Choice::createEditor(Dialog::PageInfo& rootList)
 {
     addBasicComponents<Choice>(*this, rootList, "A Choice can be used to select multiple fixed options with a drop down menu");
@@ -645,6 +628,203 @@ void Choice::createEditor(Dialog::PageInfo& rootList)
     });
 
     addOnValueCodeEditor(infoObject, rootList);
+}
+
+
+void CodeEditor::AllEditor::addRecursive(mcl::TokenCollection::List& tokens, const String& parentId, const var& obj)
+{
+	auto thisId = parentId;
+
+	if(obj.isMethod())
+		thisId << "(args)";
+
+	auto isState = thisId.startsWith("state");
+	auto isElement = thisId.startsWith("element");
+
+	auto prio = 100;
+
+	if(isState)
+		prio += 10;
+
+	if(isElement)
+		prio += 20;
+
+	auto stateToken = new mcl::TokenCollection::Token(thisId);
+	stateToken->c = isState ? Colour(0xFFBE6093) : isElement ? Colour(0xFF22BE84) : Colour(0xFF88BE14);
+
+	if(isState)
+		stateToken->markdownDescription << "Global state variable  \n> ";
+
+	stateToken->markdownDescription << "Value: `" << obj.toString() << "`";
+
+	auto apiObject = dynamic_cast<ApiObject*>(obj.getDynamicObject());
+
+	stateToken->priority = prio;
+	tokens.add(stateToken);
+
+	if(auto no = obj.getDynamicObject())
+	{
+		for(auto& nv: no->getProperties())
+		{
+			String p = parentId;
+			p << "." << nv.name;
+			addRecursive(tokens, p, nv.value);
+
+			if(apiObject != nullptr)
+				tokens.getLast()->markdownDescription = apiObject->getHelp(nv.name);
+		}
+	}
+	if(auto ar = obj.getArray())
+	{
+		int idx = 0;
+
+		for(auto& nv: *ar)
+		{
+			String p = parentId;
+			p << "[" << String(idx++) << "]";
+			addRecursive(tokens, p, nv);
+		}
+	}
+}
+
+void CodeEditor::AllEditor::TokenProvider::addTokens(mcl::TokenCollection::List& tokens)
+{
+	if(p == nullptr)
+		return;
+
+	auto infoObject = p->findParentComponentOfClass<Dialog>()->getState().globalState;
+
+	DBG(JSON::toString(infoObject));
+
+	if(auto ms = p->findParentComponentOfClass<ComponentWithSideTab>())
+	{
+		auto* state = ms->getMainState();
+
+		if(engine == nullptr)
+			engine = state->createJavascriptEngine();
+
+		for(auto& nv: engine->getRootObjectProperties())
+		{
+			addRecursive(tokens, nv.name.toString(), nv.value);
+		}
+	}
+}
+#endif
+
+CodeEditor::AllEditor::AllEditor(const String& syntax):
+	codeDoc(doc),
+	editor(new mcl::TextEditor(codeDoc))
+{
+	if(syntax == "CSS")
+	{
+		editor->tokenCollection = new mcl::TokenCollection("CSS");
+		editor->tokenCollection->setUseBackgroundThread(false);
+		editor->setLanguageManager(new simple_css::LanguageManager(codeDoc));
+	}
+	else if(syntax == "HTML")
+	{
+		editor->setLanguageManager(new mcl::XmlLanguageManager());
+	}
+	else
+	{
+		editor->tokenCollection = new mcl::TokenCollection("Javascript");
+		editor->tokenCollection->setUseBackgroundThread(false);
+		editor->tokenCollection->addTokenProvider(new TokenProvider(this));
+	}
+            
+	addAndMakeVisible(editor);
+}
+
+CodeEditor::CodeEditor(Dialog& r, int w, const var& obj):
+	LabelledComponent(r, w, obj, new AllEditor(obj[mpid::Syntax].toString()))
+{
+	Helpers::writeInlineStyle(getComponent<AllEditor>(), "height: 360px;");
+	setSize(w, 360);
+}
+
+void CodeEditor::postInit()
+{
+	LabelledComponent::postInit();
+
+	auto code = getValueFromGlobalState(var()).toString();
+
+	getComponent<AllEditor>().doc.replaceAllContent(code);
+}
+
+bool CodeEditor::keyPressed(const KeyPress& k)
+{
+	if(k == KeyPress::F5Key)
+	{
+		compile();
+		return true;
+	}
+
+	return false;
+}
+
+Result CodeEditor::compile()
+{
+	auto syntax = infoObject[mpid::Syntax].toString();
+
+	auto& editor = *getComponent<AllEditor>().editor.get();
+
+	auto code = getComponent<AllEditor>().doc.getAllContent();
+
+	auto* state = findParentComponentOfClass<ComponentWithSideTab>()->getMainState();
+
+	if(code.startsWith("${"))
+		code = state->loadText(code, true);
+
+	if(syntax == "CSS")
+	{
+		simple_css::Parser p(code);
+		auto ok = p.parse();
+		editor.clearWarningsAndErrors();
+		editor.setError(ok.getErrorMessage());
+
+		for(const auto& w: p.getWarnings())
+			editor.addWarning(w);
+
+		writeState(code);
+
+		if(ok.wasOk())
+		{
+			if(auto d = state->currentDialog.get())
+			{
+				d->positionInfo.additionalStyle = code;
+				d->loadStyleFromPositionInfo();
+			}
+		}
+		else
+			state->eventLogger.sendMessage(sendNotificationSync, MessageType::Javascript, ok.getErrorMessage());
+            
+		return ok;
+	}
+	else if (syntax == "HTML")
+	{
+		writeState(code);
+
+		if(auto d = state->currentDialog.get())
+		{
+			d->refreshCurrentPage();
+		}
+
+		return Result::ok();
+	}
+	else
+	{
+		writeState(code);
+
+		auto e = state->createJavascriptEngine();
+		auto ok = e->execute(code);
+
+		getComponent<AllEditor>().editor->setError(ok.getErrorMessage());
+
+		if(!ok.wasOk())
+			state->eventLogger.sendMessage(sendNotificationSync, MessageType::Javascript, ok.getErrorMessage());
+
+		return ok;
+	}
 }
 
 ColourChooser:: ColourChooser(Dialog& r, int w, const var& obj):
@@ -698,11 +878,13 @@ Result ColourChooser::loadFromInfoObject(const var& obj)
 	return Result::ok();
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void ColourChooser::createEditor(Dialog::PageInfo& info)
 {
     addBasicComponents(*this, info, "A colour chooser that will store the colour as `0xAARRGGBB` value into the data object.");
         
 }
+#endif
 
 struct TextInput::Autocomplete: public Component,
                                 public ScrollBar::Listener,
@@ -921,7 +1103,7 @@ struct TextInput::Autocomplete: public Component,
         else
             nt = newTextAfterComma;
         
-        ed.setText(nt, sendNotificationSync);
+        ed.setText(nt, true);
         
         return dismiss();
     }
@@ -1137,6 +1319,7 @@ Result TextInput::checkGlobalState(var globalState)
 	return Result::ok();
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void TextInput::createEditor(Dialog::PageInfo& rootList)
 {
     addBasicComponents<TextInput>(*this, rootList, "A TextInput lets you enter a String");
@@ -1217,6 +1400,7 @@ void TextInput::createEditor(Dialog::PageInfo& rootList)
     col.addChild<Button>(DefaultProperties::getForSetting(infoObject, mpid::CallOnTyping,
         "Enables the value change callback for every key input (instea of when pressing return"));
 }
+#endif
 
 Result TextInput::loadFromInfoObject(const var& obj)
 {
@@ -1236,7 +1420,7 @@ Result TextInput::loadFromInfoObject(const var& obj)
 
 	if(obj.hasProperty(mpid::Items))
 	{
-        if(obj[mpid::ID].toString() == "{DYNAMIC}")
+        if(obj[mpid::Items].toString() == "{DYNAMIC}")
         {
 	        useDynamicAutocomplete = true;
         }
@@ -1285,7 +1469,7 @@ void TextInput::dismissAutocomplete()
 }
 
 
-
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void FileSelector::createEditor(Dialog::PageInfo& rootList)
 {
     addBasicComponents(*this, rootList, "Select a file using a native file browser or text input. ");
@@ -1317,6 +1501,7 @@ void FileSelector::createEditor(Dialog::PageInfo& rootList)
 
     addOnValueCodeEditor(infoObject, rootList);
 }
+#endif
 
     
 struct BetterFileSelector: public simple_css::FlexboxComponent,
@@ -1522,7 +1707,7 @@ File FileSelector::getInitialFile(const var& path) const
 	return File();
 }
 
-
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void Table::createEditor(Dialog::PageInfo& rootList)
 {
 	rootList.addChild<Type>({
@@ -1632,6 +1817,7 @@ void TagList::createEditor(Dialog::PageInfo& rootList)
 
     addOnValueCodeEditor(infoObject, rootList);
 }
+#endif
 
 } // factory
 } // multipage

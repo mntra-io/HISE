@@ -1010,6 +1010,18 @@ ExpressionParser::Node ExpressionParser::parseNode(String::CharPointerType& ptr,
 	return node;
 }
 
+String ExpressionParser::evaluateToCodeGeneratorLiteral(const String& expression, const Context<String>& context)
+{
+	jassert(context.isCodeGenContext());
+		
+	auto ptr = expression.begin();
+	auto end = expression.end();
+
+	Node root = parseNode(ptr, end);
+
+	return root.evaluateToCodeGeneratorLiteral(context);
+}
+
 float ExpressionParser::evaluate(const String& expression, const Context<>& context)
 {
 	if(!CharacterFunctions::isLetter(expression[0]))
@@ -1483,8 +1495,8 @@ Result Parser::parse()
 
 			while(matchIf(TokenType::Keyword))
 			{
-				RawLine newLine;
-				newLine.property = currentToken;
+				RawLine nl;
+				nl.property = currentToken;
 
 				kw.check(currentToken, KeywordDataBase::KeywordType::Property);
 				
@@ -1494,7 +1506,7 @@ Result Parser::parse()
 				{
 					match(TokenType::ValueString);
 
-					newLine.items.push_back(currentToken);
+					nl.items.push_back(currentToken);
 
 					if(matchIf(TokenType::Semicolon))
 						break;
@@ -1502,7 +1514,7 @@ Result Parser::parse()
 					
 				auto currentValue = currentToken;
 					
-				newClass.lines.push_back(std::move(newLine));
+				newClass.lines.push_back(std::move(nl));
 
 				skip();
 				kw.setLocation(*this);
@@ -2042,6 +2054,24 @@ StyleSheet::Collection Parser::getCSSValues() const
 	}
 
 	return StyleSheet::Collection(list);
+}
+
+Array<Selector> Parser::getSelectors() const
+{
+	Array<Selector> s;
+
+	for(const auto& r: rawClasses)
+	{
+		for(const auto& v: r.selectors)
+		{
+			for(const auto& v2: v)
+			{
+				s.addIfNotAlreadyThere(v2.first);
+			}
+		}
+	}
+
+	return s;
 }
 } // simple_css
 } // hise

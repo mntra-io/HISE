@@ -122,11 +122,30 @@ bool ApiObject::callForEachInfoObject(const std::function<bool(const var& obj)>&
 	}
 	else
 	{
-		Component::callRecursive<Dialog::PageBase>(state.currentDialog, [&](Dialog::PageBase* pb)
+		return Component::callRecursive<Dialog::PageBase>(state.currentDialog, [&](Dialog::PageBase* pb)
 		{
 			return f(pb->getInfoObject());
 		});
 	}
+}
+
+void HtmlParser::HeaderInformation::appendStyle(DataType t, const String& text)
+{
+	code[(int)t] << text;
+}
+
+Result HtmlParser::HeaderInformation::flush(DataProvider* d, State& state)
+{
+	simple_css::Parser p(code[(int)DataType::StyleSheet]);
+	auto ok = p.parse();
+
+	if(!ok.wasOk())
+		return ok;
+
+	css = p.getCSSValues();
+	css.performAtRules(d);
+
+	return state.createJavascriptEngine()->execute(code[(int)DataType::ScriptCode]);
 }
 
 HtmlParser::HtmlParser()
@@ -340,6 +359,8 @@ Identifier HtmlParser::IDConverter::convert(const Identifier& id) const
 		if(i.multipageId == id)
 			return i.htmlId;
 	}
+
+	return {};
 }
 
 void HtmlParser::IDConverter::set(const Identifier& html, const Identifier& mp)
@@ -502,6 +523,8 @@ struct Element: public ApiObject
 
 		return var();
 	}
+
+	
 
 	var removeEventListener(const var::NativeFunctionArgs& args)
 	{
@@ -722,6 +745,7 @@ struct Dom: public ApiObject
 		setMethodWithHelp("readFile", BIND_MEMBER_FUNCTION_1(Dom::readFile), "Loads string content of the file");
 		setMethodWithHelp("navigate", BIND_MEMBER_FUNCTION_1(Dom::navigate), "Navigates to the page with the given index");
 		setMethodWithHelp("createElement", BIND_MEMBER_FUNCTION_1(Dom::createElement), "Creates an element");
+		setMethodWithHelp("callAction", BIND_MEMBER_FUNCTION_1(Dom::callAction), "Calls the action for the given ID");
 		setMethodWithHelp("bindCallback", BIND_MEMBER_FUNCTION_1(Dom::bindCallback), "Registers an external function");
         
         setMethodWithHelp("addEventListener", BIND_MEMBER_FUNCTION_1(Dom::addEventListener), "Adds a event listener to a global event");
@@ -877,6 +901,23 @@ struct Dom: public ApiObject
 	var getClipboardContent(const var::NativeFunctionArgs& args) const
 	{
 		return var(SystemClipboard::getTextFromClipboard());
+	}
+
+	var callAction(const var::NativeFunctionArgs& args)
+	{
+		Identifier id(args.arguments[0].toString());
+
+		updateWithLambda(var(), id, [](Component* c)
+		{
+			auto a = dynamic_cast<factory::Action*>(c);
+
+			if(a->triggerType != factory::Action::TriggerType::OnCall)
+				throw String("Only manual actions can be called");
+
+			a->perform();
+		});
+
+		return var();
 	}
     
     var addEventListener(const var::NativeFunctionArgs& args)

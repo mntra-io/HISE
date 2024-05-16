@@ -82,40 +82,11 @@ struct Container: public Dialog::PageBase
 		}
     }
 
-    void replaceChildrenDynamic()
-    {
-        {
-	        ScopedValueSetter<bool> svs(rootDialog.getSkipRebuildFlag(), true);
-
-		    childItems.clear();
-	        auto l = infoObject[mpid::Children];
-			childItems.clear();
-
-			for(auto& r: *l.getArray())
-				addChildDynamic(r, false);
-        }
-
-        rootDialog.body.setCSS(rootDialog.css);
-    }
+    void replaceChildrenDynamic();
 
 protected:
 
-    void rebuildChildren()
-    {
-	    auto l = infoObject[mpid::Children];
-
-		childItems.clear();
-
-		if(l.isArray())
-		{
-			for(auto& r: *l.getArray())
-				addChild(getWidth(), r);
-		}
-		else
-		{
-			infoObject.getDynamicObject()->setProperty(mpid::Children, var(Array<var>()));
-		}
-    }
+    void rebuildChildren();
 
     OwnedArray<PageBase> childItems;
     Dialog::PageInfo::List staticPages;
@@ -148,19 +119,10 @@ struct List: public Container
 
     void refreshFold();
 
-    void createEditor(Dialog::PageInfo& info) override;
+    CREATE_EDITOR_OVERRIDE;
 
-    void postInit() override
-    {
-        Container::postInit();
-        
-        if(foldable)
-        {
-            foldButton->setToggleState(folded, dontSendNotification);
-            refreshFold();
-        }
-    }
-    
+    void postInit() override;
+
     Path fold;
     String title;
     bool foldable = false;
@@ -178,8 +140,8 @@ struct Column: public Container
 
     Identifier getContainerTypeId() const override { return getStaticId(); }
     Column(Dialog& r, int width, const var& obj);
-
-    void createEditor(Dialog::PageInfo& info) override;
+    
+    CREATE_EDITOR_OVERRIDE;
 };
 
 struct Branch: public Container
@@ -192,7 +154,8 @@ struct Branch: public Container
     Branch(Dialog& root, int w, const var& obj);;
 
     Identifier getContainerTypeId() const override { return getStaticId(); }
-    void createEditor(Dialog::PageInfo& info) override;
+
+    CREATE_EDITOR_OVERRIDE;
     
     void paint(Graphics& g) override;
     void postInit() override;

@@ -40,6 +40,14 @@ using namespace juce;
 
 struct Action: public Dialog::PageBase
 {
+    enum class TriggerType
+    {
+	    OnPageLoad, // called when page is loaded (in postInit)
+        OnPageLoadAsync, // called asynchronously when page is loaded
+        OnSubmit, // called when Next is pressed
+        OnCall // manual call
+    };
+
     HISE_MULTIPAGE_ID("Action");
     
     Action(Dialog& r, int, const var& obj);
@@ -47,17 +55,67 @@ struct Action: public Dialog::PageBase
     static String getCategoryId() { return "Actions"; }
     virtual String getDescription() const = 0;
 
-
     template <typename T> void createBasicEditor(T& t, Dialog::PageInfo& rootList, const String& helpText);
 
     void paint(Graphics& g) override;
 
+    virtual void setActive(bool shouldBeActive) {};
+    
     void postInit() override;
     void perform();
     Result checkGlobalState(var globalState) override;
     Result r;
 
-	bool callOnNext = false;
+    static StringArray getEventTriggerIds()
+    {
+	    return {
+            "OnPageLoad",
+            "OnPageLoadAsync",
+            "OnSubmit",
+            "OnCall"
+	    };
+    }
+
+    void setTriggerType()
+    {
+        if(infoObject.hasProperty("CallOnNext"))
+        {
+	        if((bool)infoObject["ManualAction"])
+	        {
+		        triggerType = TriggerType::OnCall;
+	        }
+            else
+            {
+	            triggerType = (bool)infoObject["CallOnNext"] ? TriggerType::OnSubmit : TriggerType::OnPageLoad;
+            }
+
+            infoObject.getDynamicObject()->removeProperty("CallOnNext");
+            infoObject.getDynamicObject()->removeProperty("ManualAction");
+            infoObject.getDynamicObject()->setProperty(mpid::EventTrigger, getEventTriggerIds()[(int)triggerType]);
+
+            return;
+        }
+
+	    const auto typeIds = getEventTriggerIds();
+        auto typeName = infoObject[mpid::EventTrigger].toString();
+
+        auto idx = typeIds.indexOf(typeName);
+
+        if(typeName.isNotEmpty() && idx != -1)
+        {
+            triggerType = (TriggerType)idx;
+        }
+        else
+        {
+	        triggerType = TriggerType::OnPageLoad;
+        }
+    }
+
+    CustomCheckFunction actionCallback;
+
+    TriggerType triggerType = TriggerType::OnPageLoad;
+
+    JUCE_DECLARE_WEAK_REFERENCEABLE(Action);
 };
 
 /** A base class for an action that will be performed on page load. */
@@ -78,7 +136,8 @@ struct Skip: public ImmediateAction
 
     bool skipIfStateIsFalse() const override { return true; }
 
-    void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
+
     Result onAction() override;
     String getDescription() const override { return "skipPage()"; };
 
@@ -95,7 +154,7 @@ struct JavascriptFunction: public ImmediateAction
 
     bool skipIfStateIsFalse() const override { return false; }
 
-	void createEditor(Dialog::PageInfo& rootList) override;
+	CREATE_EDITOR_OVERRIDE;
 
 	Result onAction() override;
 
@@ -112,7 +171,7 @@ struct AppDataFileWriter: public ImmediateAction
 
     void paint(Graphics& g) override;
 
-    void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
 
     Result onAction() override;
 	String getDescription() const override { return "writeAppDataFile(" + infoObject[mpid::ID].toString() + ")"; };
@@ -130,7 +189,7 @@ struct RelativeFileLoader: public ImmediateAction
 
     static String getCategoryId() { return "Constants"; }
 
-	void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
 
 	static StringArray getSpecialLocations();
 
@@ -147,13 +206,12 @@ struct Launch: public ImmediateAction
 
     bool skipIfStateIsFalse() const override { return true; }
 
-    void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
     Result onAction() override;
     String getDescription() const override;;
 
 private:
 
-    bool isFinished = false;
     String currentLaunchTarget;
     String args;
 };
@@ -179,10 +237,24 @@ struct BackgroundTask: public Action
     void resized() override;
     void postInit() override;
 
+    bool hasOnSubmitEvent() const override
+    {
+	    return triggerType == TriggerType::OnSubmit && !finished;
+    }
+
     virtual Result performTask(State::Job& t) = 0;
 
     Result checkGlobalState(var globalState) override;
 
+    void setActive(bool shouldBeActive) override
+    {
+        if(!shouldBeActive)
+            progress->setTextToDisplay("This step is inactive");
+
+        textLabel->setEnabled(shouldBeActive);
+        progress->setEnabled(shouldBeActive);
+    }
+    
 protected:
 
     void addSourceTargetEditor(Dialog::PageInfo& rootList);
@@ -199,12 +271,19 @@ protected:
     Result abort(const String& message);
 
     String label;
+    Component* textLabel;
     ScopedPointer<ProgressBar> progress;
-    HiseShapeButton retryButton;
+    HiseShapeButton retryButton, stopButton;
+
+    void abortWithErrorMessage(const String& e)
+    {
+	    errorMessage = e;
+    }
 
 private:
 
-    
+    String errorMessage;
+    bool finished = false;
 
     File getFileInternal(const Identifier& id) const;
 
@@ -219,7 +298,8 @@ struct LambdaTask: public BackgroundTask
 
     Result performTask(State::Job& t) override;
 	String getDescription() const override;
-	void createEditor(Dialog::PageInfo& rootList) override;
+
+    CREATE_EDITOR_OVERRIDE;
 
     var::NativeFunction lambda;
 };
@@ -233,7 +313,8 @@ struct HttpRequest: public BackgroundTask
 
     Result performTask(State::Job& t) override;
 	String getDescription() const override { return "HttpRequest"; }
-	void createEditor(Dialog::PageInfo& rootList) override;
+
+    CREATE_EDITOR_OVERRIDE;
 
     URL url;
     bool isPost;
@@ -253,7 +334,7 @@ struct DownloadTask: public BackgroundTask
 
     Result performTask(State::Job& t) override;
 
-    void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
 
     String getDescription() const override;
 
@@ -276,7 +357,7 @@ struct UnzipTask: public BackgroundTask
 
     Result performTask(State::Job& t) override;
 
-    void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
 
     String getDescription() const override { return "Unzip Action"; }
 
@@ -306,13 +387,29 @@ struct CopyAsset: public BackgroundTask
 
     Result performTask(State::Job& t) override;
 
-    void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
 
     String getDescription() const override { return "CopyAsset"; }
 
     bool overwrite = true;
 };
 
+struct CopySiblingFile: public BackgroundTask
+{
+    HISE_MULTIPAGE_ID("CopySiblingFile");
+
+    CopySiblingFile(Dialog& r, int w, const var& obj):
+      BackgroundTask(r, w, obj)
+    {}
+
+    Result performTask(State::Job& t) override;
+
+    CREATE_EDITOR_OVERRIDE;
+
+    String getDescription() const override { return "CopySiblingFile"; }
+
+    bool overwrite = true;
+};
 
 struct HlacDecoder: public BackgroundTask,
 				    public hlac::HlacArchiver::Listener
@@ -334,7 +431,7 @@ struct HlacDecoder: public BackgroundTask,
 		r = Result::fail(message);
 	}
 
-    void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
 
     String getDescription() const override;
 
@@ -356,7 +453,7 @@ struct DummyWait: public BackgroundTask
 
     DummyWait(Dialog& r, int w, const var& obj);
 
-	void createEditor(Dialog::PageInfo& rootList) override;
+	CREATE_EDITOR_OVERRIDE;
 
     String getDescription() const override;
 
@@ -442,17 +539,9 @@ struct FileLogger: public Constants
 
     String getDescription() const override { return "Project Info";}
 
-    void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
 
-	void loadConstants() override
-	{
-        auto fileName = MarkdownText::getString(infoObject[mpid::Filename].toString(), rootDialog);
-
-        if(File::isAbsolutePath(fileName))
-        {
-	        rootDialog.getState().setLogFile(File(fileName));
-        }
-	}
+	void loadConstants() override;
 };
 
 struct DirectoryScanner: public Constants
@@ -463,7 +552,7 @@ struct DirectoryScanner: public Constants
 
 	String getDescription() const override { return "Directory Scanner";}
 
-    void createEditor(Dialog::PageInfo& infoList) override;
+    CREATE_EDITOR_OVERRIDE;
 
 	void loadConstants() override;
 };
@@ -487,7 +576,7 @@ struct PersistentSettings: public Constants
 
     String getDescription() const override { return "PersistentSettings";}
 
-    void createEditor(Dialog::PageInfo& rootList) override;
+    CREATE_EDITOR_OVERRIDE;
     Result checkGlobalState(var globalState) override;
     void loadConstants() override;
 

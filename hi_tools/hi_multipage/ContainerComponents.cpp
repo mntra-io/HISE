@@ -143,12 +143,11 @@ void Container::clearInitValue()
 		c->clearInitValue();
 }
 
-
-
-
 void Container::addWithPopup()
 {
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 	rootDialog.containerPopup(infoObject);
+#endif
 }
 
 Result Container::customCheckOnAdd(PageBase* b, const var& obj)
@@ -156,6 +155,39 @@ Result Container::customCheckOnAdd(PageBase* b, const var& obj)
 	dynamic_cast<Container*>(b)->checkGlobalState(obj);
 	rebuildRootLayout();
 	return Result::ok();
+}
+
+void Container::replaceChildrenDynamic()
+{
+	{
+		ScopedValueSetter<bool> svs(rootDialog.getSkipRebuildFlag(), true);
+
+		childItems.clear();
+		auto l = infoObject[mpid::Children];
+		childItems.clear();
+
+		for(auto& r: *l.getArray())
+			addChildDynamic(r, false);
+	}
+
+	rootDialog.body.setCSS(rootDialog.css);
+}
+
+void Container::rebuildChildren()
+{
+	auto l = infoObject[mpid::Children];
+
+	childItems.clear();
+
+	if(l.isArray())
+	{
+		for(auto& r: *l.getArray())
+			addChild(getWidth(), r);
+	}
+	else
+	{
+		infoObject.getDynamicObject()->setProperty(mpid::Children, var(Array<var>()));
+	}
 }
 
 List::List(Dialog& r, int width, const var& obj):
@@ -197,9 +229,10 @@ Result List::customCheckOnAdd(PageBase* b, const var& obj)
 	return Result::ok();
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void List::createEditor(Dialog::PageInfo& rootList)
 {
-    auto& tt = rootList.addChild<Type>({
+    rootList.addChild<Type>({
         { mpid::Type, "List" },
         { mpid::ID, "Type"}
     });
@@ -227,7 +260,7 @@ void List::createEditor(Dialog::PageInfo& rootList)
 	    listId[mpid::Value] = v;
     }
 
-    auto& textId = prop.addChild<TextInput>({
+    prop.addChild<TextInput>({
         { mpid::ID, "Text" },
         { mpid::Text, "Text" },
         { mpid::Help, "The title text that is shown at the header bar." },
@@ -248,21 +281,31 @@ void List::createEditor(Dialog::PageInfo& rootList)
 		{ mpid::Help, "Additional inline properties that will be used by the UI element" }
 	});
 
-    auto& foldId1 = prop.addChild<Button>({
+    prop.addChild<Button>({
         { mpid::ID, "Foldable" },
         { mpid::Text, "Foldable" },
         { mpid::Help, "If ticked, then this list will show a clickable header that can be folded" },
 		{ mpid::Value, foldable }
     });
     
-    
-    
-    auto& foldId2 = prop.addChild<Button>({
+    prop.addChild<Button>({
         { mpid::ID, "Folded" },
         { mpid::Text, "Folded" },
         { mpid::Help, "If ticked, then this list will folded as default state" },
 		{ mpid::Value, folded }
     });
+}
+#endif
+
+void List::postInit()
+{
+	Container::postInit();
+        
+	if(foldable)
+	{
+		foldButton->setToggleState(folded, dontSendNotification);
+		refreshFold();
+	}
 }
 
 
@@ -289,9 +332,10 @@ Column::Column(Dialog& r, int width, const var& obj):
 	setSize(width, 0);
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void Column::createEditor(Dialog::PageInfo& xxx)
 {
-    auto& tt = xxx.addChild<Type>({
+    xxx.addChild<Type>({
         { mpid::Type, "Column" },
         { mpid::ID, "Type"}
     });
@@ -333,6 +377,7 @@ void Column::createEditor(Dialog::PageInfo& xxx)
 	    listId[mpid::Value] = v;
     }
 }
+#endif
 
 Branch::Branch(Dialog& root, int w, const var& obj):
 	Container(root, w, obj)
@@ -422,9 +467,10 @@ Result Branch::checkGlobalState(var globalState)
 	return Result::fail("No branch selected");
 }
 
+#if HISE_MULTIPAGE_INCLUDE_EDIT
 void Branch::createEditor(Dialog::PageInfo& rootList)
 {
-    auto& tt = rootList.addChild<Type>({
+    rootList.addChild<Type>({
         { mpid::Type, "Branch" },
         { mpid::ID, "Type"}
     });
@@ -433,7 +479,7 @@ void Branch::createEditor(Dialog::PageInfo& rootList)
     
     rootList[mpid::Text] = "List";
     
-    auto& listId = prop.addChild<TextInput>({
+    prop.addChild<TextInput>({
         { mpid::ID, "ID" },
         { mpid::Text, "ID" },
         { mpid::Required, true },
@@ -441,6 +487,7 @@ void Branch::createEditor(Dialog::PageInfo& rootList)
         { mpid::Help, "The ID of the branch. This will be used as key to fetch the value from the global state to determine which child to show." }
     });
 }
+#endif
 
 
 } // PageFactory

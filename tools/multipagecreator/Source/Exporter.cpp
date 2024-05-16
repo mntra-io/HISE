@@ -22,6 +22,7 @@ var projucer_exporter::exportProjucerProject(State::Job& t, const var& stateObje
 	cg.company = exportObj[mpid::Properties][mpid::Company].toString();
 	cg.version = exportObj[mpid::Properties][mpid::Version].toString();
 	cg.hisePath = stateObject["hisePath"].toString();
+    cg.teamId = stateObject["teamID"].toString();
 
 	auto startCompile = !(bool)stateObject["skipCompilation"];
 
@@ -118,7 +119,7 @@ Dialog* projucer_exporter::createDialog(State& state)
 	auto& export_4 = List_0.addChild<factory::LambdaTask>({
 	  { mpid::Text, "Export Progress" }, 
 	  { mpid::ID, "export" }, 
-	  { mpid::CallOnNext, 1 }, 
+	  { mpid::EventTrigger, "OnSubmit" }, 
 	  { mpid::Function, "exportProjucerProject" }
 	});
 
@@ -152,7 +153,7 @@ Dialog* projucer_exporter::createDialog(State& state)
 	auto& openProjucer_8 = List_5.addChild<factory::Launch>({
 	  { mpid::Text, "$hisePath/tools/Projucer.exe" }, 
 	  { mpid::ID, "openProjucer" }, 
-	  { mpid::CallOnNext, 1 }, 
+	  { mpid::EventTrigger, "OnSubmit" }, 
 	  { mpid::Args, "\"$projectDirectory/$projectName.jucer\"" }
 	});
 
