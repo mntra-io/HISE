@@ -68,10 +68,10 @@ static const unsigned char projectTemplate_jucer_lines[] = R"(
             IPP1ALibrary="%IPP_1A%" extraDefs="%PLUGIN_CHANNEL_AMOUNT%&#10;%EXTRA_DEFINES_WIN%&#10;%PERFETTO_INCLUDE_WIN%" extraCompilerFlags="/bigobj /cgthreads8 %MSVC_WARNINGS% %PERFETTO_COMPILER_FLAGS_WIN%">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" winWarningLevel="1" generateManifest="1" winArchitecture="x64"
-                       isDebug="1" optimisation="1" targetName="%NAME% Debug" headerPath ="%FAUST_HEADER_PATH%;C:/Program Files/Common Files/fftw3\"
+                       isDebug="1" optimisation="1" targetName="%NAME% Debug" headerPath="%FAUST_HEADER_PATH% C:/Program Files/Common Files/fftw3\"
                        libraryPath="%AAX_DEBUG_LIB%;%WIN_STATIC_LIB_FOLDER_D64% C:/Program Files/Common Files/fftw3\" binaryPath="Compiled/" useRuntimeLibDLL="0" prebuildCommand="%PREBUILD_COMMAND%"/>
         <CONFIGURATION name="Release" winWarningLevel="1" generateManifest="1"
-                       winArchitecture="x64" isDebug="0" optimisation="3" targetName="%NAME%" headerPath ="%FAUST_HEADER_PATH%; C:/Program Files/Common Files/fftw3\"
+                       winArchitecture="x64" isDebug="0" optimisation="3" targetName="%NAME%" headerPath="%FAUST_HEADER_PATH% C:/Program Files/Common Files/fftw3\"
                        libraryPath="%AAX_RELEASE_LIB%;%WIN_STATIC_LIB_FOLDER_R64% C:/Program Files/Common Files/fftw3\" binaryPath="Compiled/" linkTimeOptimisation="%LINK_TIME_OPTIMISATION%" useRuntimeLibDLL="0" prebuildCommand="%PREBUILD_COMMAND%"%STRIP_SYMBOLS_WIN%/>
       </CONFIGURATIONS>
       <MODULEPATHS>
@@ -202,7 +202,7 @@ static const unsigned char projectTemplate_jucer_lines[] = R"(
       </MODULEPATHS>
     </XCODE_IPHONE>)"
     R"(
-    <LINUX_MAKE targetFolder="Builds/LinuxMakefile" vstLegacyFolder="%VSTSDK_FOLDER%" extraLinkerFlags=\"-flto=auto&#10;-fuse-ld=gold&#10;%IPP_COMPILER_FLAGS%\" extraCompilerFlags="-fpermissive" extraDefs="%PLUGIN_CHANNEL_AMOUNT%&#10;%EXTRA_DEFINES_LINUX%" linuxExtraPkgConfig="%LINUX_GUI_LIBS%">
+    <LINUX_MAKE targetFolder="Builds/LinuxMakefile" vstLegacyFolder="%VSTSDK_FOLDER%" extraLinkerFlags="-flto=auto&#10;-fuse-ld=gold&#10;%IPP_COMPILER_FLAGS%" extraCompilerFlags="-fpermissive" extraDefs="%PLUGIN_CHANNEL_AMOUNT%&#10;%EXTRA_DEFINES_LINUX%" linuxExtraPkgConfig="%LINUX_GUI_LIBS%">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" isDebug="1" optimisation="1" linkTimeOptimisation="0"
                        targetName="%NAME% Debug" headerPath="%IPP_HEADER%;%FAUST_HEADER_PATH%" libraryPath="%IPP_LIBRARY%"/>
