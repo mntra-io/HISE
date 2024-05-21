@@ -765,7 +765,7 @@ void ModulatorSynthGroupVoice::checkRelease()
 	ModulatorChain *ownerGainChain = static_cast<ModulatorChain*>(ownerSynth->getChildProcessor(ModulatorSynth::GainModulation));
 	//ModulatorChain *ownerPitchChain = static_cast<ModulatorChain*>(ownerSynth->getChildProcessor(ModulatorSynth::PitchModulation));
 
-	if (killThisVoice && (killFadeLevel < 0.001f))
+	if (killThisVoice && FloatSanitizers::isSilence(killFadeLevel))
 	{
 		resetVoice();
 	}
@@ -1487,6 +1487,15 @@ void ModulatorSynthGroup::checkFMStateInternally()
 void ModulatorSynthGroup::ModulatorSynthGroupHandler::add(Processor *newProcessor, Processor * /*siblingToInsertBefore*/)
 {
 	ModulatorSynth *m = dynamic_cast<ModulatorSynth*>(newProcessor);
+
+	if(getNumProcessors() >= 8)
+	{
+		debugError(m, "Can't add sound generator to synth group - exceeded max number of child synths (8).");
+
+		// usually this will be owned by the group but since this is an error
+		// we'll live with the memory leak of the processor...
+		return;
+	}
 
 	// Check incompatibilites with SynthGroups
 

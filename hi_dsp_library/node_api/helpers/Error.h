@@ -82,6 +82,7 @@ struct Error: public ErrorC
         RingBufferMultipleWriters,
         DeprecatedNode,
         IllegalPolyphony,
+        IllegalMonophony,
         IllegalBypassConnection,
         IllegalCompilation,
         IllegalFaustNode,
@@ -89,6 +90,7 @@ struct Error: public ErrorC
         CloneMismatch,
         IllegalMod,
         UnscaledModRangeMismatch,
+        UncompiledThirdPartyNode,
         numErrorCodes
     };
     

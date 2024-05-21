@@ -280,8 +280,10 @@ private:
 	
 };
 
+
+
 /** A combobox which can be controlled by the macro system. */
-class HiComboBox: public ComboBox,
+class HiComboBox: public SubmenuComboBox,
 				  public ComboBox::Listener,
 				  public MacroControlledObject,
                   public TouchAndHoldComponent
@@ -307,6 +309,12 @@ public:
     void mouseDown(const MouseEvent &e) override;
 	void mouseDrag(const MouseEvent& e) override;
 
+	
+
+	
+    
+    bool customPopup = false;
+    
 	NormalisableRange<double> getRange() const override;;
 	
 	Font font;

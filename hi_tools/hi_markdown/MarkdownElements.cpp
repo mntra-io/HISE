@@ -105,7 +105,7 @@ struct MarkdownParser::TextBlock : public MarkdownParser::Element
 		return content.getText();
 	}
 
-	int getTopMargin() const override { return 10; };
+	float getTopMargin() const override { return 10.0f; };
 
 	AttributedString content;
 	MarkdownLayout l;
@@ -167,9 +167,9 @@ struct MarkdownParser::ActionButton : public Element,
 
 	}
 
-	int getTopMargin() const override
+	float getTopMargin() const override
 	{
-		return 20;
+		return 20.0f;
 	}
 
 	void searchInContent(const String& ) override
@@ -227,6 +227,26 @@ struct MarkdownParser::ActionButton : public Element,
 
 };
 
+struct MarkdownParser::HorizontalRuler: public MarkdownParser::Element
+{
+	HorizontalRuler(MarkdownParser* p, int lineNumber):
+	  Element(p, lineNumber)
+	{};
+
+	void draw(Graphics& g, Rectangle<float> area) override
+	{
+		auto c = parent->styleData.tableLineColour;
+		g.setColour(c);
+		g.drawHorizontalLine(area.getY() + 1, area.getX(), area.getRight());
+	};
+
+	float getHeightForWidth(float width) override { return 22; };
+
+	float getTopMargin() const override { return 10.0f; };
+
+	String getTextToCopy() const override { return {}; };
+};
+
 struct MarkdownParser::Headline : public MarkdownParser::Element
 {
 	Headline(MarkdownParser* parent, int lineNumber, int level_, const String& imageURL_, const AttributedString& s, bool isFirst_) :
@@ -237,6 +257,17 @@ struct MarkdownParser::Headline : public MarkdownParser::Element
 		imageURL({}, imageURL_),
 		l(s, 0.0f, parent->stringWidthFunction)
 	{
+		using namespace simple_css;
+
+		auto topMargin = 15.0f + ((4.0f - (float)headlineLevel) * 5.0f) * getZoomRatio();
+
+		auto idx = jlimit(0, 4, headlineLevel-1);
+		static ElementType headlines[4] = { ElementType::Headline1, ElementType::Headline2, ElementType::Headline3, ElementType::Headline4 };
+		margins = parent->styleData.getMargin((int)headlines[idx], { topMargin, 10.0f });
+
+		if(!isFirst)
+			margins.first += 20.0f;
+
 		anchorURL = "#" + s.getText().toLowerCase().replaceCharacters(" ", "-");
 	}
 
@@ -244,8 +275,7 @@ struct MarkdownParser::Headline : public MarkdownParser::Element
 	{
 		anchorY = area.getY() - 15.0f;
 
-		float marginTop = isFirst ? 0.0f : 20.0f * getZoomRatio();
-		area.removeFromTop(marginTop);
+		area.removeFromBottom(margins.second);
 
 		int imgOffset = 0;
 
@@ -263,12 +293,11 @@ struct MarkdownParser::Headline : public MarkdownParser::Element
 		drawHighlight(g, area);
 
 		g.setColour(Colours::grey.withAlpha(0.2f));
-
 		
 		if(headlineLevel <= 3)
-			g.drawHorizontalLine((int)(area.getBottom() - 12.0f * getZoomRatio()), area.getX() + imgOffset, area.getRight());
-
-		l.drawCopyWithOffset(g, area);
+			g.drawHorizontalLine((int)(area.getBottom()), area.getX() + imgOffset, area.getRight());
+		
+ 		l.drawCopyWithOffset(g, area);
 	}
 
 	static int getSizeLevelForHeadline(int headlineLevel)
@@ -279,13 +308,12 @@ struct MarkdownParser::Headline : public MarkdownParser::Element
 
 	float getHeightForWidth(float width) override
 	{
-		float marginTop = isFirst ? 0.0f : 20.0f * getZoomRatio();
-		float marginBottom = 10.0f * getZoomRatio();
-
 		l = { content, width, parent->stringWidthFunction};
-		l.addYOffset((float)getTopMargin());
-
+		
 		l.styleData = parent->styleData;
+
+		auto idx = jlimit(0, 4, headlineLevel-1);
+		l.addYOffset(l.styleData.headlineFontSize[idx] * l.styleData.fontSize);
 
 		l.styleData.textColour = l.styleData.headlineColour;
 		l.styleData.codeColour = l.styleData.headlineColour;
@@ -301,7 +329,10 @@ struct MarkdownParser::Headline : public MarkdownParser::Element
 			parent->getStyleData().textColour = tColour;
 		}
 
-		return l.getHeight() + marginTop + marginBottom;
+		auto h = l.getHeight();
+		h += margins.second;
+		
+		return h;
 	}
 
 	virtual void addImageLinks(Array<MarkdownLink>& sa) override
@@ -339,13 +370,12 @@ struct MarkdownParser::Headline : public MarkdownParser::Element
 		searchInStringInternal(content, searchString);
 	}
 
-	int getTopMargin() const override 
-	{ 
-		if (headlineLevel == 4)
-			return 5;
-
-		return 15 + (int)((float)((4 - headlineLevel) * 5) * getZoomRatio()); 
+	float getTopMargin() const override 
+	{
+		return margins.first;
 	};
+
+	std::pair<float, float> margins;
 
 	float anchorY;
 	String anchorURL;
@@ -501,7 +531,7 @@ struct MarkdownParser::BulletPointList : public MarkdownParser::Element
 		return lastHeight;
 	}
 
-	int getTopMargin() const override { return 10; };
+	float getTopMargin() const override { return 10.0f; };
 
 	const float intendation = 8.0f;
 
@@ -642,7 +672,7 @@ struct MarkdownParser::Comment : public MarkdownParser::Element
 		return content.getText();
 	}
 
-	int getTopMargin() const override { return (int)(intendation * getZoomRatio()); };
+	float getTopMargin() const override { return intendation * getZoomRatio(); };
 
 	const float intendation = 12.0f;
 
@@ -709,7 +739,7 @@ struct MarkdownParser::ImageElement : public MarkdownParser::Element
 
 	MarkdownLink getImageURL() const { return imageURL; }
 
-	int getTopMargin() const override { return 30; };
+	float getTopMargin() const override { return 30.0f; };
 
 	String generateHtml() const override
 	{
@@ -793,7 +823,7 @@ struct MarkdownParser::ImageElement : public MarkdownParser::Element
 		{
 			ignoreUnused(visibleArea);
 
-#if USE_BACKEND
+#if USE_BACKEND && JUCE_WEB_BROWSER
 			if (!visibleArea.contains(getBoundsInParent()))
 			{
 				gifPlayer = nullptr;
@@ -820,7 +850,7 @@ struct MarkdownParser::ImageElement : public MarkdownParser::Element
 
 			setMouseCursor(MouseCursor(MouseCursor::NormalCursor));
 
-#if USE_BACKEND
+#if USE_BACKEND && JUCE_WEB_BROWSER
 			addAndMakeVisible(gifPlayer = new WebBrowserComponent());
 			gifPlayer->setSize(p.img.getWidth() + 50, p.img.getHeight() + 50);
 			gifPlayer->setTopLeftPosition(0, 0);
@@ -831,7 +861,7 @@ struct MarkdownParser::ImageElement : public MarkdownParser::Element
 
 		ImageElement& p;
 
-#if USE_BACKEND
+#if USE_BACKEND && JUCE_WEB_BROWSER
 		ScopedPointer<WebBrowserComponent> gifPlayer;
 #endif
 
@@ -965,7 +995,7 @@ struct MarkdownParser::CodeBlock : public MarkdownParser::Element
 
 	ScopedPointer<MarkdownCodeComponentBase> content;
 
-	int getTopMargin() const override { return 20; };
+	float getTopMargin() const override { return 30.0f; };
 
 	String code;
 
@@ -1139,7 +1169,7 @@ struct MarkdownParser::MarkdownTable : public MarkdownParser::Element
 		}
 	}
 
-	int getTopMargin() const override { return 10; };
+	float getTopMargin() const override { return 10.0f; };
 
 	float getHeightForWidth(float width) override
 	{
@@ -1450,10 +1480,7 @@ struct MarkdownParser::ContentFooter : public MarkdownParser::Element
 		return (float)content->getPreferredHeight();
 	}
 
-	virtual int getTopMargin() const override
-	{
-		return 30;
-	}
+	float getTopMargin() const override { return 30.0f; }
 
 	Font getFont() const
 	{

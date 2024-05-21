@@ -230,6 +230,7 @@ struct ScriptingApi::Content::ScriptComponent::Wrapper
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setControlCallback);
 	API_METHOD_WRAPPER_0(ScriptComponent, getAllProperties);
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setKeyPressCallback);
+	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setConsumedKeyPresses);
 	API_VOID_METHOD_WRAPPER_0(ScriptComponent, loseFocus);
     API_VOID_METHOD_WRAPPER_0(ScriptComponent, grabFocus);
 	API_VOID_METHOD_WRAPPER_1(ScriptComponent, setZLevel);
@@ -423,6 +424,7 @@ ScriptingApi::Content::ScriptComponent::ScriptComponent(ProcessorWithScriptingCo
 	ADD_API_METHOD_0(getAllProperties);
 	ADD_API_METHOD_1(setZLevel);
 	ADD_API_METHOD_1(setKeyPressCallback);
+	ADD_API_METHOD_1(setConsumedKeyPresses);
 	ADD_API_METHOD_0(loseFocus);
     ADD_API_METHOD_0(grabFocus);
 	ADD_API_METHOD_1(setLocalLookAndFeel);
@@ -950,6 +952,8 @@ void ScriptingApi::Content::ScriptComponent::changed()
 	if (!parent->asyncFunctionsAllowed())
 		return;
 
+	ScopedValueSetter<bool> svs(getScriptProcessor()->getMainController_()->getDeferNotifyHostFlag(), true);
+	
 	controlSender.sendControlCallbackMessage();
 	sendValueListenerMessage();
 
@@ -1530,46 +1534,79 @@ var ScriptingApi::Content::ScriptComponent::getLocalBounds(float reduceAmount)
 
 void ScriptingApi::Content::ScriptComponent::setKeyPressCallback(var keyboardFunction)
 {
+    if(!consumedCalled && HiseJavascriptEngine::isJavascriptFunction(keyboardFunction))
+    {
+        reportScriptError("You need to call setConsumedKeyPresses() before calling this method.");
+    }
+    
 	keyboardCallback = WeakCallbackHolder(getScriptProcessor(), this, keyboardFunction, 1);
 	keyboardCallback.incRefCount();
 	keyboardCallback.setThisObject(this);
 }
 
+void ScriptComponent::setConsumedKeyPresses(var listOfKeys)
+{
+    consumedCalled = true;
+    
+	registeredKeys.clear();
+
+	auto r = Result::ok();
+
+	if(listOfKeys.isArray())
+	{
+		catchAllKeys = false;
+				
+		for(const auto& v: *listOfKeys.getArray())
+		{
+			auto k = ApiHelpers::getKeyPress(v, &r);
+
+			if(!r.wasOk())
+				reportScriptError(r.getErrorMessage());
+			else
+				registeredKeys.add(k);
+		}
+	}
+	else
+	{
+        if(listOfKeys.toString() == "all")
+        {
+            catchAllKeys = true;
+        }
+        else
+        {
+            auto k = ApiHelpers::getKeyPress(listOfKeys, &r);
+
+            if(r.wasOk())
+            {
+                catchAllKeys = false;
+                registeredKeys.add(k);
+            }
+            else
+            {
+                reportScriptError(r.getErrorMessage());
+            }
+        }
+
+	}
+}
+
+
 bool ScriptingApi::Content::ScriptComponent::handleKeyPress(const KeyPress& k)
 {
 	if (keyboardCallback)
 	{
-		auto obj = new DynamicObject();
-		var args(obj);
+		if(catchAllKeys || registeredKeys.contains(k))
+		{
+			auto args = Content::createKeyboardCallbackObject(k);
 
-		obj->setProperty("isFocusChange", false);
+			var rv;
 
-		auto c = k.getTextCharacter();
+			keyboardCallback.call(&args, 1); 
 
-		auto printable    = CharacterFunctions::isPrintable(c);
-		auto isWhitespace = CharacterFunctions::isWhitespace(c);
-		auto isLetter     = CharacterFunctions::isLetter(c);
-		auto isDigit      = CharacterFunctions::isDigit(c);
+			return true;
+		}
+
 		
-		obj->setProperty("character", printable ? String::charToString(c) : "");
-		obj->setProperty("specialKey", !printable);
-		obj->setProperty("isWhitespace", isWhitespace);
-		obj->setProperty("isLetter", isLetter);
-		obj->setProperty("isDigit", isDigit);
-		obj->setProperty("keyCode", k.getKeyCode());
-		obj->setProperty("description", k.getTextDescription());
-		obj->setProperty("shift", k.getModifiers().isShiftDown());
-		obj->setProperty("cmd", k.getModifiers().isCommandDown() || k.getModifiers().isCtrlDown());
-		obj->setProperty("alt", k.getModifiers().isAltDown());
-
-		var rv;
-
-		auto ok = keyboardCallback.callSync(&args, 1, &rv);
-
-		if (ok.wasOk())
-			return (bool)rv;
-		else
-			reportScriptError(ok.getErrorMessage());
 	}
 
 	return false;
@@ -2609,7 +2646,8 @@ ScriptComponent(base, name)
 	ADD_SCRIPT_PROPERTY(i03, "fontStyle");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ChoiceSelector);
 	ADD_SCRIPT_PROPERTY(i04, "enableMidiLearn"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
     ADD_SCRIPT_PROPERTY(i05, "popupAlignment"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ChoiceSelector);
-
+    ADD_SCRIPT_PROPERTY(i06, "useCustomPopup"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+    
 	priorityProperties.add(getIdFor(Items));
 
 	setDefaultValue(ScriptComponent::Properties::x, x);
@@ -2624,6 +2662,7 @@ ScriptComponent(base, name)
 	setDefaultValue(ScriptComponent::Properties::defaultValue, 1);
 	setDefaultValue(ScriptComponent::min, 1.0f);
 	setDefaultValue(ScriptComboBox::Properties::enableMidiLearn, false);
+    setDefaultValue(ScriptComboBox::Properties::useCustomPopup, false);
 	
 	handleDefaultDeactivatedProperties();
 	initInternalPropertyFromValueTreeOrDefault(Items);
@@ -3094,6 +3133,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	ADD_SCRIPT_PROPERTY(i03, "showValueOverlay");	ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 	ADD_SCRIPT_PROPERTY(i05, "SliderPackIndex");  
 	ADD_SCRIPT_PROPERTY(i06, "mouseUpCallback"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+	ADD_SCRIPT_PROPERTY(i07, "stepSequencerMode"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 
 	setDefaultValue(ScriptComponent::Properties::x, x);
 	setDefaultValue(ScriptComponent::Properties::y, y);
@@ -3105,6 +3145,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	setDefaultValue(itemColour2, 0x77FFFFFF);
 	setDefaultValue(textColour, 0x33FFFFFF);
 	setDefaultValue(CallbackOnMouseUpOnly, false);
+	setDefaultValue(StepSequencerMode, false);
 
 	setDefaultValue(SliderAmount, 0);
 	setDefaultValue(StepSize, 0);
@@ -3128,6 +3169,7 @@ ComplexDataScriptComponent(base, name_, snex::ExternalData::DataType::SliderPack
 	initInternalPropertyFromValueTreeOrDefault(ScriptComponent::Properties::processorId);
 	initInternalPropertyFromValueTreeOrDefault(SliderPackIndex);
 	initInternalPropertyFromValueTreeOrDefault(CallbackOnMouseUpOnly);
+	initInternalPropertyFromValueTreeOrDefault(StepSequencerMode);
 
 	updateCachedObjectReference();
 
@@ -3218,7 +3260,6 @@ void ScriptingApi::Content::ScriptSliderPack::setAllValuesWithUndo(var value)
 {
 	if (auto d = getCachedSliderPack())
 	{
-		auto isMultiValue = value.isBuffer() || value.isArray();
 		int maxIndex = value.isBuffer() ? (value.getBuffer()->size) : (value.isArray() ? value.size() : d->getNumSliders());
 
 		Array<float> newData;
@@ -3437,6 +3478,7 @@ ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScr
 	
 	ADD_SCRIPT_PROPERTY(i05, "sampleIndex");
 	ADD_SCRIPT_PROPERTY(i06, "enableRange"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
+	ADD_SCRIPT_PROPERTY(i07, "loadWithLeftClick"); ADD_TO_TYPE_SELECTOR(SelectorTypes::ToggleSelector);
 
 	setDefaultValue(ScriptComponent::Properties::x, x);
 	setDefaultValue(ScriptComponent::Properties::y, y);
@@ -3453,6 +3495,7 @@ ScriptingApi::Content::ScriptAudioWaveform::ScriptAudioWaveform(ProcessorWithScr
 	setDefaultValue(Properties::showFileName, true);
 	setDefaultValue(Properties::sampleIndex, 0);
 	setDefaultValue(Properties::enableRange, true);
+	setDefaultValue(Properties::loadWithLeftClick, false);
 
 	handleDefaultDeactivatedProperties();
 
@@ -5776,6 +5819,7 @@ width(600),
 name(String()),
 allowGuiCreation(true),
 dragCallback(p, nullptr, var(), 1),
+suspendCallback(p, nullptr, var(), 1),
 colour(Colour(0xff777777))
 {
 #if USE_FRONTEND
@@ -5829,6 +5873,8 @@ colour(Colour(0xff777777))
 	setMethod("isCtrlDown", Wrapper::isCtrlDown);
 	setMethod("createPath", Wrapper::createPath);
 	setMethod("createShader", Wrapper::createShader);
+	setMethod("setSuspendTimerCallback", Wrapper::setSuspendTimerCallback);
+    setMethod("setKeyPressCallback", Wrapper::setKeyPressCallback);
 	setMethod("createMarkdownRenderer", Wrapper::createMarkdownRenderer);
     setMethod("createSVG", Wrapper::createSVG);
 	setMethod("getScreenBounds", Wrapper::getScreenBounds);
@@ -6067,6 +6113,7 @@ void ScriptingApi::Content::beginInitialization()
 
 	updateWatcher = nullptr;
 	guides.clear();
+	registeredKeyPresses.clear();
 }
 
 
@@ -6657,12 +6704,23 @@ void ScriptingApi::Content::setValuePopupData(var jsonData)
 
 void ScriptingApi::Content::suspendPanelTimers(bool shouldBeSuspended)
 {
+	if(suspendCallback)
+	{
+		suspendCallback.call1(shouldBeSuspended);
+	}
+    
+#if USE_BACKEND
+    for(auto rb: rebuildListeners)
+    {
+        if(rb != nullptr)
+            rb->suspendStateChanged(shouldBeSuspended);
+    }
+#endif
+
 	for (int i = 0; i < components.size(); i++)
 	{
 		if (auto sp = dynamic_cast<ScriptPanel*>(components[i].get()))
-		{
 			sp->suspendTimer(shouldBeSuspended);
-		}
 	}
 }
 
@@ -7070,6 +7128,50 @@ String ScriptingApi::Content::getComponentUnderDrag()
 
 	return obj.toString();
 }
+
+void ScriptingApi::Content::setSuspendTimerCallback(var suspendFunction)
+{
+	if(HiseJavascriptEngine::isJavascriptFunction(suspendFunction))
+	{
+		suspendCallback = WeakCallbackHolder(getScriptProcessor(), nullptr, suspendFunction, 1);
+	}
+}
+
+void ScriptingApi::Content::setKeyPressCallback(const var& keyPress, var keyPressCallback)
+{
+	auto r = Result::ok();
+	auto k = ApiHelpers::getKeyPress(keyPress, &r);
+
+	if(!r.wasOk())
+		reportScriptError(r.getErrorMessage());
+
+	if(HiseJavascriptEngine::isJavascriptFunction(keyPressCallback))
+	{
+		for(auto& rkp: registeredKeyPresses)
+		{
+			if(rkp.first == k)
+			{
+				rkp.second = keyPressCallback;
+				return;
+			}
+		}
+
+		registeredKeyPresses.add({k, keyPressCallback});
+	}
+	else
+	{
+		for(const auto& rkp: registeredKeyPresses)
+		{
+			if(rkp.first == k)
+			{
+				registeredKeyPresses.remove(&rkp);
+				return;
+			}
+		}
+	}
+}
+
+
 
 #undef ADD_TO_TYPE_SELECTOR
 #undef ADD_AS_SLIDER_TYPE

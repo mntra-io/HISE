@@ -723,7 +723,9 @@ bool HiSlider::callWhenSingleMacro(const std::function<bool(AudioProcessor* p, i
 
 void HiSlider::updateValue(NotificationType /*sendAttributeChange*/)
 {
-
+	if(getProcessor() == nullptr)
+		return;
+	
 	const bool enabled = !isLocked();
 
 	setEnabled(enabled);
@@ -1169,7 +1171,7 @@ void HiToggleButton::mouseUp(const MouseEvent& e)
 }
 
 HiComboBox::HiComboBox(const String& name):
-	ComboBox(name),
+	SubmenuComboBox(name),
 	MacroControlledObject()
 {
 	addChildComponent(numberTag);

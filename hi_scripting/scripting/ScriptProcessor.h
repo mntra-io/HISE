@@ -63,6 +63,18 @@ public:
 
 	virtual int getCallbackEditorStateOffset() const;
 
+#if USE_BACKEND
+
+	void toggleSuspension()
+	{
+		simulatedSuspensionState = !simulatedSuspensionState;
+		suspendStateChanged(simulatedSuspensionState);
+	}
+	
+	bool simulatedSuspensionState = false;
+
+#endif
+
 	void suspendStateChanged(bool shouldBeSuspended) override;
 
 	ScriptingApi::Content *getScriptingContent() const;
@@ -226,6 +238,8 @@ public:
 
 	File getWatchedFile(int index) const;
 
+	bool isEmbeddedSnippetFile(int index) const;
+
 	CodeDocument& getWatchedFileDocument(int index);
 
 	void setCurrentPopup(DocumentWindow *window);
@@ -240,6 +254,21 @@ public:
 	static ValueTree collectAllScriptFiles(ModulatorSynthChain *synthChainToExport);
 
 private:
+
+	struct ExternalReloader: public Timer
+	{
+		ExternalReloader(FileChangeListener& p):
+		  parent(p)
+		{
+			startTimer(3000);
+		}
+
+		void timerCallback() override;
+
+		FileChangeListener& parent;
+	};
+
+	ScopedPointer<ExternalReloader> reloader;
 
 	friend class ExternalScriptFile;
 	friend class WeakReference < FileChangeListener > ;
@@ -325,6 +354,8 @@ public:
 		int getNumArgs() const;
 
 		void replaceContentAsync(String s, bool shouldBeAsync=true);
+
+		bool isInitialised() const { return pendingNewContent.isEmpty(); }
 
 	private:
 
@@ -672,7 +703,7 @@ public:
 
 	~JavascriptThreadPool();
 
-	void cancelAllJobs();
+	void cancelAllJobs(bool stopThread=true);
 
 	class Task
 	{
@@ -682,7 +713,6 @@ public:
 		{
 			Compilation,
             ReplEvaluation,
-            HiPriorityDispatchQueue,
 			HiPriorityCallbackExecution,
 			LowPriorityCallbackExecution,
 			DeferredPanelRepaintJob,

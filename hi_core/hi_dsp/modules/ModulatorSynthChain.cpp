@@ -72,9 +72,9 @@ ModulatorSynthChain::ModulatorSynthChain(MainController *mc, const String &id, i
 
 ModulatorSynthChain::~ModulatorSynthChain()
 {
-	modChains.clear();
-
 	getHandler()->clear();
+
+	modChains.clear();
 
 	effectChain = nullptr;
 	midiProcessorChain = nullptr;
@@ -323,9 +323,13 @@ void ModulatorSynthChain::renderNextBlockWithModulators(AudioSampleBuffer &buffe
     }
 #endif
 
+	ScopedAnalyser sa(getMainController(), this, internalBuffer, buffer.getNumSamples());
+
 	// Process the Synths and add store their output in the internal buffer
 	for (int i = 0; i < synths.size(); i++)
     {
+		ScopedAnalyser sa(getMainController(), synths[i], internalBuffer, internalBuffer.getNumSamples());
+
         if (!synths[i]->isSoftBypassed())
             synths[i]->renderNextBlockWithModulators(internalBuffer, eventBuffer);
     }
@@ -742,9 +746,17 @@ void ModulatorSynthChain::ModulatorSynthChainHandler::clear()
 {
 	notifyListeners(Listener::Cleared, nullptr);
 
-	ScopedLock sl(synth->getMainController()->getLock());
+	auto root = synth->getMainController()->getMainSynthChain();
 
-	synth->synths.clear();
+	if(root == nullptr || root == synth)
+	{
+		ScopedLock sl(synth->getMainController()->getLock());
+		synth->synths.clear();
+	}
+	else
+	{
+		clearAsync(synth);
+	}
 }
 
 

@@ -54,7 +54,7 @@ void ModulatorSamplerVoice::startVoiceInternal(int midiNoteNumber, float velocit
 
 int ModulatorSamplerVoice::calculateSampleStartMod()
 {
-	int sampleStartModulationDelta;
+	int sampleStartModulationDelta = 0;
 
 	// if value is >= 0, then it comes from the modulator chain value
 	const bool sampleStartModIsFromChain = sampleStartModValue >= 0.0f;
@@ -66,10 +66,8 @@ int ModulatorSamplerVoice::calculateSampleStartMod()
 		jassert(sampleStartModValue <= 1.0f);
 		sampleStartModulationDelta = (int)(jlimit<float>(0.0f, 1.0f, sampleStartModValue) * sound->getSampleStartModulation());
 	}
-	else
+	else if (auto maxOffset = sound->getSampleStartModulation())
 	{
-		auto maxOffset = sound->getSampleStartModulation();
-
 		// just flip the sign and use it directly...
 		sampleStartModulationDelta = jlimit<int>(0, maxOffset, (int)(-1.0f * sampleStartModValue));
 
@@ -196,7 +194,7 @@ void ModulatorSamplerVoice::calculateBlock(int startSample, int numSamples)
 		auto v0 = gEnv->getUptimeValue(voiceUptime);
 		auto v1 = gEnv->getUptimeValue(wrappedVoice.voiceUptime);
 
-		if (std::abs(v0 - v1) < 0.001f)
+		if (FloatSanitizers::isSilence(v0 - v1))
 		{
 			envGain = v0;
 		}
@@ -585,7 +583,7 @@ void MultiMicModulatorSamplerVoice::calculateBlock(int startSample, int numSampl
 		auto v0 = gEnv->getUptimeValue(oldUptime);
 		auto v1 = gEnv->getUptimeValue(voiceUptime);
 
-		if (std::abs(v0 - v1) < 0.001f)
+		if (FloatSanitizers::isSilence(v0 - v1))
 		{
 			totalGain *= v0;
 		}

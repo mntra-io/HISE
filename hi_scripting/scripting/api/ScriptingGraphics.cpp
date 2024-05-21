@@ -99,9 +99,19 @@ String ScriptingObjects::ScriptShader::FileParser::createLinePointer(int i) cons
 String ScriptingObjects::ScriptShader::FileParser::loadFileContent()
 {
 #if USE_BACKEND
-	auto f = getMainController()->getCurrentFileHandler().getSubDirectory(FileHandlerBase::Scripts).getChildFile(fileNameWithoutExtension).withFileExtension("glsl");
 
-    if(!f.existsAsFile())
+	auto glslFile = getMainController()->getCurrentFileHandler().getSubDirectory(FileHandlerBase::Scripts).getChildFile(fileNameWithoutExtension).withFileExtension("glsl");
+
+
+	auto ef = getMainController()->getExternalScriptFile(glslFile, false);
+
+	String content;
+
+	if(ef != nullptr)
+		content = ef->getFileDocument().getAllContent();
+	else if (glslFile.existsAsFile())
+		content = glslFile.loadFileAsString();
+	else
     {
         String s;
         String nl = "\n";
@@ -118,21 +128,22 @@ String ScriptingObjects::ScriptShader::FileParser::loadFileContent()
         s << "    fragColor = pixelAlpha * vec4(col,1.0);" << nl;
         s << "}" << nl;
         
-        f.replaceWithText(s);
+		content = s;
+		glslFile.replaceWithText(s);
     }
-    
+	
 	if (auto jp = dynamic_cast<JavascriptProcessor*>(sp))
 	{
-		auto ef = jp->addFileWatcher(f);
+		ef = jp->addFileWatcher(glslFile);
 
 		if (includedFiles.contains(ef))
 			throw String("Trying to include " + fileNameWithoutExtension + " multiple times");
 
 		includedFiles.add(ef);
-		jp->getScriptEngine()->addShaderFile(f);
+		jp->getScriptEngine()->addShaderFile(glslFile);
 	}
 
-	return f.loadFileAsString();
+	return content;
 #else
 
 	if (!fileNameWithoutExtension.endsWith(".glsl"))
@@ -1563,6 +1574,7 @@ struct ScriptingObjects::GraphicsObject::Wrapper
 	API_VOID_METHOD_WRAPPER_2(GraphicsObject, fillTriangle);
 	API_VOID_METHOD_WRAPPER_2(GraphicsObject, fillPath);
 	API_VOID_METHOD_WRAPPER_3(GraphicsObject, drawPath);
+	API_VOID_METHOD_WRAPPER_2(GraphicsObject, drawFFTSpectrum);
 	API_VOID_METHOD_WRAPPER_2(GraphicsObject, rotate);
 	API_VOID_METHOD_WRAPPER_1(GraphicsObject, gaussianBlur);
 	API_VOID_METHOD_WRAPPER_1(GraphicsObject, boxBlur);
@@ -1619,6 +1631,7 @@ ScriptingObjects::GraphicsObject::GraphicsObject(ProcessorWithScriptingContent *
 	ADD_API_METHOD_2(fillPath);
 	ADD_API_METHOD_3(drawPath);
 	ADD_API_METHOD_2(rotate);
+	ADD_API_METHOD_2(drawFFTSpectrum);
 
 	ADD_API_METHOD_1(beginLayer);
 	ADD_API_METHOD_1(gaussianBlur);
@@ -2002,6 +2015,17 @@ void ScriptingObjects::GraphicsObject::drawMarkdownText(var markdownRenderer)
 	}
 	else
 		reportScriptError("not a markdown renderer");
+}
+
+void ScriptingObjects::GraphicsObject::drawFFTSpectrum(var fftObject, var area)
+{
+	if (auto obj = dynamic_cast<ScriptingObjects::ScriptFFT*>(fftObject.getObject()))
+	{
+		auto b = ApiHelpers::getRectangleFromVar(area);
+		drawActionHandler.addDrawAction(new ScriptedDrawActions::drawFFTSpectrum(obj->getSpectrum(false), b, obj->getParameters()->quality));
+	}
+	else
+        reportScriptError("not a SVG object");
 }
 
 void ScriptingObjects::GraphicsObject::drawSVG(var svgObject, var bounds, float opacity)
@@ -3076,6 +3100,7 @@ void ScriptingObjects::ScriptedLookAndFeel::Laf::drawToggleButton(Graphics &g_, 
 	if (functionDefined("drawToggleButton"))
 	{
 		auto obj = new DynamicObject();
+		obj->setProperty("id", b.getComponentID());
 		obj->setProperty("area", ApiHelpers::getVarRectangle(b.getLocalBounds().toFloat()));
 		obj->setProperty("enabled", b.isEnabled());
 		obj->setProperty("text", b.getButtonText());

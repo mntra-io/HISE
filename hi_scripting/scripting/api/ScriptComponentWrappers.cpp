@@ -1100,6 +1100,7 @@ void ScriptCreatedComponentWrappers::ComboBoxWrapper::updateComponent(int proper
 		PROPERTY_CASE::ScriptComboBox::FontName:
 		PROPERTY_CASE::ScriptComboBox::FontSize :
 		PROPERTY_CASE::ScriptComboBox::FontStyle : updateFont(getScriptComponent()); break;
+        PROPERTY_CASE::ScriptComboBox::useCustomPopup: cb->setUseCustomPopup((bool)newValue); break;
         PROPERTY_CASE::ScriptComboBox::popupAlignment: cb->getProperties().set("popupAlignment", newValue); break;
 		PROPERTY_CASE::ScriptSlider::numProperties :
 	default:
@@ -1149,7 +1150,8 @@ void ScriptCreatedComponentWrappers::ComboBoxWrapper::updateFont(ScriptComponent
 void ScriptCreatedComponentWrappers::ComboBoxWrapper::updateItems(HiComboBox * cb)
 {
 	cb->clear(dontSendNotification);
-
+    cb->rebuildPopupMenu();
+    
 	cb->addItemList(dynamic_cast<ScriptingApi::Content::ScriptComboBox*>(getScriptComponent())->getItemList(), 1);
     
     auto currentValue = (int)getScriptComponent()->getValue();
@@ -2454,6 +2456,7 @@ void ScriptCreatedComponentWrappers::SliderPackWrapper::updateComponent(int prop
 		PROPERTY_CASE::ScriptComponent::Properties::min :
 		PROPERTY_CASE::ScriptComponent::Properties::max : updateRange(dynamic_cast<SliderPackData*>(ssp->getCachedDataObject())); break;
 		PROPERTY_CASE::ScriptSliderPack::Properties::CallbackOnMouseUpOnly : sp->setCallbackOnMouseUp((bool)newValue); break;
+		PROPERTY_CASE::ScriptSliderPack::Properties::StepSequencerMode : sp->setStepSequencerMode((bool)newValue); break;
 	}
 }
 
@@ -2469,6 +2472,9 @@ void ScriptCreatedComponentWrappers::SliderPackWrapper::updateColours(SliderPack
 
 void ScriptCreatedComponentWrappers::SliderPackWrapper::updateRange(SliderPackData* data)
 {
+	if(data == nullptr)
+		return;
+
 	ScriptingApi::Content::ScriptSliderPack *ssp = dynamic_cast<ScriptingApi::Content::ScriptSliderPack*>(getScriptComponent());
 
 	double min = GET_SCRIPT_PROPERTY(min);
@@ -2728,14 +2734,7 @@ void ScriptCreatedComponentWrappers::AudioWaveformWrapper::updateComponent(int p
             PROPERTY_CASE::ScriptComponent::tooltip :        adc->setTooltip(GET_SCRIPT_PROPERTY(tooltip)); break;
 
 			PROPERTY_CASE::ScriptAudioWaveform::Properties::showLines: adc->getThumbnail()->setDrawHorizontalLines((bool)newValue); break;
-			PROPERTY_CASE::ScriptAudioWaveform::Properties::enableRange:
-			{
-				if (auto w = dynamic_cast<AudioDisplayComponent*>(component.get()))
-				{
-					w->getSampleArea(0)->setAreaEnabled(newValue);
-				}
-				break;
-			}
+			PROPERTY_CASE::ScriptAudioWaveform::Properties::enableRange: adc->getSampleArea(0)->setAreaEnabled(newValue); break;
 		}
 
 		if (auto asb = dynamic_cast<MultiChannelAudioBufferDisplay*>(component.get()))
@@ -2745,6 +2744,7 @@ void ScriptCreatedComponentWrappers::AudioWaveformWrapper::updateComponent(int p
 			switch (propertyIndex)
 			{
 				PROPERTY_CASE::ScriptAudioWaveform::Properties::showFileName: asb->setShowFileName((bool)newValue); break;
+				PROPERTY_CASE::ScriptAudioWaveform::Properties::loadWithLeftClick: asb->setLoadWithLeftClick((bool)newValue); break;
 			}
 		}
 	}
@@ -3031,7 +3031,7 @@ void ScriptedControlAudioParameter::setValue(float newValue)
 			{
 				lastValue = snappedValue;
 				lastValueInitialised = true;
-				scriptProcessor->setAttribute(componentIndex, snappedValue, sendNotification);
+				scriptProcessor->setAttribute(componentIndex, snappedValue, sendNotificationAsync);
 			}
 		}
 	}
@@ -3164,7 +3164,9 @@ void ScriptedControlAudioParameter::setParameterNotifyingHost(int index, float n
 {
 	auto mc = dynamic_cast<MainController*>(parentProcessor);
 
-	if (mc->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::AudioThread)
+	auto defer = mc->getDeferNotifyHostFlag() || mc->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::AudioThread;
+
+	if (defer)
 	{
 		indexForHost = index;
 		valueForHost = newValue;

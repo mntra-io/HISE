@@ -702,7 +702,33 @@ ProcessorEditorBody *MidiProcessorChain::createEditor(ProcessorEditor *parentEdi
 
 void MidiProcessorChain::addArtificialEvent(const HiseEvent& m)
 {
+	if(fixNoteOnAfterNoteOff && m.isNoteOff() && !artificialEvents.isEmpty())
+	{
+		HiseEventBuffer::Iterator iter(artificialEvents);
+
+		while(auto e = iter.getNextEventPointer(true))
+		{
+			if(e->isNoteOn() && 
+			   e->getEventId() == m.getEventId() &&
+			   e->getTimeStamp() > m.getTimeStamp())
+			{
+				e->ignoreEvent(true);
+				return; // we actually don't need to add the note-off anymore...
+			}
+		}
+	}
+
 	artificialEvents.addEvent(m);
+}
+
+void MidiProcessorChain::setFixNoteOnAfterNoteOff(bool shouldBeFixed)
+{
+	fixNoteOnAfterNoteOff = shouldBeFixed;
+
+	if(shouldBeFixed)
+		attachedNoteBuffer = new AttachedNoteBuffer();
+	else
+		attachedNoteBuffer = nullptr;
 }
 
 bool MidiProcessorChain::setArtificialTimestamp(uint16 eventId, int newTimestamp)
@@ -715,16 +741,7 @@ bool MidiProcessorChain::setArtificialTimestamp(uint16 eventId, int newTimestamp
 			return true;
 		}
 	}
-
-	for (auto& e : futureEventBuffer)
-	{
-		if (e.getEventId() == eventId)
-		{
-			e.setTimeStamp(newTimestamp);
-			return true;
-		}
-	}
-
+    
 	return false;
 }
 
@@ -735,6 +752,17 @@ void MidiProcessorChain::renderNextHiseEventBuffer(HiseEventBuffer &buffer, int 
 		buffer.clear();
 		buffer.addEvent(HiseEvent(HiseEvent::Type::AllNotesOff, 0, 0, 1));
 		allNotesOffAtNextBuffer = false;
+
+		if(hasAttachedNoteBuffer())
+			attachedNoteBuffer->reset();
+	}
+
+	if(attachedNoteBuffer != nullptr && attachedNoteBuffer->hasAttachedNotes())
+	{
+		HiseEventBuffer::Iterator it(buffer);
+
+		while(auto e = it.getNextEventPointer(true))
+			attachedNoteBuffer->processNoteOff(*e, buffer);
 	}
 
 	if (!wholeBufferProcessors.isEmpty())
@@ -746,10 +774,37 @@ void MidiProcessorChain::renderNextHiseEventBuffer(HiseEventBuffer &buffer, int 
 		}
 	}
 
-	if (buffer.isEmpty() && futureEventBuffer.isEmpty() && artificialEvents.isEmpty()) return;
+	if (buffer.isEmpty() && artificialEvents.isEmpty()) return;
     
 	logEvents(buffer, true);
 
+    if(!artificialEvents.isEmpty() && fixNoteOnAfterNoteOff)
+    {
+        HiseEventBuffer::Iterator it1(buffer);
+        
+        while (HiseEvent* off = it1.getNextEventPointer(true))
+        {
+            if(off->isNoteOff())
+            {
+                HiseEventBuffer::Iterator it2(artificialEvents);
+
+                while (HiseEvent* on = it2.getNextEventPointer(true))
+                {
+                    if(on->isNoteOn() &&
+                       on->getEventId() == off->getEventId() &&
+                       on->getTimeStamp() > off->getTimeStamp())
+                    {
+                        on->ignoreEvent(true);
+
+						// Ignore the note-off too - the entire note has been cancelled
+						off->ignoreEvent(true);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
 	HiseEventBuffer::Iterator it(buffer);
 	
 	jassert(buffer.timeStampsAreSorted());

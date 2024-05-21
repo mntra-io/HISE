@@ -458,7 +458,12 @@ FileChangeListener::~FileChangeListener()
 
 ExternalScriptFile::Ptr FileChangeListener::addFileWatcher(const File &file)
 {
-	auto p = dynamic_cast<Processor*>(this)->getMainController()->getExternalScriptFile(file);
+	auto p = dynamic_cast<Processor*>(this)->getMainController()->getExternalScriptFile(file, true);
+
+#if USE_BACKEND
+	if(reloader == nullptr)
+		reloader = new ExternalReloader(*this);
+#endif
 
 	watchers.add(p);
 
@@ -546,6 +551,16 @@ File FileChangeListener::getWatchedFile(int index) const
 
 	}
 	else return File();
+}
+
+bool FileChangeListener::isEmbeddedSnippetFile(int index) const
+{
+	if(isPositiveAndBelow(index, watchers.size()))
+	{
+		return watchers[index]->getResourceType() == ExternalScriptFile::ResourceType::EmbeddedInSnippet;
+	}
+
+	return false;
 }
 
 CodeDocument& FileChangeListener::getWatchedFileDocument(int index)
@@ -702,6 +717,14 @@ ValueTree FileChangeListener::collectAllScriptFiles(ModulatorSynthChain *chainTo
 	}
 
 	return externalScriptFiles;
+}
+
+void FileChangeListener::ExternalReloader::timerCallback()
+{
+	for(auto w: parent.watchers)
+	{
+		w->reloadIfChanged();
+	}
 }
 
 void FileChangeListener::addFileContentToValueTree(JavascriptProcessor* jp, ValueTree externalScriptFiles, File scriptFile, ModulatorSynthChain* chainToExport)
@@ -1245,6 +1268,7 @@ void JavascriptProcessor::addInplaceDebugValue(const Identifier& callback, int l
 		newValue.location = CodeDocument::Position(*sn, lineNumber, 99);
 		newValue.originalLineNumber = lineNumber;
 		newValue.value = value;
+		newValue.initialised = sn->isInitialised();
 
 		inplaceValues.add(newValue);
 		inplaceValues.getReference(inplaceValues.size() - 1).location.setPositionMaintained(true);
@@ -2279,11 +2303,13 @@ JavascriptThreadPool::~JavascriptThreadPool()
 	stopThread(1000);
 }
 
-void JavascriptThreadPool::cancelAllJobs()
+void JavascriptThreadPool::cancelAllJobs(bool shouldStopThread)
 {
 	LockHelpers::SafeLock ss(getMainController(), LockHelpers::Type::ScriptLock);
 
-	stopThread(1000);
+	if(shouldStopThread)
+		stopThread(1000);
+
 	compilationQueue.clear();
 	lowPriorityQueue.clear();
 	highPriorityQueue.clear();
@@ -2465,22 +2491,14 @@ void JavascriptThreadPool::addJob(Task::Type t, JavascriptProcessor* p, const Ta
 	{
 		jassert(isBusy());
 		
-        if(currentType == Task::Type::HiPriorityDispatchQueue)
-        {
-            // this happens during the hi priority flush (which should
-            // be treated as UI event since it has the message manager lock)
-            // hence we'll defer the execution to later down the line...
-            pushToQueue(t, p, f);
-        }
-		else if (t == currentType)
+        if (t == currentType)
 		{
 			// Same priority, just run it
 			executeNow(t, p, f);
 		}
 		else
 		{
-			if (t == Task::Type::LowPriorityCallbackExecution ||
-				currentType == Task::Type::HiPriorityDispatchQueue)
+			if (t == Task::Type::LowPriorityCallbackExecution)
 			{
 				// We're calling a low priority task from a high priority task
 				// In this case, we defer the task to later (it's just a timer
@@ -2602,33 +2620,6 @@ Result JavascriptThreadPool::executeQueue(const Task::Type& t, PendingCompilatio
 	case Task::HiPriorityCallbackExecution:
 	{
 		r = executeQueue(Task::ReplEvaluation, pendingCompilations);
-
-		{
-			TRACE_EVENT("dispatch", "getting message manager lock");
-
-            // avoid locking the message thread if we're about to close down shop...
-            if(threadShouldExit())
-                return Result::ok();
-            
-            // The high priority queue is supposed to be treated as UI event
-            // so we need to grab the message thread lock instead of the scripting
-            // lock.
-            //LockHelpers::SafeLock sl(getMainController(), LockHelpers::Type::ScriptLock);
-            MessageManagerLock mm(this);
-            
-            if(!mm.lockWasGained())
-                return r;
-
-            TRACE_EVENT("dispatch", "flush hi priority dispatch queue");
-            
-            // Setting these states will push any script job that is added
-            // during the flush operations to the respective queues where
-            // they will be executed with the proper locking in place...
-			ScopedValueSetter<bool> svs(busy, true);
-            ScopedValueSetter<Task::Type> svs2(currentType, Task::HiPriorityDispatchQueue);
-
-			getMainController()->getRootDispatcher().flushHighPriorityQueues(this);
-		}
 
 		TRACE_EVENT("scripting", "high priority queue");//, perfetto::Track(HighPriorityTrackId));
 		

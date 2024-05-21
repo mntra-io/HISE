@@ -403,7 +403,7 @@ void TokenCollection::setEnabled(bool shouldBeEnabled, bool isDirty)
 
 void TokenCollection::signalRebuild()
 {
-	if (!enabled || rebuildPending)
+	if (!enabled || rebuildPending || !useBackgroundThread)
 		return;
 
 	rebuildPending = true;
@@ -432,14 +432,15 @@ void TokenCollection::run()
 {
 	rebuildPending = false;
 
-	PerfettoHelpers::setCurrentThreadName("TokenRebuildThread");
+	if(useBackgroundThread)
+		PerfettoHelpers::setCurrentThreadName("TokenRebuildThread");
+
 	TRACE_EVENT("scripting", "rebuild autocomplete tokens");
 
 	dirty = true;
 
 	for(auto l: listeners)
 		l->threadStateChanged(true);
-
 
 	rebuild();
 
@@ -453,11 +454,12 @@ void TokenCollection::clearTokenProviders()
 {
 	SimpleReadWriteLock::ScopedMultiWriteLock sl(buildLock);
 	tokenProviders.clear();
+	tokens.clear();
 }
 
 void TokenCollection::addTokenProvider(Provider* ownedProvider)
 {
-	if (tokenProviders.isEmpty())
+	if (tokenProviders.isEmpty() && useBackgroundThread)
 		startThread();
 
 	SimpleReadWriteLock::ScopedMultiWriteLock sl(buildLock);
@@ -530,7 +532,8 @@ int64 TokenCollection::getHashFromTokens(const List& l)
 
 void TokenCollection::rebuild()
 {
-    PerfettoHelpers::setCurrentThreadName("Token Rebuild Thread");
+	if(useBackgroundThread)
+		PerfettoHelpers::setCurrentThreadName("Token Rebuild Thread");
     
 	if (dirty)
 	{
@@ -554,14 +557,11 @@ void TokenCollection::rebuild()
         try
         {
             Sorter ts(*this);
-            
             SortFunctionConverter<Sorter> converter (ts);
-
             std::sort(newTokens.begin(), newTokens.end(), converter);
-            
             newTokens.sort(ts);
         }
-        catch(Sorter::AbortException& e)
+        catch(Sorter::AbortException&)
         {
             
         }

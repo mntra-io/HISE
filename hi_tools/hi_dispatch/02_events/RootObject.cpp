@@ -155,7 +155,7 @@ void RootObject::flushHighPriorityQueues(Thread* t)
     
 	forEach<SourceManager, Behaviour::BreakIfPaused>([&](SourceManager& sm)
 	{
-		if(t->threadShouldExit())
+		if(t != nullptr && t->threadShouldExit())
 			return true;
 
         StringBuilder b;
@@ -227,9 +227,9 @@ RootObject::Child(r)
 
 Queueable::~Queueable()
 {
-    int index = 0;
-
 #if ENABLE_QUEUE_AND_LOGGER
+    int index = 0;
+    
     if(auto l = getRootObject().getLogger())
         l->log(l, EventType::Remove, (uint8*)&index, sizeof(int));
 #endif

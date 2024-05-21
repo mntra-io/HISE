@@ -181,6 +181,8 @@ public:
 
 		virtual bool onDragAction(DragAction a, ScriptComponent* source, var& data) { return false; }
 
+		virtual void suspendStateChanged(bool isSuspended) {};
+
 	private:
 
 		friend class WeakReference<RebuildListener>;
@@ -529,6 +531,9 @@ public:
 		/** Adds a callback to react on key presses (when this component is focused). */
 		void setKeyPressCallback(var keyboardFunction);
 
+		/** Registers a selection of key presses to be consumed by this component. */
+		void setConsumedKeyPresses(var listOfKeys);
+
 		/** Call this method in order to give away the focus for this component. */
 		void loseFocus();
 
@@ -734,6 +739,10 @@ public:
 		var localLookAndFeel;
 
 		MacroControlledObject::ModulationPopupData::Ptr modulationData;
+
+        bool consumedCalled = false;
+		bool catchAllKeys = true;
+		Array<juce::KeyPress> registeredKeys;
 
 		WeakCallbackHolder keyboardCallback;
 
@@ -1068,6 +1077,7 @@ public:
 			FontStyle,
 			enableMidiLearn,
             popupAlignment,
+            useCustomPopup,
 			numProperties
 		};
 
@@ -1309,6 +1319,7 @@ public:
 			ShowValueOverlay,
 			SliderPackIndex,
 			CallbackOnMouseUpOnly,
+			StepSequencerMode,
 			numProperties
 		};
 
@@ -1401,6 +1412,7 @@ public:
 			showFileName,
 			sampleIndex,
 			enableRange,
+			loadWithLeftClick,
 			numProperties
 		};
 
@@ -2261,7 +2273,41 @@ public:
 	/** Returns the ID of the component under the mouse. */
 	String getComponentUnderDrag();
 
+	/** Sets a callback that will be notified whenever the UI timers are suspended. */
+	void setSuspendTimerCallback(var suspendFunction);
+
+	/** Adds a callback that will be performed asynchronously when the key is pressed. */
+	void setKeyPressCallback(const var& keyPress, var keyPressCallback);
+
 	// ================================================================================================================
+
+	static var createKeyboardCallbackObject(const KeyPress& k)
+	{
+		auto obj = new DynamicObject();
+		var args(obj);
+
+		obj->setProperty("isFocusChange", false);
+
+		auto c = k.getTextCharacter();
+
+		auto printable    = CharacterFunctions::isPrintable(c);
+		auto isWhitespace = CharacterFunctions::isWhitespace(c);
+		auto isLetter     = CharacterFunctions::isLetter(c);
+		auto isDigit      = CharacterFunctions::isDigit(c);
+		
+		obj->setProperty("character", printable ? String::charToString(c) : "");
+		obj->setProperty("specialKey", !printable);
+		obj->setProperty("isWhitespace", isWhitespace);
+		obj->setProperty("isLetter", isLetter);
+		obj->setProperty("isDigit", isDigit);
+		obj->setProperty("keyCode", k.getKeyCode());
+		obj->setProperty("description", k.getTextDescription());
+		obj->setProperty("shift", k.getModifiers().isShiftDown());
+		obj->setProperty("cmd", k.getModifiers().isCommandDown() || k.getModifiers().isCtrlDown());
+		obj->setProperty("alt", k.getModifiers().isAltDown());
+
+		return args;
+	}
 
 	// Restores the content and sets the attributes so that the macros and the control callbacks gets executed.
 	void restoreAllControlsFromPreset(const ValueTree &preset);
@@ -2467,9 +2513,36 @@ public:
 
 	Array<VisualGuide> guides;
 
+	bool hasKeyPressCallbacks() const { return !registeredKeyPresses.isEmpty(); }
+
+	bool handleKeyPress(const KeyPress& k)
+	{
+		auto k1 = k.getKeyCode();
+		auto m1 = k.getModifiers();
+
+		for(auto& rkp: registeredKeyPresses)
+		{
+			auto k2 = rkp.first.getKeyCode();
+			auto m2 = rkp.first.getModifiers();
+			
+			if(k1 == k2 && m1 == m2)
+			{
+				auto obj = createKeyboardCallbackObject(k);
+				WeakCallbackHolder f(getScriptProcessor(), nullptr, rkp.second, 1);
+				f.call1(obj);
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 private:
 
 	WeakCallbackHolder dragCallback;
+	WeakCallbackHolder suspendCallback;
+
+	Array<std::pair<KeyPress, var>> registeredKeyPresses;
 
 	struct AsyncRebuildMessageBroadcaster : public AsyncUpdater
 	{

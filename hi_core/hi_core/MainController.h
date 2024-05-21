@@ -209,11 +209,13 @@ public:
 		*/
 		const ValueTree getLoadedSampleMap(const String &fileName) const;
 
-		NativeFileHandler &getProjectHandler() { return projectHandler; }
+		
+
+		NativeFileHandler &getProjectHandler();
 
 		void setDiskMode(DiskMode mode) noexcept;
 
-		const NativeFileHandler &getProjectHandler() const { return projectHandler; }
+		const NativeFileHandler &getProjectHandler() const;
 
 		bool isUsingHddMode() const noexcept{ return hddMode; };
 
@@ -257,7 +259,7 @@ public:
 
 		bool hasPendingFunction(Processor* p) const;
 
-		bool isNonRealtime()
+		bool isNonRealtime() const
 		{
 			return nonRealtime;
 		}
@@ -1431,6 +1433,25 @@ public:
 		UnorderedStack<void*, 32> audioThreads;
 	};
 
+	struct PluginBypassHandler: public PooledUIUpdater::SimpleTimer,
+								public ControlledObject
+	{
+		PluginBypassHandler(MainController* mc):
+		  ControlledObject(mc),
+		  SimpleTimer(mc->getGlobalUIUpdater())
+		{};
+
+		void timerCallback() override;
+
+		void bumpWatchDog();
+
+		uint32 lastProcessBlockTime = 0;
+		bool lastBypassFlag = false;
+		bool currentBypassState = false;
+		bool reactivateOnNextCall = false;
+		LambdaBroadcaster<bool> listeners;
+	};
+
 	MainController();
 
 	virtual ~MainController();
@@ -1445,6 +1466,9 @@ public:
 
 	AutoSaver &getAutoSaver() noexcept { return autoSaver; }
 	const AutoSaver &getAutoSaver() const noexcept { return autoSaver; }
+
+	PluginBypassHandler& getPluginBypassHandler() noexcept { return bypassHandler; }
+	const PluginBypassHandler& getPluginBypassHandler() const noexcept { return bypassHandler; }
 
 	DelayedRenderer& getDelayedRenderer() noexcept { return delayedRenderer; };
 	const DelayedRenderer& getDelayedRenderer() const noexcept { return delayedRenderer; };
@@ -1617,6 +1641,8 @@ public:
 
 	void handleTransportCallbacks(const AudioPlayHead::CurrentPositionInfo& newInfo, const MasterClock::GridInfo& gi);
 
+	void sendArtificialTransportMessage(bool shouldBeOn);
+
 	/** skins the given component (applies the global look and feel to it). */
     void skin(Component &c);
 	
@@ -1647,16 +1673,9 @@ public:
 	DebugLogger& getDebugLogger() { return debugLogger; }
 	const DebugLogger& getDebugLogger() const { return debugLogger; }
     
-	void addPreviewListener(BufferPreviewListener* l)
-	{
-		previewListeners.addIfNotAlreadyThere(l);
-		l->previewStateChanged(previewBufferIndex != -1, previewBuffer);
-	}
+	void addPreviewListener(BufferPreviewListener* l);
 
-	void removePreviewListener(BufferPreviewListener* l)
-	{
-		previewListeners.removeAllInstancesOf(l);
-	}
+	void removePreviewListener(BufferPreviewListener* l);
 
 	void stopBufferToPlay();
 
@@ -1666,6 +1685,8 @@ public:
 
 	int getPreviewBufferSize() const;
 
+    void connectToRuntimeTargets(scriptnode::OpaqueNode& opaqueNode, bool shouldAdd);
+    
 	void setKeyboardCoulour(int keyNumber, Colour colour);
 
 	CustomKeyboardState &getKeyboardState();
@@ -1787,7 +1808,9 @@ public:
 		return lastActiveEditor.getComponent();
 	}
 
-	
+#if HISE_INCLUDE_RT_NEURAL
+	NeuralNetwork::Holder& getNeuralNetworks() { return neuralNetworks; }
+#endif
 
 	/** This returns always true after the processor was initialised. */
 	bool isInitialised() const noexcept;;
@@ -1842,12 +1865,16 @@ public:
 	}
 
     ReferenceCountedObject* getGlobalPreprocessor();
-    
+
+	bool isInsideAudioRendering() const;
+
 	bool shouldAbortMessageThreadOperation() const noexcept
 	{
 		return false;
 	}
-    
+
+	bool& getDeferNotifyHostFlag() { return deferNotifyHostFlag; }
+
 	LambdaBroadcaster<float> &getFontSizeChangeBroadcaster() { return codeFontChangeNotificator; };
     
 	
@@ -1952,7 +1979,7 @@ public:
 	RLottieManager::Ptr getRLottieManager();
 #endif
 
-#if USE_BACKEND || HISE_ENABLE_LORIS_ON_FRONTEND
+#if HISE_INCLUDE_LORIS
     LorisManager* getLorisManager() { return lorisManager.get(); }
 #endif
     
@@ -1962,6 +1989,10 @@ public:
     void setBpm(double bpm_);
     
 private: // Never call this directly, but wrap it through DelayedRenderer...
+
+	// except for the audio rendererbase as this does not need to use the outer interface
+	// (in order to avoid messing with the leftover sample logic from misbehFL!avinStudio!!1!g hosts...)
+	friend class AudioRendererBase;
 
 	/** This is the main processing loop that is shared among all subclasses. */
 	void processBlockCommon(AudioSampleBuffer &b, MidiBuffer &mb);
@@ -1996,7 +2027,7 @@ protected:
 		}
 	};
 
-#if USE_BACKEND || HISE_ENABLE_LORIS_ON_FRONTEND
+#if HISE_INCLUDE_LORIS
     LorisManager::Ptr lorisManager;
 #endif
     
@@ -2037,6 +2068,10 @@ protected:
 	bool simulateDynamicBufferSize = false;
 #endif
 
+protected:
+
+	const AudioSampleBuffer& getMultiChannelBuffer() const;
+
 private:
 
 	MasterClock masterClock;
@@ -2072,6 +2107,8 @@ private:
 	dispatch::library::ProcessorHandler processorHandler;
 	dispatch::library::CustomAutomationSourceManager customAutomationSourceManager;
 
+	PluginBypassHandler bypassHandler;
+
 	AudioSampleBuffer previewBuffer;
 	double previewBufferIndex = -1.0;
 	double previewBufferDelta = 1.0;
@@ -2081,6 +2118,10 @@ private:
 	bool flakyThreadingAllowed = false;
 
 	bool allowSoftBypassRamps = true;
+
+	// Apparrently calling ScriptComponent::changed() in order to update plugin parameters does not
+	// work if the notifyParameter() function is not deferred properly...
+	bool deferNotifyHostFlag = false;
 
 	void loadPresetInternal(const ValueTree& v);
 
@@ -2162,6 +2203,8 @@ private:
 	double originalSampleRate = 0.0;
 	
 	Array<CustomTypeFace> customTypeFaces;
+
+	CustomTypeFace defaultFont;
 	ValueTree customTypeFaceData;
 	ValueTree embeddedMarkdownDocs;
 
@@ -2245,18 +2288,22 @@ private:
 	bool enablePluginParameterUpdate = true;
 
     double globalPitchFactor;
-    
+
+	std::pair<bool, Thread::ThreadID> currentlyRenderingThread;
+
     std::atomic<double> bpm;
 
 	std::atomic<bool> hostIsPlaying;
 
 	Atomic<int> voiceAmount;
 	bool allNotesOffFlag;
-    
     bool changed;
-    
     bool midiInputFlag;
-	
+
+#if HISE_INCLUDE_RT_NEURAL
+	NeuralNetwork::Holder neuralNetworks;
+#endif
+
 	double processingSampleRate = 0.0;
     std::atomic<double> temp_usage;
 	int scrollY;
