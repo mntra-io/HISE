@@ -53,8 +53,12 @@ struct Factory: public PathFactory
     bool needsIdAtCreation(const String& id) const;
 
     StringArray getIdList() const;
-    
+
+    String getCategoryName(const String& id) const;
+
     Path createPath(const String& url) const override;
+    
+
     
 private:
 
@@ -106,6 +110,8 @@ struct Type: public Dialog::PageBase
 	Result checkGlobalState(var globalState) override;
 	void paint(Graphics& g) override;
 	String typeId;
+
+    Path icon;
 };
 
 struct Spacer: public Dialog::PageBase
@@ -220,7 +226,7 @@ struct MarkdownText: public Dialog::PageBase
     }
 
     static String getCategoryId() { return "Layout"; }
-    static String getString(const String& markdownText, Dialog& parent);
+    static String getString(const String& markdownText, const State& parent);
 
     MarkdownText(Dialog& r, int width, const var& d);
 
@@ -408,12 +414,6 @@ struct Table: public Dialog::PageBase,
     static String getCategoryId() { return "UI Elements"; }
 
     String getCellContent(int columnId, int rowNumber) const;
-
-    void resized() override
-    {
-        auto b = getLocalBounds();
-        FlexboxComponent::resized();
-    }
     
     Component* refreshComponentForCell (int rowNumber, int columnId, bool isRowSelected,
                                                 Component* existingComponentToUpdate) override;
@@ -446,6 +446,8 @@ struct Table: public Dialog::PageBase,
 
     void paint(Graphics& g) override;
 
+    void resized() override;
+
     enum class EventType
     {
 	    CellClick,
@@ -467,7 +469,7 @@ struct Table: public Dialog::PageBase,
 
     void backgroundClicked (const MouseEvent&) override
     {
-	    updateValue(EventType::CellClick, -1, -1);
+        table.deselectAllRows();
     }
     void selectedRowsChanged (int lastRowSelected) override
     {

@@ -155,11 +155,8 @@ void TextEditor::setNewTokenCollectionForAllChildren(Component* any, const Ident
 {
 	if(newCollection == nullptr)
 		newCollection = new TokenCollection(languageId);
-	else
-		newCollection->clearTokenProviders();
 	
 	auto top = any->getTopLevelComponent();
-	bool first = true;
 
 	Component::callRecursive<TextEditor>(top, [&](TextEditor* t)
 	{
@@ -168,10 +165,9 @@ void TextEditor::setNewTokenCollectionForAllChildren(Component* any, const Ident
 			t->tokenCollection = newCollection;
 			newCollection->addListener(t);
 
-			if(first)
+			if(!newCollection->hasTokenProviders())
 			{
 				t->languageManager->addTokenProviders(newCollection.get());
-				first = false;
 			}
 		}
 			
@@ -954,6 +950,8 @@ void TextEditor::updateAutocomplete(bool forceShow /*= false*/)
 	Selection beforeToken = { ts.x, ts.y, te.x, te.y };
 
 	auto tokenBefore = document.getSelectionContent(beforeToken);
+
+	tokenBefore = tokenBefore.removeCharacters("!");
 
 	auto hasDotAndNotFloat = !CharacterFunctions::isDigit(tokenBefore[0]) && tokenBefore.endsWith(".");
 
@@ -2625,28 +2623,7 @@ bool mcl::TextEditor::keyPressed (const KeyPress& key)
         return true;
     };
     
-	auto remove = [this](Target target, Direction direction)
-	{
-		const auto& s = document.getSelections().getLast();
-
-		auto l = document.getCharacter(s.head.translated(0, -1));
-		auto r = document.getCharacter(s.head);
-		
-		if (lastInsertWasDouble && ActionHelpers::isMatchingClosure(l, r))
-		{
-			document.navigateSelections(Target::character, Direction::backwardCol, Selection::Part::tail);
-			document.navigateSelections(Target::character, Direction::forwardCol, Selection::Part::head);
-			
-			insert({});
-			return true;
-		}
-
-		if (s.isSingular())
-			expandBack(target, direction);
-
-		insert({});
-		return true;
-	};
+	
 
     // =======================================================================================
     if (keyMatchesId(key, TextEditorShortcuts::show_autocomplete))
@@ -2899,22 +2876,12 @@ bool mcl::TextEditor::keyPressed (const KeyPress& key)
     
 	if (keyMatchesId(key, TextEditorShortcuts::comment_line)) // "Cmd + #"
 	{
-		auto isComment = [this](Selection s)
-		{
-			document.navigate(s.tail, Target::line, Direction::forwardCol);
-			document.navigate(s.head, Target::line, Direction::forwardCol);
-			document.navigate(s.tail, Target::firstnonwhitespace, Direction::backwardCol);
-			document.navigate(s.head, Target::firstnonwhitespace, Direction::backwardCol);
-			s.head.y += 2;
-			return document.getSelectionContent(s) == "//";
-		};
-
 		bool anythingCommented = false;
 		bool anythingUncommented = false;
 
 		for (auto s : document.getSelections())
 		{
-			auto thisOne = isComment(s);
+			auto thisOne = languageManager->isLineCommented(document, s);
 
 			anythingCommented |= thisOne;
 			anythingUncommented |= !thisOne;
@@ -2938,12 +2905,15 @@ bool mcl::TextEditor::keyPressed (const KeyPress& key)
 
 		if (anythingUncommented)
 		{
-			insert("//");
+			languageManager->toggleCommentForLine(this, true);
+
+			
 		}
 		else
 		{
-			remove(Target::character, Direction::forwardCol);
-			remove(Target::character, Direction::forwardCol);
+			languageManager->toggleCommentForLine(this, false);
+
+			
 		}
 
 		Array<Selection> newSelection;

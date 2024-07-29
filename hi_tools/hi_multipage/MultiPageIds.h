@@ -63,6 +63,23 @@ enum class MessageType: uint32
 
 namespace mpid
 {
+    // ALWAYS COPY IT HERE TOO!
+    struct Helpers
+    {
+        enum RequiredUpdate
+		{
+			PostInit,
+			ResizeParent,
+            UpdateVisibility,
+			UpdateCSS,
+			FullRebuild
+		};
+
+        static RequiredUpdate getUpdateType(const Identifier& id);
+
+	    static var getIdList();
+    };
+
     DECLARE_ID(Assets);
     DECLARE_ID(Args);
     DECLARE_ID(Autofocus);
@@ -72,6 +89,7 @@ namespace mpid
     DECLARE_ID(Cleanup);
     DECLARE_ID(Class);
     DECLARE_ID(ContentType);
+    DECLARE_ID(ConfirmClose);
     DECLARE_ID(Code);
     DECLARE_ID(Columns);
     DECLARE_ID(Children);
@@ -79,6 +97,7 @@ namespace mpid
     DECLARE_ID(Custom);
     DECLARE_ID(Data);
     DECLARE_ID(Directory);
+    DECLARE_ID(DecodeFlac);
     DECLARE_ID(EmptyText);
     DECLARE_ID(Enabled);
     DECLARE_ID(EventTrigger);
@@ -114,8 +133,10 @@ namespace mpid
     DECLARE_ID(Required);
     DECLARE_ID(RelativePath);
     DECLARE_ID(SaveFile);
+    DECLARE_ID(SelectOnClick);
     DECLARE_ID(SkipIfNoSource);
     DECLARE_ID(SkipFirstFolder);
+    DECLARE_ID(SkipIfTrue);
     DECLARE_ID(Source);
     DECLARE_ID(SpecialLocation);
 	DECLARE_ID(StyleData);
@@ -133,7 +154,6 @@ namespace mpid
     DECLARE_ID(UseChildState);
     DECLARE_ID(UseGlobalAppData);
     DECLARE_ID(UseInitValue);
-    DECLARE_ID(UseOnValue);
     DECLARE_ID(UseLabel);
     DECLARE_ID(UsePost);
     DECLARE_ID(UseProject);
@@ -142,10 +162,10 @@ namespace mpid
     DECLARE_ID(Value);
     DECLARE_ID(ValueMode);
     DECLARE_ID(Version);
+    DECLARE_ID(Visibility);
     DECLARE_ID(WaitTime);
     DECLARE_ID(Width);
     DECLARE_ID(Wildcard);
-    
 }
 
 #undef DECLARE_ID

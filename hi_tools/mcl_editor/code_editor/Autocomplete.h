@@ -139,6 +139,8 @@ public:
 
 	void clearTokenProviders();
 
+	bool hasTokenProviders() const { return !tokenProviders.isEmpty(); }
+
 	void updateIfSync()
 	{
 		if(!useBackgroundThread)
@@ -298,7 +300,7 @@ public:
 
 		Autocomplete* ac;
 		SimpleMarkdownDisplay display;
-		ResizableCornerComponent corner;
+		
 	};
 
 	struct Item : public Component
@@ -369,6 +371,7 @@ public:
 
 	TokenCollection::Ptr tokenCollection;
 	ScrollBar scrollbar;
+	ScrollbarFader fader;
 	bool allowPopup = false;
 
 	ScopedPointer<HelpPopup> helpPopup;

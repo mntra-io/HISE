@@ -52,6 +52,8 @@ struct ComponentWithSideTab
 
     virtual State* getMainState() { return nullptr; }
 
+    virtual void addCodeEditor(const var& infoObject, const Identifier& codeId) {};
+
     virtual void refreshDialog() = 0;
 
     simple_css::StyleSheet::Collection propertyStyleSheet;
@@ -102,7 +104,8 @@ public:
         Rectangle<int> getBounds(Rectangle<int> fullBounds) const;
 
         Point<int> fixedSize = { 800, 600 };
-        
+
+        bool confirmClose = true;
         String styleSheet = "Dark";
         String additionalStyle;
         bool useViewport = true;
@@ -123,11 +126,19 @@ public:
 	        initValue = var();
         }
 
+        static simple_css::Selector getSelectorFromId(const var& obj);
+
         virtual bool hasOnSubmitEvent() const { return false; }
 
         void updateStyleSheetInfo(bool forceUpdate=false);
 
         void forwardInlineStyleToChildren();
+
+        bool updateInfoProperty(const Identifier& pid);
+
+        VisibleState getVisibility() const;
+
+        static StringArray getVisibilityNames();
 
 #if HISE_MULTIPAGE_INCLUDE_EDIT
         virtual void createEditor(PageInfo& infoList) {}
@@ -208,6 +219,17 @@ public:
         void setModalHelp(const String& text);
 
     protected:
+
+        void callAdditionalStateCallback()
+        {
+            if(rootDialog.additionalChangeCallback)
+            {
+	            if(cf)
+	                cf(this, getValueFromGlobalState());
+
+	            rootDialog.callAdditionalChangeCallback();
+            }
+        }
 
         Identifier id;
         Dialog& rootDialog;
@@ -300,9 +322,156 @@ public:
     Dialog(const var& obj, State& rt, bool addEmptyPage=true);
     ~Dialog();
 
+    bool getPathInternal(const var& parent, const var& objToFind, String& currentPath, std::vector<std::pair<String, var>>& matches) const
+    {
+        auto pid = parent[mpid::ID].toString();
+
+        if(pid.isNotEmpty())
+			currentPath << "." << pid;
+
+        if(parent == objToFind || (pid.isNotEmpty() && objToFind[mpid::ID].toString() == pid))
+        {
+	        matches.push_back({currentPath, parent});
+            return true;
+        }
+        
+        if(auto ar = parent[mpid::Children].getArray())
+        {
+            auto found = false;
+
+	        for(auto& c: *ar)
+	        {
+                String cp = currentPath;
+
+		        found |= getPathInternal(c, objToFind, cp, matches);
+	        }
+
+            return found;
+        }
+
+        return false;
+    }
+
+    String getPathForInfoObject(const var& obj) const
+    {
+        int idx = 0;
+
+	    for(auto p: *pageListInfo)
+	    {
+            String path;
+
+            path << "Page " << String(++idx);
+
+            std::vector<std::pair<String, var>> matches;
+
+		    if(getPathInternal(p, obj, path, matches))
+		    {
+                jassert(!matches.empty());
+
+			    if(matches.size() == 1)
+                    return matches[0].first;
+                else
+                {
+	                for(int i = 0; i < matches.size(); i++)
+	                {
+		                if(matches[i].second.getDynamicObject() == obj.getDynamicObject())
+		                {
+			                auto p = matches[i].first;
+
+                            p << "[" << String(i) << "]";
+                            return p;
+		                }
+	                }
+                }
+		    }
+                
+	    }
+
+        return {};
+    }
+
+    bool getInfoObjectForPathInternal(StringArray& path, const var& parent, Array<var>& matches) const
+    {
+        if(path.size() == 1)
+        {
+            auto pid = path[0];
+
+            if(pid.startsWith("Page ") || parent[mpid::ID].toString() == pid)
+            {
+	            matches.add(parent);
+                return true;
+            }
+        }
+
+        auto thisId = parent[mpid::ID].toString();
+            
+        if(thisId.isEmpty() || thisId == path[0])
+        {
+            if(auto ar = parent[mpid::Children].getArray())
+	        {
+                if(thisId.isNotEmpty() || path[0].startsWith("Page "))
+                {
+                    path.remove(0);
+                }
+
+                auto found = false;
+
+                for(auto& c: *ar)
+                {
+                    found |= getInfoObjectForPathInternal(path, c, matches);
+                    
+                    
+                }
+
+                return found;
+	        }
+        }
+
+        return false;
+    }
+
+    var getInfoObjectForPath(const String& path) const
+    {
+        auto multiMatch = path.containsChar('[');
+        int multiMatchIndex = 0;
+        auto pToUse = path;
+
+        if(multiMatch)
+        {
+	        pToUse = path.upToFirstOccurrenceOf("[", false, false);
+            multiMatchIndex = path.fromLastOccurrenceOf("[", false, false).getIntValue();
+        }
+            
+
+	    auto sa = StringArray::fromTokens(pToUse, ".", "");
+
+        auto pageIndex = sa[0].getTrailingIntValue()-1;
+
+        Array<var> matches;
+
+        if(isPositiveAndBelow(pageIndex, pageListInfo->size()))
+        {
+	        auto page = pageListInfo->getUnchecked(pageIndex);
+            
+            getInfoObjectForPathInternal(sa, page, matches);
+        }
+
+        if(isPositiveAndBelow(multiMatchIndex, matches.size()))
+        {
+	        return matches[multiMatchIndex];
+        }
+
+        return {};
+    }
+
     int getNumPages() const { return pages.size(); }
     bool removeCurrentPage();
     void addListPageWithJSON();
+
+    void cancel()
+    {
+	    cancelButton.triggerClick(sendNotificationAsync);
+    }
 
     void rebuildPagesFromJSON();
 
@@ -342,6 +511,8 @@ public:
     void setStyleData(const MarkdownLayout::StyleData& sd);
     bool navigate(bool forward);
 
+    void onStateDestroy(NotificationType mode = sendNotificationAsync);
+
     String getStringFromModalInput(const String& message, const String& prefilledValue);
 
     bool refreshCurrentPage();
@@ -362,18 +533,17 @@ public:
 	        
 	        g.setColour(Colours::white.withAlpha(0.1f));
 	        g.setFont(GLOBAL_MONOSPACE_FONT());
-
-            for(auto& s: mouseSelector.selection.getItemArray())
-            {
-	            if(auto c = findPageBaseForInfoObject(s))
-	            {
-		            auto b = getLocalArea(c, c->getLocalBounds()).expanded(2.0f);
-					g.setColour(Colour(SIGNAL_COLOUR).withAlpha(0.5f));
-					g.drawRoundedRectangle(b.toFloat(), 3.0f, 1.0f);
-	            }
-            }
-
 		}
+
+        for(auto& s: mouseSelector.selection.getItemArray())
+        {
+            if(auto c = findPageBaseForInfoObject(s))
+            {
+	            auto b = getLocalArea(c, c->getLocalBounds()).expanded(2.0f);
+				g.setColour(Colour(SIGNAL_COLOUR).withAlpha(0.5f));
+				g.drawRoundedRectangle(b.toFloat(), 3.0f, 1.0f);
+            }
+        }
     }
 #endif
 
@@ -437,14 +607,18 @@ public:
 
     void logMessage(MessageType messageType, const String& message)
     {
-        auto isMessageThread = MessageManager::getInstanceWithoutCreating()->isThisTheMessageThread();
-        auto n = isMessageThread ? sendNotificationSync : sendNotificationAsync;
-	    getEventLogger().sendMessage(n, messageType, message);
+        getState().logMessage(messageType, message);
     }
 
     LambdaBroadcaster<bool>& getEditModeBroadcaster() { return editModeBroadcaster; }
 
     LambdaBroadcaster<MessageType, String>& getEventLogger() { return getState().eventLogger; }
+
+    void callAdditionalChangeCallback()
+    {
+        if(additionalChangeCallback)
+            additionalChangeCallback();
+    }
 
     
 
@@ -542,7 +716,7 @@ public:
 						  public LassoSource<var>,
 						  public ChangeListener	
     {
-        MouseSelector();
+        MouseSelector(Dialog& parent);
 
         ~MouseSelector() override;
 
@@ -554,14 +728,11 @@ public:
 	        return selection;
         }
 
-        
-
-        void mouseMove(const MouseEvent& event) override;
         void mouseDrag(const MouseEvent& e) override;
         void mouseUp(const MouseEvent& e) override;
         void mouseDown(const MouseEvent& event) override;
 
-        Dialog* parent = nullptr;
+        Dialog& parent;
         LassoComponent<var> lasso;
         uint64 lastHash = 0;
         SelectedItemSet<var> selection;
@@ -575,6 +746,8 @@ public:
     bool& getSkipRebuildFlag() { return skipRebuild; }
 
 private:
+
+    std::function<void()> additionalChangeCallback;
 
     bool skipRebuild = false;
 
@@ -604,7 +777,7 @@ private:
     TextButton cancelButton;
     TextButton nextButton;
     TextButton prevButton;
-    State* runThread;
+    WeakReference<State> runThread;
     
     ScopedPointer<PageBase> currentPage;
     Rectangle<int> top, bottom, center;

@@ -39,8 +39,16 @@ using namespace juce;
 Type::Type(Dialog& r, int width, const var& d):
 	PageBase(r, width, d)
 {
+	
+
 	setSize(width, 42);
 	typeId = d[mpid::Type].toString();
+	Helpers::writeInlineStyle(*this, "background-color: red; height: 38px;width: 100%;");
+
+	Factory fac;
+	
+	icon = fac.createPath(typeId);
+	fac.scalePath(icon, Rectangle<float>(70.0f, 0.0f, 32.0f, 32.0f).reduced(6.0f));
 }
 
 void Type::resized()
@@ -69,9 +77,14 @@ Result Type::checkGlobalState(var globalState)
 void Type::paint(Graphics& g)
 {
 	auto b = getLocalBounds().toFloat();
-	b.removeFromBottom(10);
-	g.setColour(Colours::black.withAlpha(0.1f));
-	g.fillRect(b);
+	g.setColour(Colours::white);
+
+	g.setFont(GLOBAL_FONT());
+	
+	g.drawText("Type", b.reduced(1.0f), Justification::left);
+
+
+	b.removeFromLeft(b.getHeight() + 70);
 
 	auto f = Dialog::getDefaultFont(*this);
 
@@ -79,9 +92,15 @@ void Type::paint(Graphics& g)
 	g.setFont(f.first);
 
 	String m;
-	m << "Type: " << typeId;
+	m << typeId;
 
-	g.drawText(m, b, Justification::centred);
+	g.setFont(GLOBAL_FONT());
+
+	g.setFont(GLOBAL_BOLD_FONT());
+	g.drawText(m, b.reduced(1.0f), Justification::left);
+	
+	g.fillPath(icon);
+
 }
 
 #if HISE_MULTIPAGE_INCLUDE_EDIT
@@ -330,7 +349,7 @@ void SimpleText::createEditor(Dialog::PageInfo& rootList)
 }
 #endif
 
-String MarkdownText::getString(const String& markdownText, Dialog& parent)
+String MarkdownText::getString(const String& markdownText, const State& state)
 {
 	if(markdownText.contains("$"))
 	{
@@ -355,10 +374,10 @@ String MarkdownText::getString(const String& markdownText, Dialog& parent)
 					{
 						if(variableId.isNotEmpty())
 						{
-							auto v = parent.getState().globalState[Identifier(variableId)].toString();
+							auto v = state.globalState[Identifier(variableId)].toString();
 
 							if(v.isNotEmpty())
-								other << v;
+								other << getString(v, state);
 
 							variableId = {};
 						}
@@ -375,8 +394,10 @@ String MarkdownText::getString(const String& markdownText, Dialog& parent)
 
 				if(variableId.isNotEmpty())
 				{
-					auto v = parent.getState().globalState[Identifier(variableId)].toString();
+					auto v = state.globalState[Identifier(variableId)].toString();
 
+                    v = getString(v, state);
+                    
 					if(v.isNotEmpty())
 						other << v;
 				}
@@ -437,15 +458,15 @@ MarkdownText::MarkdownText(Dialog& d, int width_, const var& obj_):
 	width((float)width_),
 	obj(obj_)
 {
+	Helpers::writeClassSelectors(*this, { ".markdown" }, true);
+	
 	display.r.setImageProvider(new AssetImageProvider(&display.r, d.getState()));
 	display.setResizeToFit(true);
-	
-	Helpers::writeSelectorsToProperties(display, {".markdown"});
+
+	//Helpers::writeSelectorsToProperties(display, {".markdown"});
 
 	setDefaultStyleSheet("width: 100%; height: auto;");
 	Helpers::setFallbackStyleSheet(display, "width: 100%;");
-
-	
 
 	addFlexItem(display);
 
@@ -464,7 +485,7 @@ void MarkdownText::postInit()
 		display.r.setStyleData(root->css.getMarkdownStyleData(&display));
 	}
 
-	auto markdownText = getString(infoObject[mpid::Text].toString(), rootDialog);
+	auto markdownText = getString(infoObject[mpid::Text].toString(), rootDialog.getState());
 
 	if(markdownText.startsWith("${"))
 		markdownText = rootDialog.getState().loadText(markdownText, true);
@@ -803,13 +824,17 @@ void Table::rebuildColumns()
 	th.setStretchToFitActive(true);
 	th.resizeAllColumnsToFit(table.getWidth() - table.getViewport()->getScrollBarThickness());
 	table.setMultipleSelectionEnabled(infoObject[mpid::Multiline]);
-        
+
 	using namespace simple_css;
-        
+
+	rootDialog.stateWatcher.resetComponent(&th);
+
 	if(auto ss = rootDialog.css.getWithAllStates(this, Selector(ElementType::TableCell)))
 	{
 		table.setRowHeight(ss->getLocalBoundsFromText("M").getHeight());
 	}
+
+	th.repaint();
 }
 
 String Table::getCellContent(int columnId, int rowNumber) const
@@ -1035,7 +1060,40 @@ void Table::paint(Graphics& g)
 	if(auto ss = rootDialog.css.getForComponent(&table))
 	{
 		simple_css::Renderer r(&table, rootDialog.stateWatcher);
-		r.drawBackground(g, table.getBoundsInParent().toFloat(), ss);
+
+		auto currentState = r.getPseudoClassState();
+
+		rootDialog.stateWatcher.checkChanges(&table, ss, currentState);
+
+		r.drawBackground(g, getLocalBounds().toFloat(), ss);
+
+		if(getNumRows() == 0)
+		{
+			auto et = infoObject[mpid::EmptyText].toString();
+
+			if(et.isNotEmpty())
+				r.renderText(g, getLocalBounds().toFloat(), et, ss);
+		}
+	}
+}
+
+void Table::resized()
+{
+	FlexboxComponent::resized();
+
+	auto area = getLocalBounds().toFloat();
+
+	if(getParentComponent() != nullptr && !area.isEmpty())
+	{ 
+		using namespace simple_css;
+		
+		if(auto ss = rootDialog.css.getForComponent(&table))
+		{
+			area = ss->getArea(area, { "margin", 0});
+			area = ss->getArea(area, { "padding", 0});
+		}
+		
+		table.setBounds(area.toNearestInt());
 	}
 }
 
@@ -1093,7 +1151,7 @@ void Table::updateValue(EventType t, int row, int column)
 		return v;
 	};
 
-	if(t == EventType::DoubleClick || t == EventType::ReturnKey)
+	if(t == EventType::DoubleClick || t == EventType::ReturnKey || infoObject[mpid::SelectOnClick])
 	{
 		writeState(row);
 	}
@@ -1153,6 +1211,7 @@ Factory::Factory()
 	registerPage<factory::LambdaTask>();
 	registerPage<factory::DownloadTask>();
 	registerPage<factory::UnzipTask>();
+	registerPage<factory::CommandLineTask>();
 	registerPage<factory::HlacDecoder>();
 	registerPage<factory::AppDataFileWriter>();
 	registerPage<factory::RelativeFileLoader>();
@@ -1213,6 +1272,15 @@ StringArray Factory::getIdList() const
 	return sa;
 }
 
+String Factory::getCategoryName(const String& id) const
+{
+	for(const auto& i: items)
+		if(i.id == Identifier(id))
+			return i.category.toString();
+
+	return id;
+}
+
 StringArray Factory::getPopupMenuList() const
 {
 	StringArray sa;
@@ -1246,6 +1314,7 @@ StringArray Factory::getPopupMenuList() const
 	
 	return sa;
 }
+
 
 Colour Factory::getColourForCategory(const String& id) const
 {
@@ -1594,6 +1663,11 @@ static const unsigned char TagList[] = { 110,109,114,145,58,68,70,248,132,67,108
 254,129,67,98,47,96,63,68,106,157,122,67,47,96,63,68,90,101,107,67,82,8,61,68,120,6,98,67,98,154,176,58,68,6,167,88,67,150,226,54,68,6,167,88,67,222,138,52,68,120,6,98,67,98,187,222,51,68,113,182,100,67,240,99,51,68,121,226,103,67,162,26,51,68,99,66,
 107,67,99,101,0,0 };
 
+static const unsigned char CommandLineTask[] = { 110,109,254,127,69,68,134,49,130,67,98,254,127,69,68,52,147,113,67,160,174,65,68,220,75,98,67,170,250,60,68,220,75,98,67,108,203,5,16,68,220,75,98,67,98,213,81,11,68,220,75,98,67,255,127,7,68,52,147,113,67,255,127,7,68,134,49,130,67,108,255,127,7,68,
+122,206,185,67,98,255,127,7,68,102,54,195,67,213,81,11,68,18,218,202,67,203,5,16,68,18,218,202,67,108,170,250,60,68,18,218,202,67,98,160,174,65,68,18,218,202,67,254,127,69,68,102,54,195,67,254,127,69,68,122,206,185,67,108,254,127,69,68,134,49,130,67,
+99,109,249,35,43,68,98,75,161,67,108,55,240,13,68,46,65,186,67,108,55,240,13,68,110,124,175,67,108,214,16,37,68,172,76,156,67,108,55,240,13,68,254,74,137,67,108,55,240,13,68,92,14,125,67,108,249,35,43,68,224,47,151,67,108,249,35,43,68,98,75,161,67,99,
+101,0,0 };
+
 static const unsigned char PersistentSettings[] = { 110,109,0,128,7,68,120,160,175,67,108,79,94,18,68,120,160,175,67,98,70,238,17,68,116,156,172,67,153,169,17,68,248,129,169,67,35,146,17,68,52,94,166,67,108,78,201,22,68,108,203,162,67,98,140,219,22,68,40,212,158,67,111,77,23,68,104,239,154,67,4,25,24,
 68,24,78,151,67,108,135,44,20,68,40,143,143,67,98,180,77,21,68,120,125,139,67,159,195,22,68,48,212,135,67,189,126,24,68,100,184,132,67,108,228,36,29,68,252,165,138,67,98,149,188,30,68,216,73,136,67,190,137,32,68,172,141,134,67,253,115,34,68,236,135,133,
 67,108,215,8,35,68,224,34,117,67,98,46,84,37,68,240,152,115,67,192,171,39,68,240,152,115,67,25,247,41,68,224,34,117,67,108,242,139,42,68,236,135,133,67,98,49,118,44,68,172,141,134,67,91,67,46,68,216,73,136,67,28,219,47,68,252,165,138,67,108,50,129,52,
@@ -1665,6 +1739,7 @@ Path Factory::createPath(const String& url) const
     LOAD_MULTIPAGE_PATH(ProjectInfo);
 	LOAD_MULTIPAGE_PATH(PluginDirectories);
 	LOAD_MULTIPAGE_PATH(CopyAsset);
+	LOAD_MULTIPAGE_PATH(CommandLineTask);
 	LOAD_MULTIPAGE_PATH(OperatingSystem);
 	LOAD_MULTIPAGE_PATH(EventLogger);
 	LOAD_MULTIPAGE_PATH(FileLogger);
