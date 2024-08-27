@@ -35,7 +35,7 @@ namespace dispatch {
 namespace dummy {
 using namespace juce;
 
-#define BEGIN_TEST(x) beginTest(x); TRACE_DISPATCH(x);
+
 
 LibraryTest::LibraryTest():
 	UnitTest("library test", "dispatch")
@@ -77,6 +77,9 @@ void LibraryTest::deinit(int numChecksExpected)
 
 void LibraryTest::runTest()
 {
+	if(Thread::getCurrentThread() == nullptr)
+		return;
+
 	testMultipleListeners();
 
 	testSigSlotBasics();
@@ -94,10 +97,15 @@ void LibraryTest::runTest()
 	testMultipleAttributes({1, 4, 31, 322});
 	testMultipleAttributes({0, 4, 31, 4, 24, 211, 32});
 	testMultipleAttributes({0, 32, 64, 63, 900, 901, 902 });
-	
-	auto n = Thread::getCurrentThread()->getThreadName();
-	PerfettoHelpers::setCurrentThreadName(n.getCharPointer().getAddress());
 
+	auto ct = Thread::getCurrentThread();
+
+	if(ct != nullptr)
+	{
+		auto n = ct->getThreadName();
+		PerfettoHelpers::setCurrentThreadName(n.getCharPointer().getAddress());
+	}
+	
 	testHelloWorld(1, 1, sendNotificationSync, sendNotificationAsync);
 
 	testHelloWorld(159, 159, sendNotificationSync, sendNotificationSync);
@@ -334,11 +342,11 @@ void LibraryTest::testSlotBitMap()
 	SlotBitmap b;
 	expectEquals(static_cast<int>(b.getNumBytes()), 4, "bytesize match");
 	expect(b.isEmpty(), "not empty at beginning");
-	expectEquals<int>(b.getHighestSetBit(), 0, "highest bit doesn't work");
+	expectEquals<int>((int)b.getHighestSetBit(), 0, "highest bit doesn't work");
 	b.setBit(12, true);
 	expect(b[12], "bit not set");
 	expect(!b.isEmpty(), "empty after set");
-	expectEquals<int>(b.getHighestSetBit(), 12, "highest bit doesn't work");
+	expectEquals<int>((int)b.getHighestSetBit(), 12, "highest bit doesn't work");
 
 
 
@@ -350,7 +358,7 @@ void LibraryTest::testSlotBitMap()
 	b.setBit(16, false);
 	b.setBit(17, true);
 	b.setBit(19, true);
-	expectEquals<int>(b.getHighestSetBit(), 19, "highest bit doesn't work pt. II");
+	expectEquals<int>((int)b.getHighestSetBit(), 19, "highest bit doesn't work pt. II");
 
 
 	bool caught = false;
@@ -360,7 +368,7 @@ void LibraryTest::testSlotBitMap()
 		b.setBit(45, true);
 		expect(false, "didn't throw");
 	}
-	catch(std::out_of_range& e)
+	catch(std::out_of_range& )
 	{
 		caught = true;
 	}
@@ -526,7 +534,6 @@ void LibraryTest::testSigSlotBasics()
 		void slotChanged(const ListenerData& d) final
 		{
 			auto bm = d.toBitMap();
-			auto x = bm[0];
 			t.expect(bm[0]);
 			t.expect(bm[18]);
 			t.expect(!bm[12]);

@@ -466,6 +466,11 @@ void GlobalHiseLookAndFeel::setDefaultColours(Component& c)
 
 void GlobalHiseLookAndFeel::fillPathHiStyle(Graphics &g, const Path &p, int, int, bool drawBorders /*= true*/)
 {
+	if(!PathFactory::isValid(p))
+		return;
+	
+
+
 	if (drawBorders)
 	{
 		g.setColour(Colours::lightgrey.withAlpha(0.8f));
@@ -596,7 +601,7 @@ Point<float> GlobalHiseLookAndFeel::paintCable(Graphics& g, Rectangle<float> sta
 void GlobalHiseLookAndFeel::setTextEditorColours(TextEditor& ed)
 {
 	ed.setColour(TextEditor::ColourIds::textColourId, Colours::black);
-	ed.setColour(TextEditor::ColourIds::backgroundColourId, Colours::white.withAlpha(0.25f));
+	ed.setColour(TextEditor::ColourIds::backgroundColourId, Colours::white.withAlpha(0.45f));
 	ed.setColour(TextEditor::ColourIds::focusedOutlineColourId, Colour(SIGNAL_COLOUR));
 	ed.setColour(Label::ColourIds::outlineWhenEditingColourId, Colour(SIGNAL_COLOUR));
 	ed.setColour(TextEditor::ColourIds::outlineColourId, Colours::black.withAlpha(0.8f));

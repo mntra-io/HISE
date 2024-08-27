@@ -60,11 +60,7 @@ ProcessorEditorHeader::ProcessorEditorHeader(ProcessorEditor *p) :
 	valueMeter->setColour (VuMeter::ledColour, Colours::lightgrey);
 	valueMeter->setColour (VuMeter::outlineColour, drawColour.withAlpha(0.5f));
 	
-	#if JUCE_DEBUG
-	startTimer(150);
-#else
 	startTimer(30);
-#endif
 
     addAndMakeVisible (idLabel = new Label ("ID Label",
                                             TRANS("ModulatorName")));
@@ -495,6 +491,29 @@ void ProcessorEditorHeader::paint (Graphics& g)
     
 }
 
+void ProcessorEditorHeader::paintOverChildren(Graphics& g)
+{
+	if(isHeaderOfModulator())
+	{
+		auto mod = dynamic_cast<Modulator*>(getProcessor());
+		auto mc = dynamic_cast<ModulatorChain*>(mod);
+
+		if(mc == nullptr)
+			mc = dynamic_cast<ModulatorChain*>(getProcessor()->getParentProcessor(false));
+
+		if(mc != nullptr)
+		{
+			float outputValue = mod->getValueForTextConverter(mod->getOutputValue());
+			auto v = mc->getTableValueConverter()(outputValue);
+
+			g.setColour(Colours::white.withAlpha(0.35f));
+
+			g.setFont(GLOBAL_BOLD_FONT());
+			g.drawText(v, valueMeter->getBoundsInParent().toFloat(), Justification::centred);
+		}
+	}
+}
+
 void ProcessorEditorHeader::resized()
 {
 
@@ -777,13 +796,13 @@ void ProcessorEditorHeader::buttonClicked (Button* buttonThatWasClicked)
 	{
 		const bool newValue = !retriggerButton->getToggleState();
 
-		getProcessor()->setAttribute(EnvelopeModulator::Parameters::Retrigger, newValue ? 1.0f : 0.f, sendNotification);
+		getProcessor()->setAttribute(EnvelopeModulator::Parameters::Retrigger, newValue ? 1.0f : 0.f, sendNotificationAsync);
 	}
 	else if (buttonThatWasClicked == monophonicButton)
 	{
 		const bool newValue = !monophonicButton->getToggleState();
 
-		getProcessor()->setAttribute(EnvelopeModulator::Parameters::Monophonic, newValue ? 1.0f : 0.f, sendNotification);
+		getProcessor()->setAttribute(EnvelopeModulator::Parameters::Monophonic, newValue ? 1.0f : 0.f, sendNotificationAsync);
 
 	}
     else if (buttonThatWasClicked == foldButton)
@@ -964,6 +983,13 @@ void ProcessorEditorHeader::checkSoloLabel()
 void ProcessorEditorHeader::createProcessorFromPopup(Processor *insertBeforeSibling)
 {
     ProcessorEditor::createProcessorFromPopup(getEditor(), getProcessor(), insertBeforeSibling);
+}
+
+void ProcessorEditorHeader::updateIdAndColour(dispatch::library::Processor* p)
+{
+	NEW_PROCESSOR_DISPATCH(idLabel->setText(p->getOwner<hise::Processor>().getId(), dontSendNotification));
+	repaint();
+	// skip colour, it's a icon colour (ideally the modulator synth should be a listener that updates the icon colour itself)
 };
 
 

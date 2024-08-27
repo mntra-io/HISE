@@ -793,41 +793,70 @@ CompileExporter::ErrorCodes CompileExporter::exportInternal(TargetTypes type, Bu
 
 String checkSampleReferences(ModulatorSynthChain* chainToExport)
 {
-    Processor::Iterator<ModulatorSampler> iter(chainToExport);
-    
-    const File sampleFolder = GET_PROJECT_HANDLER(chainToExport).getSubDirectory(ProjectHandler::SubDirectories::Samples);
-    
-    Array<File> sampleFiles;
-    
-    sampleFolder.findChildFiles(sampleFiles, File::findFiles, true);
-    
-	Array<File> sampleMapFiles;
-
-	auto sampleMapRoot = GET_PROJECT_HANDLER(chainToExport).getSubDirectory(ProjectHandler::SubDirectories::SampleMaps);
-
-	sampleMapRoot.findChildFiles(sampleMapFiles, File::findFiles, true, "*.xml");
-
-	Array<PooledSampleMap> maps;
-
-	for (const auto& f : sampleMapFiles)
 	{
-		PoolReference ref(chainToExport->getMainController(), f.getFullPathName(), FileHandlerBase::SampleMaps);
+		Processor::Iterator<ExternalDataHolder> iter(chainToExport);
 
-		maps.add(chainToExport->getMainController()->getCurrentSampleMapPool()->loadFromReference(ref, PoolHelpers::LoadAndCacheStrong));
-	}
-
-	for (auto d : maps)
-	{
-		if (auto v = d.getData())
+		while(auto p = iter.getNextProcessor())
 		{
-			const String faulty = SampleMap::checkReferences(chainToExport->getMainController(), *v, sampleFolder, sampleFiles);
+			if(auto numAudioSlots = p->getNumDataObjects(ExternalData::DataType::AudioFile))
+			{
+				for(int i = 0; i < numAudioSlots; i++)
+				{
+					auto ref = p->getAudioFile(i)->toBase64String();
 
-			if (faulty.isNotEmpty())
-				return faulty;
+					if(ref.isNotEmpty())
+					{
+						PoolReference r(chainToExport->getMainController(), ref, ProjectHandler::AudioFiles);
+
+						auto f = r.getFile();
+
+						if(!f.existsAsFile())
+							return ref;
+					}
+				}
+			}
+
 		}
 	}
- 
-    return String();
+	{
+		Processor::Iterator<ModulatorSampler> iter(chainToExport);
+    
+	    const File sampleFolder = GET_PROJECT_HANDLER(chainToExport).getSubDirectory(ProjectHandler::SubDirectories::Samples);
+	    
+	    Array<File> sampleFiles;
+	    
+	    sampleFolder.findChildFiles(sampleFiles, File::findFiles, true);
+	    
+		Array<File> sampleMapFiles;
+
+		auto sampleMapRoot = GET_PROJECT_HANDLER(chainToExport).getSubDirectory(ProjectHandler::SubDirectories::SampleMaps);
+
+		sampleMapRoot.findChildFiles(sampleMapFiles, File::findFiles, true, "*.xml");
+
+		Array<PooledSampleMap> maps;
+
+		for (const auto& f : sampleMapFiles)
+		{
+			PoolReference ref(chainToExport->getMainController(), f.getFullPathName(), FileHandlerBase::SampleMaps);
+
+			maps.add(chainToExport->getMainController()->getCurrentSampleMapPool()->loadFromReference(ref, PoolHelpers::LoadAndCacheStrong));
+		}
+
+		for (auto d : maps)
+		{
+			if (auto v = d.getData())
+			{
+				const String faulty = SampleMap::checkReferences(chainToExport->getMainController(), *v, sampleFolder, sampleFiles);
+
+				if (faulty.isNotEmpty())
+					return faulty;
+			}
+		}
+	 
+	    return String();
+	}
+
+    
 }
 
 bool CompileExporter::checkSanity(TargetTypes type, BuildOption option)
@@ -980,18 +1009,7 @@ bool CompileExporter::checkSanity(TargetTypes type, BuildOption option)
 			}
 		}
 	}
-
-    if((type != TargetTypes::EffectPlugin) && !shouldBeSilent() && PresetHandler::showYesNoWindow("Check Sample references", "Do you want to validate all sample references"))
-    {
-        const String faultySample = checkSampleReferences(chainToExport);
-        
-        if(faultySample.isNotEmpty())
-        {
-            printErrorMessage("Wrong / missing sample reference", "The sample " + faultySample + " is missing or an absolute path");
-            return false;
-        }
-    }
-    
+	
 	return true;
 }
 
@@ -1748,6 +1766,21 @@ void CompileExporter::ProjectTemplateHelpers::handleCompilerInfo(CompileExporter
 {
 	handleCompilerWarnings(templateProject);
 
+	const auto includeLoris = (bool)exporter->dataObject.getSetting(HiseSettings::Project::IncludeLorisInFrontend);
+
+	if(includeLoris)
+	{
+		REPLACE_WILDCARD_WITH_STRING("%LORIS_MODULEPATH%", R"(<MODULEPATH id="hi_loris" path="%HISE_PATH%"/>)");
+		REPLACE_WILDCARD_WITH_STRING("%LORIS_MODULEINFO%", R"(<MODULE id="hi_loris" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>)");
+		REPLACE_WILDCARD_WITH_STRING("%HISE_INCLUDE_LORIS%", "1");
+	}
+	else
+	{
+		REPLACE_WILDCARD_WITH_STRING("%LORIS_MODULEPATH%", "");
+		REPLACE_WILDCARD_WITH_STRING("%LORIS_MODULEINFO%", "");
+		REPLACE_WILDCARD_WITH_STRING("%HISE_INCLUDE_LORIS%", "0");
+	}
+
 	const File jucePath = exporter->hisePath.getChildFile("JUCE/modules");
 
 	REPLACE_WILDCARD_WITH_STRING("%HISE_PATH%", exporter->hisePath.getFullPathName());
@@ -1813,7 +1846,20 @@ void CompileExporter::ProjectTemplateHelpers::handleCompilerInfo(CompileExporter
 		REPLACE_WILDCARD_WITH_STRING("%MACOS_ARCHITECTURE%", "64BitIntel");
 	}
 
-	REPLACE_WILDCARD_WITH_STRING("%COPY_PLUGIN%", isUsingCIMode() ? "0" : "1");
+    auto copyPlugin = !isUsingCIMode();
+    
+#if JUCE_MAC
+    auto macOSVersion = SystemStats::getOperatingSystemType();
+    
+    // deactivate copy step on Sonoma to avoid the cycle dependencies error...
+    if(macOSVersion == SystemStats::MacOS_14)
+    {
+        PresetHandler::showMessageWindow("Copystep diabled", "macOS Sonoma will cause a compile error if the copy step is enabled, so you have to copy the plugin files into the plugin folders manually after compilation");
+        copyPlugin = false;
+    }
+#endif
+    
+	REPLACE_WILDCARD_WITH_STRING("%COPY_PLUGIN%", copyPlugin ? "1" : "0");
 
 #if JUCE_MAC
 	REPLACE_WILDCARD_WITH_STRING("%IPP_COMPILER_FLAGS%", exporter->useIpp ? "/opt/intel/ipp/lib/libippi.a  /opt/intel/ipp/lib/libipps.a /opt/intel/ipp/lib/libippvm.a /opt/intel/ipp/lib/libippcore.a" : String());

@@ -139,6 +139,22 @@ public:
 
 	void clearTokenProviders();
 
+	bool hasTokenProviders() const { return !tokenProviders.isEmpty(); }
+
+	void updateIfSync()
+	{
+		if(!useBackgroundThread)
+		{
+			dirty = true;
+			rebuild();
+		}
+	}
+
+	void setUseBackgroundThread(bool shouldUseBackgroundThread)
+	{
+		useBackgroundThread = shouldUseBackgroundThread;
+	}
+
 	/** Register a token provider to this instance. Be aware that you can't register a token provider to multiple instances,
 	    but this shouldn't be a problem. */
 	void addTokenProvider(Provider* ownedProvider);
@@ -215,6 +231,7 @@ private:
 
 	mutable SimpleReadWriteLock buildLock;
 
+	bool useBackgroundThread = true;
 
 	JUCE_DECLARE_WEAK_REFERENCEABLE(TokenCollection);
 };
@@ -283,7 +300,7 @@ public:
 
 		Autocomplete* ac;
 		SimpleMarkdownDisplay display;
-		ResizableCornerComponent corner;
+		
 	};
 
 	struct Item : public Component
@@ -354,6 +371,7 @@ public:
 
 	TokenCollection::Ptr tokenCollection;
 	ScrollBar scrollbar;
+	ScrollbarFader fader;
 	bool allowPopup = false;
 
 	ScopedPointer<HelpPopup> helpPopup;

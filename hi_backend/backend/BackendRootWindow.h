@@ -47,6 +47,34 @@ namespace hise { using namespace juce;
 
 class BackendProcessorEditor;
 
+class SuspendedOverlay: public Component
+{
+	void paint(Graphics& g) override;
+
+	void mouseDown(const MouseEvent& event) override;
+};
+
+struct SnippetBrowserHelpers
+{
+	enum class Category
+	{
+		Undefined,
+		Modules,
+		MIDI,
+		ScriptingApi,
+		Scriptnode,
+		UI,
+		numCategories
+	};
+
+	static std::map<Identifier, bool> getFoldConfiguration(Category c);
+
+	static StringArray getCategoryNames();
+};
+
+
+
+
 class BackendRootWindow : public TopLevelWindowWithOptionalOpenGL,
 						  public TopLevelWindowWithKeyMappings,
 						  public AudioProcessorEditor,
@@ -89,31 +117,18 @@ public:
 	~BackendRootWindow();
 
 	bool isFullScreenMode() const;
+	void deleteThisSnippetInstance(bool sync);
 
-	void rebuildTokenProviders(const Identifier& languageId)
-	{
-		if(javascriptTokens == nullptr && languageId == mcl::LanguageIds::HiseScript)
-			javascriptTokens = new mcl::TokenCollection(languageId);
+	void toggleSnippetBrowser();
 
-		mcl::TextEditor::setNewTokenCollectionForAllChildren(this, languageId, javascriptTokens);
+	ScopedPointer<multipage::library::SnippetBrowser> snippetBrowser;
 
-		for(auto p: popoutWindows)
-		{
-			mcl::TextEditor::setNewTokenCollectionForAllChildren(p, languageId, javascriptTokens);
-		}
-	}
+	static mcl::TokenCollection::Ptr getJavascriptTokenCollection(Component* any);
 
-    void scriptWasCompiled(JavascriptProcessor *processor) override
-    {
-	    if(currentWorkspaceProcessor == dynamic_cast<Processor*>(processor))
-	    {
-			SafeAsyncCall::call<BackendRootWindow>(*this, [](BackendRootWindow& r)
-			{
-				r.rebuildTokenProviders("HiseScript");;
-			});
-	    }
-    }
-    
+	void rebuildTokenProviders(const Identifier& languageId);
+
+	void scriptWasCompiled(JavascriptProcessor *processor) override;
+
 	File getKeyPressSettingFile() const override;
 
 	void initialiseAllKeyPresses() override;
@@ -283,6 +298,14 @@ public:
 		projectIsBeingExtracted = true;
 	}
 
+	Array<Component::SafePointer<BackendRootWindow>> allWindowsAndBrowsers;
+
+	void userTriedToCloseWindow() override;
+
+	void setCurrentlyActiveProcessor();
+
+	SnippetBrowserHelpers::Category currentCategory = SnippetBrowserHelpers::Category::Undefined;
+
 private:
 
 	mcl::TokenCollection::Ptr javascriptTokens;
@@ -334,6 +357,8 @@ private:
 	bool resetOnClose = false;
 
 	JUCE_DECLARE_WEAK_REFERENCEABLE(BackendRootWindow);
+
+	ScopedPointer<SuspendedOverlay> suspendedOverlay;
 };
 
 struct BackendPanelHelpers

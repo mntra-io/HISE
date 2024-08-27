@@ -37,6 +37,8 @@ using namespace hise;
 
 juce::String NodeComponent::Header::getPowerButtonId(bool getOff) const
 {
+    return "on";
+    
 	auto path = parent.node->getValueTree()[PropertyIds::FactoryPath].toString();
 
 	if (path.startsWith("container."))
@@ -75,13 +77,30 @@ NodeComponent::Header::Header(NodeComponent& parent_) :
 	parameterButton("parameter", this, f),
 	freezeButton("freeze", this, f)
 {
+    String tooltip;
+    
+    auto d = parent.node->getValueTree();
+    
+    tooltip << d[PropertyIds::Name].toString();
+    
+    auto id = d[PropertyIds::ID].toString();
+    
+    if(id != tooltip)
+    {
+        tooltip << ", ID: " << id;
+    }
+    
+    tooltip << ", Type: " << d[PropertyIds::FactoryPath].toString();
+    
+    setTooltip(tooltip);
+    
 	powerButton.setToggleModeWithColourChange(true);
 	
 	powerButtonUpdater.setCallback(parent.node->getValueTree(), { PropertyIds::Bypassed},
 		valuetree::AsyncMode::Asynchronously,
 		BIND_MEMBER_FUNCTION_2(NodeComponent::Header::updatePowerButtonState));
 
-	colourUpdater.setCallback(parent.node->getValueTree(), { PropertyIds::NodeColour }, valuetree::AsyncMode::Asynchronously,
+	colourUpdater.setCallback(parent.node->getValueTree(), { PropertyIds::NodeColour }, valuetree::AsyncMode::Synchronously,
 		BIND_MEMBER_FUNCTION_2(NodeComponent::Header::updateColour));
 
 	dynamicPowerUpdater.setTypesToWatch({ PropertyIds::Nodes, PropertyIds::Connections });
@@ -115,6 +134,8 @@ NodeComponent::Header::Header(NodeComponent& parent_) :
 	
 	if (!freezeButton.isEnabled())
 		freezeButton.setAlpha(0.1f);
+    
+    setRepaintsOnMouseActivity(true);
 }
 
 
@@ -270,14 +291,17 @@ void NodeComponent::Header::paint(Graphics& g)
 	g.fillRect(b);
 
 	
-	g.setFont(GLOBAL_BOLD_FONT());
 
-	String s = parent.dataReference[PropertyIds::ID].toString();
 
-	if (parent.node.get()->isPolyphonic())
-		s << " [poly]";
+    String s;
+    
+    g.setFont(GLOBAL_BOLD_FONT());
+    
+    s << parent.dataReference[PropertyIds::Name].toString();
+    
+    if (parent.node.get()->isPolyphonic())
+        s << " [poly]";
 
-	
 	if (parent.node->getRootNetwork()->getCpuProfileFlag())
 	{
 		s << parent.node->getCpuUsageInPercent();
@@ -932,6 +956,7 @@ juce::Path NodeComponentFactory::createPath(const String& id) const
 	LOAD_EPATH_IF_URL("split", ScriptnodeIcons::splitIcon);
 	LOAD_EPATH_IF_URL("freeze", HnodeIcons::freezeIcon);
 	LOAD_EPATH_IF_URL("chain", ScriptnodeIcons::chainIcon);
+	LOAD_EPATH_IF_URL("branch", HiBinaryData::ProcessorEditorHeaderIcons::bypassShape);
 	LOAD_EPATH_IF_URL("multi", ScriptnodeIcons::multiIcon);
 	LOAD_EPATH_IF_URL("modchain", ScriptnodeIcons::modIcon);
 	LOAD_EPATH_IF_URL("midichain", HiBinaryData::SpecialSymbols::midiData);
@@ -1037,6 +1062,14 @@ int NodeComponent::PopupHelpers::isWrappable(NodeBase* n)
 	auto p = n->getPath();
 
 	auto isOptionalSnex = snex::cppgen::CustomNodeProperties::nodeHasProperty(nodeTree, PropertyIds::IsOptionalSnexNode);
+
+	if(isOptionalSnex)
+	{
+		auto mode = n->getNodeProperty(PropertyIds::Mode).toString();
+
+		isOptionalSnex = mode == "Custom";
+	}
+
 	auto isSnex = p.getIdentifier().toString().contains("snex");
 	auto isChain = p == NamespacedIdentifier::fromString("container::chain");
 	auto isExpression = p.getIdentifier().toString().endsWith("expr");

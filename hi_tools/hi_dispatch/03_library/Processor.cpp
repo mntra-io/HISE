@@ -50,6 +50,7 @@ void ProcessorHandler::BypassListener::slotChanged(const ListenerData& d)
 	jassert(f);
 
 	auto slotType = (SlotTypes)d.slotIndex;
+    ignoreUnused(slotType);
 	jassert(slotType == SlotTypes::Bypassed);
 	TRACE_DISPATCH("onBypass");
 
@@ -62,7 +63,9 @@ ProcessorHandler::AttributeListener::AttributeListener(RootObject& r, ListenerOw
 	f(f_)
 {}
 
+#ifndef TRACE_DISPATCH_CALLBACK
 #define TRACE_DISPATCH_CALLBACK(obj, callbackName, arg) StringBuilder n; n << (obj).getDispatchId() << "." << callbackName << "(" << (int)arg << ")"; TRACE_DISPATCH(DYNAMIC_STRING_BUILDER(n));
+#endif
 
 void ProcessorHandler::AttributeListener::slotChanged(const ListenerData& d)
 {
@@ -102,6 +105,7 @@ void ProcessorHandler::NameAndColourListener::slotChanged(const ListenerData& d)
 {
 	jassert(d.s != nullptr);
 	auto slotType = (SlotTypes)d.slotIndex;
+    ignoreUnused(slotType);
 	jassert(slotType == SlotTypes::NameAndColour);
 	jassert(f);
 
@@ -182,7 +186,7 @@ void Processor::setNumAttributes(uint16 numAttributes)
 	}
 	else
 	{
-		attributes.setNumSlots(SlotBitmap::getNumBits());
+		attributes.setNumSlots(static_cast<uint8>(SlotBitmap::getNumBits()));
 
 		auto numAttributeSlotsRequired = (static_cast<size_t>(numAttributes) / SlotBitmap::getNumBits()) + 1;
 		auto lastSlotAmount = static_cast<uint8>(numAttributes % SlotBitmap::getNumBits());

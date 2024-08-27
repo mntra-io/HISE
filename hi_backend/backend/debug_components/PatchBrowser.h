@@ -42,6 +42,7 @@ class PatchBrowser : public SearchableListComponent,
 					 public DragAndDropContainer,
 					 public ButtonListener,
 				     public MainController::ProcessorChangeHandler::Listener,
+					 public MainController::LockFreeDispatcher::PresetLoadListener,
 					 public Timer
 {
 
@@ -87,6 +88,8 @@ public:
 		ProcessorType type;
 
 		WeakReference<Processor> p;
+
+		bool clicked = false;
 	};
 
 	// ====================================================================================================================
@@ -164,7 +167,9 @@ public:
 	void buttonClicked(Button *b) override;
 
     void rebuilt() override;
-    
+
+	void newHisePresetLoaded() override;
+
 private:
 
 	// ====================================================================================================================
@@ -172,6 +177,7 @@ private:
 	class ModuleDragTarget : public ButtonListener,
 							 public Label::Listener,
 							 public Processor::BypassListener,
+							 public Processor::DeleteListener,
 							 public DragAndDropTarget,
                              public SettableTooltipClient
 	{
@@ -265,6 +271,17 @@ private:
 				}
 			}
 		}
+
+		void processorDeleted(Processor* dp) override
+        {
+	        dp->removeBypassListener(this);
+			dp->removeNameAndColourListener(&idUpdater);
+        }
+
+		void updateChildEditorList(bool forceUpdate) override
+        {
+	        
+        }
 
 	protected:
 

@@ -664,7 +664,8 @@ private:
 	mutable EventType lastChange = EventType::Idle;
 	mutable var lastValue;
 
-	Array<WeakReference<EventListener>> listeners;
+	static constexpr int NumListenerSlots = 128;
+	hise::UnorderedStack<WeakReference<EventListener>, NumListenerSlots> listeners;
 };
 
 
@@ -1434,7 +1435,17 @@ template <typename...Ps> struct LambdaBroadcaster final
     {
         lockFreeSendMessage = lockFreeListener;
     }
-    
+
+	bool hasListeners() const noexcept
+	{
+		return !listeners.isEmpty();
+	}
+
+	template <int P=0> auto getLastValue() const noexcept
+	{
+		return std::get<P>(lastValue);
+	}
+
 private:
     
 	void sendMessageInternal(NotificationType n, const std::tuple<Ps...>& value)
@@ -1724,37 +1735,10 @@ public:
 
 
 
-/** A collection of little helper functions to clean float arrays.
-*	@ingroup utility
-*
-*	Source: http://musicdsp.org/showArchiveComment.php?ArchiveID=191
-*/
-struct FloatSanitizers
-{
-	template <typename ContainerType> static void sanitizeArray(ContainerType& d)
-	{
-		for (auto& s : d)
-			sanitizeFloatNumber(s);
-	}
-
-	static void sanitizeArray(float* data, int size);;
-
-	static float sanitizeFloatNumber(float& input);;
-
-	struct Test : public UnitTest
-	{
-		Test() :
-			UnitTest("Testing float sanitizer")
-		{
-
-		};
-
-		void runTest() override;
-	};
-};
 
 
-static FloatSanitizers::Test floatSanitizerTest;
+
+
 
 
 /** This class is used to simulate different devices.
@@ -1961,9 +1945,9 @@ public:
 	};
 
 	/** Returns the sample amount for the specified tempo. */
-	static int getTempoInSamples(double hostTempoBpm, double sampleRate, Tempo t);;
+	static double getTempoInSamples(double hostTempoBpm, double sampleRate, Tempo t);;
 
-	static int getTempoInSamples(double hostTempoBpm, double sampleRate, float tempoFactor);
+	static double getTempoInSamples(double hostTempoBpm, double sampleRate, float tempoFactor);
 
 	static StringArray getTempoNames();;
 
@@ -2025,7 +2009,7 @@ struct MasterClock
 
 	void setSyncMode(SyncModes newSyncMode);
 
-	void changeState(int timestamp, bool internalClock, bool startPlayback);
+	bool changeState(int timestamp, bool internalClock, bool startPlayback);
 
 	struct GridInfo
 	{
@@ -2194,6 +2178,16 @@ struct FFTHelpers
     
     static Array<WindowType> getAvailableWindowTypes();
 
+    static Array<var> getAvailableWindowTypeNames()
+    {
+		Array<var> sa;
+
+		for(auto w: getAvailableWindowTypes())
+			sa.add(getWindowType(w));
+
+		return sa;
+    }
+
     static String getWindowType(WindowType w);
 
     static void applyWindow(WindowType t, AudioSampleBuffer& b, bool normalise=true);
@@ -2215,14 +2209,17 @@ struct FFTHelpers
 
 struct Spectrum2D
 {
-	struct LookupTable
+	struct LookupTable: public ReferenceCountedObject
 	{
+		using Ptr = ReferenceCountedObjectPtr<LookupTable>;
+
 		enum class ColourScheme
 		{
 			blackWhite,
 			rainbow,
 			violetToOrange,
 			hiseColours,
+			preColours,
 			numColourSchemes
 		};
 
@@ -2270,6 +2267,12 @@ struct Spectrum2D
 			Parameters::Ptr param;
 		};
 
+		Parameters():
+		  lut(new LookupTable())
+		{
+			
+		}
+
 		void set(const Identifier& id, var value, NotificationType n);
 
 		var get(const Identifier& id) const;
@@ -2286,14 +2289,27 @@ struct Spectrum2D
 		int oversamplingFactor = 4;
 		int Spectrum2DSize;
 
-		float gainFactor = 0.0f;
-		float gamma = 0.6f;
+		int gainFactorDb = 1000;
+		int gammaPercent = 60;
+
+		float getGamma() const
+		{
+			return (float)gammaPercent / 100.0f;
+		}
+
+		float getGainFactor() const
+		{
+			if(gainFactorDb == 1000)
+				return 0.0f;
+
+			return Decibels::decibelsToGain(gainFactorDb);
+		}
 
 		Graphics::ResamplingQuality quality = Graphics::ResamplingQuality::lowResamplingQuality;
 
 		FFTHelpers::WindowType currentWindowType = FFTHelpers::WindowType::BlackmanHarris;
 
-		SharedResourcePointer<LookupTable> lut;
+		LookupTable::Ptr lut;
 
 		JUCE_DECLARE_WEAK_REFERENCEABLE(Parameters);
 	};
@@ -2322,7 +2338,9 @@ struct Spectrum2D
     const AudioSampleBuffer& originalSource;
     
     Image createSpectrumImage(AudioSampleBuffer& lastBuffer);
-    
+
+	bool useAlphaChannel = false;
+
     AudioSampleBuffer createSpectrumBuffer();
 };
 
@@ -2354,82 +2372,6 @@ struct ComponentWithAdditionalMouseProperties
     }
 };
 
-/** A minimal POD that can be used to check the thread state across DLL boundaries. */
-class ThreadController: public ReferenceCountedObject
-{
-	struct Scaler
-	{
-		Scaler(bool isStep_=false);
-
-		double getScaledProgress(double input) const;
-
-		bool isStep = false;
-		double v1 = 0.0;
-		double v2 = 0.0;
-	};
-
-	template <bool IsStep> struct ScopedScaler
-	{
-		template <typename T> ScopedScaler(ThreadController* parent_, T v1, T v2) : parent(parent_) 
-		{
-			Scaler s(IsStep);
-			s.v1 = (double)v1;
-			s.v2 = (double)v2;
-
-			if(parent != nullptr)
-				parent->pushProgressScaler(s);
-		};
-
-		~ScopedScaler()
-		{
-			if (parent != nullptr)
-				parent->popProgressScaler();
-		}
-
-		operator bool() const
-		{
-			return parent;
-		}
-		
-		ThreadController* parent;
-	};
-
-public:
-
-	using Ptr = ReferenceCountedObjectPtr<ThreadController>;
-	using ScopedRangeScaler = ScopedScaler<false>;
-	using ScopedStepScaler = ScopedScaler<true>;
-
-	ThreadController(Thread* t, double* p, int timeoutMs, uint32& lastTime_);;
-
-	ThreadController();;
-
-	operator bool() const;
-
-	/** Allow a bigger time between calls. */
-	void extendTimeout(uint32 milliSeconds);
-
-
-	/** Set a progress. If you want to add a scaler to the progress (for indicating a subprocess, use either ScopedStepScaler or ScopedRangeScalers). */
-	bool setProgress(double p);
-
-private:
-
-	static constexpr int NumProgressScalers = 32;
-
-	void pushProgressScaler(const Scaler& f);
-
-	void popProgressScaler();
-
-	void* juceThreadPointer = nullptr;
-	double* progress = nullptr;
-	mutable uint32* lastTime = nullptr;
-	uint32 timeout = 0;
-	int progressScalerIndex = 0;
-	Scaler progressScalers[NumProgressScalers];
-
-	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ThreadController);
-};
 
 class SemanticVersionChecker
 {
@@ -2461,6 +2403,62 @@ private:
     VersionInfo newVersion;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SemanticVersionChecker);
+};
+
+struct AdditionalEventStorage
+{
+	using BroadcasterType = LambdaBroadcaster<uint16, uint8, double>;
+
+	static constexpr uint16 NumEventSlots = 1024;
+	static constexpr uint8 NumDataSlots = 16;
+	
+	void setValue(uint16 eventId, uint8 slotIndex, double newValue, NotificationType n)
+	{
+		auto i1 = eventId & (NumEventSlots -1);
+		auto i2 = slotIndex & (NumDataSlots - 1);
+
+		auto& element = data[i1][i2];
+
+		element.first = eventId;
+		element.second = newValue;
+
+		getBroadcaster().sendMessage(n, eventId, slotIndex, newValue);
+	}
+
+	std::pair<bool, double> getValue(uint16 eventId, uint8 slotIndex) const
+	{
+		auto i1 = eventId & (NumEventSlots -1);
+		auto i2 = slotIndex & (NumDataSlots - 1);
+
+		auto& element = data[i1][i2];
+
+		if(element.first == eventId)
+		{
+			return { true, element.second };
+		}
+
+		return { false, 0.0 };
+	}
+
+	bool changed(uint16 eventId, uint8 slotIndex, double& value) const
+	{
+		auto nv = getValue(eventId, slotIndex);
+
+		if(nv.first && nv.second != value)
+		{
+			value = nv.second;
+			return true;
+		}
+
+		return false;
+	}
+	
+	BroadcasterType& getBroadcaster() { return broadcaster; }
+
+private:
+
+	BroadcasterType broadcaster;
+	std::array<std::array<std::pair<uint16, double>, NumDataSlots>, NumEventSlots> data;
 };
 
 }

@@ -155,11 +155,8 @@ void TextEditor::setNewTokenCollectionForAllChildren(Component* any, const Ident
 {
 	if(newCollection == nullptr)
 		newCollection = new TokenCollection(languageId);
-	else
-		newCollection->clearTokenProviders();
 	
 	auto top = any->getTopLevelComponent();
-	bool first = true;
 
 	Component::callRecursive<TextEditor>(top, [&](TextEditor* t)
 	{
@@ -168,10 +165,9 @@ void TextEditor::setNewTokenCollectionForAllChildren(Component* any, const Ident
 			t->tokenCollection = newCollection;
 			newCollection->addListener(t);
 
-			if(first)
+			if(!newCollection->hasTokenProviders())
 			{
 				t->languageManager->addTokenProviders(newCollection.get());
-				first = false;
 			}
 		}
 			
@@ -700,7 +696,10 @@ TextEditor::Error::Error(TextDocument& doc_, const String& e, bool isWarning_):
 {
 	auto s = e.fromFirstOccurrenceOf("Line ", false, false);
 	auto l = s.getIntValue() - 1;
-	auto c = s.fromFirstOccurrenceOf("(", false, false).upToFirstOccurrenceOf(")", false, false).getIntValue();
+
+	auto useDefaultJuceErrorFormat = s.contains(", column ");
+
+	auto c = s.fromFirstOccurrenceOf(useDefaultJuceErrorFormat ? "column " : "(", false, false).upToFirstOccurrenceOf(")", false, false).getIntValue();
 	errorMessage = s.fromFirstOccurrenceOf(": ", false, false);
 
 	Point<int> pos, endPoint;
@@ -952,14 +951,22 @@ void TextEditor::updateAutocomplete(bool forceShow /*= false*/)
 
 	auto tokenBefore = document.getSelectionContent(beforeToken);
 
+	tokenBefore = tokenBefore.removeCharacters("!");
+
 	auto hasDotAndNotFloat = !CharacterFunctions::isDigit(tokenBefore[0]) && tokenBefore.endsWith(".");
 
 	auto lineNumber = o.x;
 
 	auto parent = TopLevelWindowWithOptionalOpenGL::findRoot(this); 
 
+	if(parent == nullptr)
+		parent = dynamic_cast<Component*>(findParentComponentOfClass<TopLevelWindowWithKeyMappings>());
+
 	if (parent == nullptr)
 		parent = this;
+
+	if(tokenCollection != nullptr)
+		tokenCollection->updateIfSync();
 
 	if (forceShow || ((input.isNotEmpty() && tokenCollection != nullptr && tokenCollection->hasEntries(input, tokenBefore, lineNumber)) || hasDotAndNotFloat))
 	{
@@ -987,7 +994,8 @@ void TextEditor::updateAutocomplete(bool forceShow /*= false*/)
 
 		auto ltl = topLeft.roundToInt().transformedBy(transform);
 
-		ltl = getTopLevelComponent()->getLocalPoint(this, ltl);
+		if(parent != this)
+			ltl = getTopLevelComponent()->getLocalPoint(this, ltl);
 		
 		currentAutoComplete->setTopLeftPosition(ltl);
 
@@ -2615,28 +2623,7 @@ bool mcl::TextEditor::keyPressed (const KeyPress& key)
         return true;
     };
     
-	auto remove = [this](Target target, Direction direction)
-	{
-		const auto& s = document.getSelections().getLast();
-
-		auto l = document.getCharacter(s.head.translated(0, -1));
-		auto r = document.getCharacter(s.head);
-		
-		if (lastInsertWasDouble && ActionHelpers::isMatchingClosure(l, r))
-		{
-			document.navigateSelections(Target::character, Direction::backwardCol, Selection::Part::tail);
-			document.navigateSelections(Target::character, Direction::forwardCol, Selection::Part::head);
-			
-			insert({});
-			return true;
-		}
-
-		if (s.isSingular())
-			expandBack(target, direction);
-
-		insert({});
-		return true;
-	};
+	
 
     // =======================================================================================
     if (keyMatchesId(key, TextEditorShortcuts::show_autocomplete))
@@ -2889,22 +2876,12 @@ bool mcl::TextEditor::keyPressed (const KeyPress& key)
     
 	if (keyMatchesId(key, TextEditorShortcuts::comment_line)) // "Cmd + #"
 	{
-		auto isComment = [this](Selection s)
-		{
-			document.navigate(s.tail, Target::line, Direction::forwardCol);
-			document.navigate(s.head, Target::line, Direction::forwardCol);
-			document.navigate(s.tail, Target::firstnonwhitespace, Direction::backwardCol);
-			document.navigate(s.head, Target::firstnonwhitespace, Direction::backwardCol);
-			s.head.y += 2;
-			return document.getSelectionContent(s) == "//";
-		};
-
 		bool anythingCommented = false;
 		bool anythingUncommented = false;
 
 		for (auto s : document.getSelections())
 		{
-			auto thisOne = isComment(s);
+			auto thisOne = languageManager->isLineCommented(document, s);
 
 			anythingCommented |= thisOne;
 			anythingUncommented |= !thisOne;
@@ -2928,12 +2905,15 @@ bool mcl::TextEditor::keyPressed (const KeyPress& key)
 
 		if (anythingUncommented)
 		{
-			insert("//");
+			languageManager->toggleCommentForLine(this, true);
+
+			
 		}
 		else
 		{
-			remove(Target::character, Direction::forwardCol);
-			remove(Target::character, Direction::forwardCol);
+			languageManager->toggleCommentForLine(this, false);
+
+			
 		}
 
 		Array<Selection> newSelection;

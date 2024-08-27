@@ -65,6 +65,7 @@ xcopy "xml\classhise_1_1_scripting_objects_1_1_script_f_f_t.xml" "xml\selection"
 xcopy "xml\classhise_1_1_scripting_objects_1_1_script_buffer.xml" "xml\selection"
 xcopy "xml\classhise_1_1_scripting_objects_1_1_scripted_midi_automation_handler.xml" "xml\selection"
 xcopy "xml\classhise_1_1_scripting_objects_1_1_scripted_macro_handler.xml" "xml\selection"
+xcopy "xml\classhise_1_1_scripting_objects_1_1_script_thread_safe_storage.xml" "xml\selection"
 xcopy "xml\classhise_1_1_beatport_manager.xml" "xml\selection"
 
 
@@ -77,6 +78,7 @@ xcopy "xml\classhise_1_1_scripting_objects_1_1_scripting_slot_f_x.xml" "xml\sele
 xcopy "xml\classhise_1_1_scripting_objects_1_1_markdown_object.xml" "xml\selection"
 xcopy "xml\classhise_1_1_scripting_objects_1_1_graphics_object.xml" "xml\selection"
 xcopy "xml\classhise_1_1_scripting_objects_1_1_path_object.xml" "xml\selection"
+xcopy "xml\classhise_1_1_scripting_objects_1_1_script_neural_network.xml" "xml\selection"
 
 xcopy "xml\structhise_1_1_scripting_objects_1_1_global_cable_reference.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_objects_1_1_global_routing_manager_reference.xml" "xml\selection"
@@ -103,6 +105,9 @@ xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_slider_pack.xml" 
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_scripted_viewport.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_floating_tile.xml" "xml\selection"
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_audio_waveform.xml" "xml\selection"
+xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_multipage_dialog.xml" "xml\selection"
+
+
 
 xcopy "xml\structhise_1_1_scripting_api_1_1_content_1_1_script_slider_1_1_modifier_object.xml" "xml\selection"
 
@@ -186,6 +191,7 @@ ren "xml\selection\structhise_1_1_scripting_api_1_1_content_1_1_script_label.xml
 ren "xml\selection\structhise_1_1_scripting_api_1_1_content_1_1_modulator_meter.xml" "ModulatorMeter.xml"
 ren "xml\selection\structhise_1_1_scripting_api_1_1_content_1_1_script_table.xml" "ScriptTable.xml"
 ren "xml\selection\structhise_1_1_scripting_objects_1_1_script_background_task.xml" "BackgroundTask.xml"
+ren "xml\selection\classhise_1_1_scripting_objects_1_1_script_thread_safe_storage.xml" "ThreadSafeStorage.xml"
 
 ren "xml\selection\classhise_1_1_scripting_objects_1_1_script_shader.xml" "ScriptShader.xml"
 ren "xml\selection\structhise_1_1_scripting_api_1_1_content_1_1_script_image.xml" "ScriptImage.xml"
@@ -196,6 +202,8 @@ ren "xml\selection\structhise_1_1_scripting_api_1_1_content_1_1_scripted_viewpor
 ren "xml\selection\structhise_1_1_scripting_api_1_1_content_1_1_script_floating_tile.xml" "ScriptFloatingTile.xml"
 ren "xml\selection\structhise_1_1_scripting_api_1_1_content_1_1_script_web_view.xml" "ScriptWebView.xml"
 ren "xml\selection\structhise_1_1_scripting_api_1_1_content_1_1_script_audio_waveform.xml" "ScriptAudioWaveform.xml"
+ren "xml\selection\structhise_1_1_scripting_api_1_1_content_1_1_script_multipage_dialog.xml" "ScriptMultipageDialog.xml"
+
 ren "xml\selection\classhise_1_1_scripting_objects_1_1_script_buffer.xml" "Buffer.xml"
 ren "xml\selection\structhise_1_1_scripting_objects_1_1_script_error_handler.xml" "ErrorHandler.xml"
 ren "xml\selection\structhise_1_1_scripting_objects_1_1_script_broadcaster.xml" "Broadcaster.xml"
@@ -218,11 +226,12 @@ ren "xml\selection\structhise_1_1_scripting_objects_1_1_script_builder.xml" "Bui
 ren "xml\selection\structhise_1_1fixobj_1_1_array.xml" "FixObjectArray.xml"
 ren "xml\selection\structhise_1_1fixobj_1_1_factory.xml" "FixObjectFactory.xml"
 ren "xml\selection\structhise_1_1fixobj_1_1_stack.xml" "FixObjectStack.xml"
-ren "xml\selection\classhise_1_1_scripting_objects_1_1_script_ring_buffer.xml" "ScriptRingBuffer.xml"
+ren "xml\selection\classhise_1_1_scripting_objects_1_1_script_ring_buffer.xml" "DisplayBuffer.xml"
 
 ren "xml\selection\structhise_1_1_script_unlocker_1_1_ref_object.xml" "Unlocker.xml"
 ren "xml\selection\classhise_1_1_beatport_manager.xml" "BeatportManager.xml"
 ren "xml\selection\classhise_1_1_scripting_api_1_1_date.xml" "Date.xml"
+ren "xml\selection\classhise_1_1_scripting_objects_1_1_script_neural_network.xml" "NeuralNetwork.xml"
 
 ApiExtractor.exe xml\selection xml\selection
 

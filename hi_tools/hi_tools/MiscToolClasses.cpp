@@ -1469,14 +1469,25 @@ ComplexDataUIUpdaterBase::~ComplexDataUIUpdaterBase()
 void ComplexDataUIUpdaterBase::addEventListener(EventListener* l)
 {
 	ScopedLock sl(updateLock);
-	listeners.addIfNotAlreadyThere(l);
+
+	jassert(isPositiveAndBelow(listeners.size(), NumListenerSlots));
+
+	for(int i = 0; i < listeners.size(); i++)
+	{
+		if(listeners[i] == nullptr)
+			listeners.removeElement(i--);
+	}
+
+	listeners.insert(l);
+	
 	updateUpdater();
 }
 
 void ComplexDataUIUpdaterBase::removeEventListener(EventListener* l)
 {
 	ScopedLock sl(updateLock);
-	listeners.removeAllInstancesOf(l);
+
+	listeners.remove(l);
 	updateUpdater();
 }
 
@@ -1609,15 +1620,15 @@ TempoSyncer::TempoString TempoSyncer::tempoNames[numTempos];
 float TempoSyncer::tempoFactors[numTempos];
 
 
-int TempoSyncer::getTempoInSamples(double hostTempoBpm, double sampleRate, float tempoFactor)
+double TempoSyncer::getTempoInSamples(double hostTempoBpm, double sampleRate, float tempoFactor)
 {
 	if (hostTempoBpm == 0.0) hostTempoBpm = 120.0;
 
-	const float seconds = (60.0f / (float)hostTempoBpm) * tempoFactor;
-	return (int)(seconds * (float)sampleRate);
+	const auto seconds = (60.0 / hostTempoBpm) * (double)tempoFactor;
+	return seconds * sampleRate;
 }
 
-int TempoSyncer::getTempoInSamples(double hostTempoBpm, double sampleRate, Tempo t)
+double TempoSyncer::getTempoInSamples(double hostTempoBpm, double sampleRate, Tempo t)
 {
 	return getTempoInSamples(hostTempoBpm, sampleRate, getTempoFactor(t));
 }
@@ -1741,37 +1752,37 @@ void MasterClock::setSyncMode(SyncModes newSyncMode)
 	currentSyncMode = newSyncMode;
 }
 
-void MasterClock::changeState(int timestamp, bool internalClock, bool startPlayback)
+bool MasterClock::changeState(int timestamp, bool internalClock, bool startPlayback)
 {
 	if (currentSyncMode == SyncModes::Inactive)
-		return;
+		return false;
 
 	if (internalClock)
 		internalClockIsRunning = startPlayback;
 
 	// Already stopped / not running, just return
 	if (!startPlayback && currentState == State::Idle)
-		return;
+		return false;
 
 	// Nothing to do
 	if (internalClock && startPlayback && currentState == State::InternalClockPlay)
-		return;
+		return false;
 
 	// Nothing to do
 	if (!internalClock && startPlayback && currentState == State::ExternalClockPlay)
-		return;
+		return false;
 
 	// Ignore any internal clock events when the external is running and should be preferred
 	if(!shouldPreferInternal() && (currentState == State::ExternalClockPlay && internalClock))
-		return;
+		return false;
 
 	// Ignore any external clock events when the external is running and should be preferred
 	if (shouldPreferInternal() && (currentState == State::InternalClockPlay && !internalClock))
-		return;
+		return false;
 		
 	// Ignore the stop command from the external clock
 	if (currentSyncMode == SyncModes::SyncInternal && !startPlayback && !internalClock)
-		return;
+		return false;
 
 	nextTimestamp = timestamp;
 
@@ -1788,6 +1799,8 @@ void MasterClock::changeState(int timestamp, bool internalClock, bool startPlayb
 		else
 			nextState = State::InternalClockPlay;
 	}
+
+	return true;
 }
 
 MasterClock::GridInfo MasterClock::processAndCheckGrid(int numSamples,
@@ -1906,10 +1919,10 @@ MasterClock::GridInfo MasterClock::updateFromExternalPlayHead(const AudioPlayHea
 
 			auto gridPos = std::fmod(info.ppqPosition, multiplier);
 
-			if (gridPos == 0.0)
+			if (std::abs(gridPos) <= 0.2)
 			{
 				gi.change = true;
-				gi.gridIndex = info.ppqPosition / multiplier;
+				gi.gridIndex = roundToInt(info.ppqPosition / multiplier);
 				gi.firstGridInPlayback = true;
 				gi.timestamp = 0;
 				waitForFirstGrid = false;
@@ -2138,7 +2151,11 @@ void ScrollbarFader::Laf::drawScrollbar(Graphics& g, ScrollBar&, int x, int y, i
 
     auto cornerSize = jmin(area.getWidth(), area.getHeight());
 
-    area = area.reduced(4.0f);
+	if(area.getWidth() > 10.0)
+		area = area.reduced(4.0f);
+	else
+		area = area.reduced(2.0f);
+
     cornerSize = jmin(area.getWidth(), area.getHeight());
     
     g.fillRoundedRectangle(area, cornerSize / 2.0f);
@@ -2370,13 +2387,6 @@ void Spectrum2D::draw(Graphics& g, const Image& img, Rectangle<int> area, Graphi
 	g.saveState();
 	g.setImageResamplingQuality(quality);
 
-	float offsetX = JUCE_LIVE_CONSTANT(0.0);
-	float offsetY = JUCE_LIVE_CONSTANT(0.0);
-
-
-	float scaleX = JUCE_LIVE_CONSTANT(0.0);
-	float scaleY = JUCE_LIVE_CONSTANT(0.0);
-
 	auto t = AffineTransform::translation(-img.getWidth() / 2, -img.getHeight() / 2);
 
 	t = t.followedBy(AffineTransform::rotation(float_Pi * 1.5f));
@@ -2461,6 +2471,13 @@ void Spectrum2D::LookupTable::setColourScheme(ColourScheme cs)
 		{
 			grad.addColour(0.33f, Colour(0xff3a6666));
 			grad.addColour(0.66f, Colour(SIGNAL_COLOUR));
+			break;
+		}
+		case ColourScheme::preColours:
+		{
+			grad.addColour(0.33f, Colour(0xff666666));
+			grad.addColour(0.66f, Colour(0xff9d629a));
+			break;
 		}
         default:
             break;
@@ -2481,23 +2498,34 @@ Image Spectrum2D::createSpectrumImage(AudioSampleBuffer& lastBuffer)
 {
 	TRACE_EVENT("scripting", "create spectrum image");
 
-    auto newImage = Image(Image::RGB, lastBuffer.getNumSamples(), lastBuffer.getNumChannels(), true);
+    auto newImage = Image(useAlphaChannel ? Image::ARGB : Image::RGB, lastBuffer.getNumSamples(), lastBuffer.getNumChannels(), true);
 
-	auto s2dHalf = parameters->Spectrum2DSize / 2;
-	
 	Image::BitmapData bd(newImage, Image::BitmapData::writeOnly);
 	
 	for(int y = 0; y < lastBuffer.getNumChannels(); y++)
 	{
 		auto src = lastBuffer.getReadPointer(y);
-		auto dst = bd.getLinePointer(y);
 		
 		for(int x = 0; x < lastBuffer.getNumSamples(); x++)
 		{
-			auto pp = (PixelRGB*)(bd.getPixelPointer(x, y));
 			auto lutValue = parameters->lut->getColouredPixel(src[x]);
 
-			pp->set(lutValue);
+			if(useAlphaChannel)
+			{
+				auto r = lutValue.getRed();
+				auto g = lutValue.getGreen();
+				auto b = lutValue.getBlue();
+				auto a = jmax(r, g, b);
+
+				auto pp = (PixelARGB*)(bd.getPixelPointer(x, y));
+				pp->set(PixelARGB(a, r, g, b));
+			}
+			else
+			{
+				auto pp = (PixelRGB*)(bd.getPixelPointer(x, y));
+				pp->set(lutValue);
+			}
+				
 		}
 	}
 
@@ -2538,8 +2566,6 @@ AudioSampleBuffer Spectrum2D::createSpectrumBuffer()
     if (numSamplesToFill == 0)
         return {};
 
-    auto paddingSize = JUCE_LIVE_CONSTANT_OFF(0);
-    
     AudioSampleBuffer b(numSamplesToFill, parameters->Spectrum2DSize / 2);
     b.clear();
 
@@ -2562,7 +2588,7 @@ AudioSampleBuffer Spectrum2D::createSpectrumBuffer()
 	for(int i = 0; i < size; i++)
 	{
 		auto normIndex = (float)i / (float)size;
-		auto skewedProportionY = holder->getYPosition((float)i / (float)size);
+		auto skewedProportionY = holder->getYPosition(normIndex);
 		positions[i] = skewedProportionY;
 	}
 
@@ -2631,13 +2657,13 @@ AudioSampleBuffer Spectrum2D::createSpectrumBuffer()
 
 				value = jmax<float>(value, minGain) - minGain;
 				
-				value = std::pow(value, parameters->gamma);
+				value = std::pow(value, parameters->getGamma());
 				dst[dstIndex] = value;
 			}
         }
     }
 
-	auto thisGain = parameters->gainFactor;
+	auto thisGain = parameters->getGainFactor();
 
 	if(thisGain == 0.0f)
 	{
@@ -2650,96 +2676,6 @@ AudioSampleBuffer Spectrum2D::createSpectrumBuffer()
 	b.applyGain(thisGain);
 
     return b;
-}
-
-ThreadController::Scaler::Scaler(bool isStep_):
-	isStep(isStep_)
-{}
-
-double ThreadController::Scaler::getScaledProgress(double input) const
-{
-	if(isStep)
-		return (v1 + input) / v2;
-	else
-		return v1 + (v2 - v1) * input;
-}
-
-
-
-
-
-
-ThreadController::ThreadController(Thread* t, double* p, int timeoutMs, uint32& lastTime_):
-	juceThreadPointer(t),
-	progress(p),
-	timeout(timeoutMs),
-	lastTime(&lastTime_)
-{}
-
-ThreadController::ThreadController():
-	juceThreadPointer(nullptr),
-	progress(nullptr),
-	lastTime(nullptr)
-{}
-
-ThreadController::operator bool() const
-{
-	if (juceThreadPointer == nullptr)
-		return false;
-
-	auto thisTime = Time::getMillisecondCounter();
-
-	if (lastTime != nullptr && *lastTime != 0 && thisTime - *lastTime > timeout)
-	{
-		// If this hits, it means that the timeout you've set is too low.
-		// Either increase the timeout or add more checks in between...
-		;
-
-		// prevent the jassert above to mess up subsequent timeouts...
-		thisTime = Time::getMillisecondCounter();
-	}
-
-	if(lastTime != nullptr)
-		*lastTime = thisTime;
-
-	return !static_cast<Thread*>(juceThreadPointer)->threadShouldExit();
-}
-
-void ThreadController::extendTimeout(uint32 milliSeconds)
-{
-	if(lastTime != nullptr)
-		*lastTime += milliSeconds;
-}
-
-bool ThreadController::setProgress(double p)
-{
-	if (progress == nullptr)
-		return true;
-
-	for (int i = progressScalerIndex-1; i >= 0; i--)
-	{
-		p = jlimit(0.0, 1.0, progressScalers[i].getScaledProgress(p));
-	}
-
-	// If this hits, you might have forgot a scaler in the call stack...
-	jassert(*progress <= p);
-
-	*progress = p;
-
-	return *this;
-}
-
-void ThreadController::pushProgressScaler(const Scaler& f)
-{
-	progressScalers[progressScalerIndex++] = f;
-	jassert(isPositiveAndBelow(progressScalerIndex, NumProgressScalers));
-	setProgress(0.0);
-}
-
-void ThreadController::popProgressScaler()
-{
-	progressScalers[progressScalerIndex--] = {};
-	jassert(progressScalerIndex >= 0);
 }
 
 void Spectrum2D::Parameters::set(const Identifier& id, var value, NotificationType n)
@@ -2756,7 +2692,7 @@ void Spectrum2D::Parameters::set(const Identifier& id, var value, NotificationTy
 	if (id == Identifier("Oversampling"))
 		oversamplingFactor = value;
 	if (id == Identifier("Gamma"))
-		gamma = jlimit(0.01f, 16.0f, (float)value);
+		gammaPercent = jlimit(0, 150, (int)value);
 	if (id == Identifier("ColourScheme"))
 		lut->setColourScheme((LookupTable::ColourScheme)(int)value);
 	if (id == Identifier("WindowType"))
@@ -2769,8 +2705,7 @@ void Spectrum2D::Parameters::set(const Identifier& id, var value, NotificationTy
 	}
 	if (id == Identifier("GainFactor"))
 	{
-		gainFactor = (float)value;
-		FloatSanitizers::sanitizeFloatNumber(gainFactor);
+		gainFactorDb = (int)value;
 	}
 	if (n != dontSendNotification)
 		notifier.sendMessage(n, id, value);
@@ -2789,9 +2724,9 @@ var Spectrum2D::Parameters::get(const Identifier& id) const
 	if (id == Identifier("ColourScheme"))
 		return (int)lut->colourScheme;
 	if (id == Identifier("GainFactor"))
-		return gainFactor;
+		return gainFactorDb;
 	if (id == Identifier("Gamma"))
-		return gamma;
+		return gammaPercent;
 	if (id == Identifier("ResamplingQuality"))
 	{
 		StringArray q("Low", "Mid", "High");
@@ -2852,6 +2787,9 @@ Spectrum2D::Parameters::Editor::Editor(Parameters::Ptr p) :
 	addEditor("WindowType");
     addEditor("DynamicRange");
 	addEditor("ColourScheme");
+	addEditor("Gamma");
+	addEditor("ResamplingQuality");
+	addEditor("GainFactor");
 
 	setSize(450, RowHeight * editors.size() + 60);
 }
@@ -2898,13 +2836,39 @@ void Spectrum2D::Parameters::Editor::addEditor(const Identifier& id)
 		for (auto w : FFTHelpers::getAvailableWindowTypes())
 			cb->addItem(FFTHelpers::getWindowType(w), (int)w + 1);
 	}
+	if (id == Identifier("Gamma"))
+	{
+		cb->addItem("12%", 13);
+		cb->addItem("25%", 26);
+		cb->addItem("33%", 34);
+        cb->addItem("50%", 51);
+		cb->addItem("66%", 67);
+        cb->addItem("75%", 76);
+        cb->addItem("100%", 101);
+        cb->addItem("125%", 126);
+        cb->addItem("150%", 151);
+		
+	}
+	if(id == Identifier("ResamplingQuality"))
+	{
+		cb->addItem("Low", 1);
+		cb->addItem("Mid", 2);
+		cb->addItem("High", 3);
+	}
+	if (id == Identifier("GainFactor"))
+	{
+		cb->addItem("Auto", 1001);
+		cb->addItem("0dB",  1);
+		cb->addItem("+6dB", 7);
+		cb->addItem("+12dB", 13);
+		cb->addItem("+18dB", 14);
+	}
+
+	cb->setSelectedId((int)param->get(id)+1, dontSendNotification);
 
 	addAndMakeVisible(cb);
 	editors.add(cb);
 	cb->addListener(this);
-
-
-	cb->setSelectedId((int)param->get(id)+1, dontSendNotification);
 
 	auto l = new Label();
 	l->setEditable(false);
@@ -2914,7 +2878,6 @@ void Spectrum2D::Parameters::Editor::addEditor(const Identifier& id)
 
 	addAndMakeVisible(l);
 	labels.add(l);
-
 }
 
 void Spectrum2D::Parameters::Editor::comboBoxChanged(ComboBox* comboBoxThatHasChanged)

@@ -139,9 +139,9 @@ public:
 			{
 				filterGraph->setBypassed(getProcessor()->isBypassed());
 
-				IIRCoefficients c = filter->getCurrentCoefficients();
+				auto c = filter->getCurrentCoefficients();
 
-				if (!sameCoefficients(c, currentCoefficients))
+				if (!sameCoefficients(c.first, currentCoefficients.first) || c.second != currentCoefficients.second)
 				{
 					currentCoefficients = c;
 
@@ -251,7 +251,7 @@ private:
 
 				for (int i = 0; i < c->getNumFilterBands(); i++)
 				{
-					IIRCoefficients ic = c->getCoefficients(i);
+					auto ic = c->getCoefficients(i);
 
 					filterGraph->enableBand(i, c->getFilterBand(i)->isEnabled());
 					filterGraph->setCoefficients(i, getProcessor()->getSampleRate(), ic);
@@ -296,7 +296,7 @@ private:
 		}
 	}
 
-	IIRCoefficients currentCoefficients;
+	FilterDataObject::CoefficientData currentCoefficients;
 
 };
 
@@ -632,7 +632,7 @@ void FilterDragOverlay::updateCoefficients()
 
 	for (int i = 0; i < eq->getNumFilterBands(); i++)
 	{
-		IIRCoefficients ic = eq->getCoefficients(i);
+		auto ic = eq->getCoefficients(i);
 		filterGraph.setCoefficients(i, eq->getSampleRate(), ic);
 	}
 }
@@ -1190,7 +1190,7 @@ void FilterDragOverlay::setEqAttribute(int bp, int filterIndex, float value)
 		um->perform(new MacroControlledObject::UndoableControlEvent(eq, idx, oldValue, value));
 	}
 	else
-		eq->setAttribute(idx, value, sendNotification);
+		eq->setAttribute(idx, value, sendNotificationAsync);
 }
 
 FilterDragOverlay::FFTDisplay::FFTDisplay(FilterDragOverlay& parent_) :

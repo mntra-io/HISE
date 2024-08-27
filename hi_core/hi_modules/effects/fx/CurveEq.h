@@ -170,7 +170,7 @@ public:
 #endif
 	};
 
-	IIRCoefficients getCoefficients(int filterIndex)
+	FilterDataObject::CoefficientData getCoefficients(int filterIndex)
 	{
 		return filterBands[filterIndex]->getApproximateCoefficients();
 	};

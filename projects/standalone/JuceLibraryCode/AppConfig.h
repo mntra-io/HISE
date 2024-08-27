@@ -56,6 +56,7 @@
 #define JUCE_MODULE_AVAILABLE_hi_faust_lib                1
 #define JUCE_MODULE_AVAILABLE_hi_faust_types              1
 #define JUCE_MODULE_AVAILABLE_hi_lac                      1
+#define JUCE_MODULE_AVAILABLE_hi_loris                    1
 #define JUCE_MODULE_AVAILABLE_hi_rlottie                  1
 #define JUCE_MODULE_AVAILABLE_hi_scripting                1
 #define JUCE_MODULE_AVAILABLE_hi_snex                     1
@@ -78,6 +79,7 @@
 #define JUCE_MODULE_AVAILABLE_juce_opengl                 1
 #define JUCE_MODULE_AVAILABLE_juce_osc                    1
 #define JUCE_MODULE_AVAILABLE_juce_product_unlocking      1
+#define JUCE_MODULE_AVAILABLE_melatonin_blur              1
 
 #define JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED 1
 
@@ -240,7 +242,7 @@
 #endif
 
 #ifndef    HISE_DEFAULT_OPENGL_VALUE
- #define   HISE_DEFAULT_OPENGL_VALUE 0
+ //#define HISE_DEFAULT_OPENGL_VALUE 1
 #endif
 
 #ifndef    HISE_USE_SYSTEM_APP_DATA_FOLDER
@@ -321,7 +323,7 @@
 // hi_faust_types flags:
 
 #ifndef    FAUST_NO_WARNING_MESSAGES
- #define   FAUST_NO_WARNING_MESSAGES 1
+ //#define FAUST_NO_WARNING_MESSAGES 0
 #endif
 
 //==============================================================================
@@ -341,6 +343,17 @@
 
 #ifndef    HLAC_INCLUDE_TEST_SUITE
  //#define HLAC_INCLUDE_TEST_SUITE 0
+#endif
+
+//==============================================================================
+// hi_loris flags:
+
+#ifndef    HISE_INCLUDE_LORIS
+ #define   HISE_INCLUDE_LORIS 1
+#endif
+
+#ifndef    HISE_USE_LORIS_DLL
+ #define   HISE_USE_LORIS_DLL 0
 #endif
 
 //==============================================================================
@@ -410,8 +423,8 @@
  //#define HISE_INCLUDE_PITCH_DETECTION 1
 #endif
 
-#ifndef    HISE_ENABLE_LORIS_ON_FRONTEND
- //#define HISE_ENABLE_LORIS_ON_FRONTEND 0
+#ifndef    HISE_INCLUDE_RT_NEURAL
+ //#define HISE_INCLUDE_RT_NEURAL 1
 #endif
 
 #ifndef    HISE_USE_EXTENDED_TEMPO_VALUES
@@ -530,7 +543,7 @@
 #endif
 
 #ifndef    JUCE_ENABLE_AUDIO_GUARD
- #define   JUCE_ENABLE_AUDIO_GUARD 1
+ //#define JUCE_ENABLE_AUDIO_GUARD 0
 #endif
 
 #ifndef    JUCE_LOG_ASSERTIONS
@@ -585,7 +598,7 @@
 #endif
 
 #ifndef    JUCE_DSP_USE_SHARED_FFTW
- #define   JUCE_DSP_USE_SHARED_FFTW 0
+ //#define JUCE_DSP_USE_SHARED_FFTW 0
 #endif
 
 #ifndef    JUCE_DSP_USE_STATIC_FFTW

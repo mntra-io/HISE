@@ -54,6 +54,8 @@ ScriptContentComponent::ScriptContentComponent(ProcessorWithScriptingContent *p_
 	processor(p_),
 	p(dynamic_cast<Processor*>(p_))
 {
+	css.setUseIsolatedCollections(true);
+
 	processor->getScriptingContent()->addRebuildListener(this);
 	processor->getScriptingContent()->addScreenshotListener(this);
 
@@ -73,7 +75,7 @@ ScriptContentComponent::ScriptContentComponent(ProcessorWithScriptingContent *p_
 
 ScriptContentComponent::~ScriptContentComponent()
 {
-	SUSPEND_GLOBAL_DISPATCH(p->getMainController(), "delete scripting UI");
+
 
 	if (contentData.get() != nullptr)
 	{
@@ -88,12 +90,18 @@ ScriptContentComponent::~ScriptContentComponent()
 
 	if (p.get() != nullptr)
 	{
+        SUSPEND_GLOBAL_DISPATCH(p->getMainController(), "delete scripting UI");
+        
 		p->getMainController()->removeScriptListener(this);
 		OLD_PROCESSOR_DISPATCH(p->removeChangeListener(this));
 		p->removeDeleteListener(this);
-	};
-
-	componentWrappers.clear();
+        
+        componentWrappers.clear();
+	}
+    else
+    {
+        componentWrappers.clear();
+    }
 }
 
 
@@ -517,6 +525,8 @@ void ScriptContentComponent::prepareScreenshot()
 void ScriptContentComponent::contentWasRebuilt()
 {
 	contentRebuildNotifier.notify(processor->getScriptingContent());
+
+	setWantsKeyboardFocus(processor->getScriptingContent()->hasKeyPressCallbacks());
 }
 
 
@@ -621,6 +631,8 @@ void ScriptContentComponent::deleteAllScriptComponents()
 	}
 
 	componentWrappers.clear();
+
+	css.clearCache();
 }
 
 void ScriptContentComponent::refreshContentButton()
@@ -636,8 +648,14 @@ void ScriptContentComponent::refreshContentButton()
 
 }
 
-bool ScriptContentComponent::keyPressed(const KeyPress &/*key*/)
+bool ScriptContentComponent::keyPressed(const KeyPress& k)
 {
+	if(contentData != nullptr && contentData->hasKeyPressCallbacks())
+	{
+		if(contentData->handleKeyPress(k))
+			return true;
+	}
+
 	return false;
 }
 
@@ -679,7 +697,19 @@ void ScriptContentComponent::paintOverChildren(Graphics& g)
 				ug.draw1PxRect(vg.area);
 		}
 	}
+
+	if(processor->simulatedSuspensionState)
+	{
+		g.fillAll(Colours::black.withAlpha(0.8f));
+		g.setColour(Colours::white);
+		g.setFont(GLOBAL_BOLD_FONT());
+		g.drawText("Suspended...", 0, 0, getWidth(), getHeight(), Justification::centred, false);
+		return;
+	}
+
 #endif
+
+	
 
 	if (isRebuilding)
 	{

@@ -1085,6 +1085,8 @@ MidiPlayer::MidiPlayer(MainController *mc, const String &id, ModulatorSynth*) :
 	updateParameterSlots();
 
 	mc->addTempoListener(this);
+	
+	memset(sustainPedalStates.data(), 0, sustainPedalStates.size());
 }
 
 MidiPlayer::~MidiPlayer()
@@ -1310,6 +1312,9 @@ void MidiPlayer::setInternalAttribute(int index, float newAmount)
 	}
 	case CurrentSequence:		
 	{
+		auto ps = getLoopStart();
+		auto pe = getLoopEnd();
+
 		currentSequenceIndex = jlimit<int>(-1, currentSequences.size()-1, (int)(newAmount - 1)); 
 
 		currentlyRecordedEvents.clear();
@@ -1317,6 +1322,14 @@ void MidiPlayer::setInternalAttribute(int index, float newAmount)
 
 		updatePositionInCurrentSequence();
 
+		auto ls = getLoopStart();
+		auto le = getLoopEnd();
+
+		if(le != pe)
+			setAttribute(MidiPlayer::LoopEnd, le, sendNotificationSync);
+		if(ls != ps)
+			setAttribute(MidiPlayer::LoopStart, ls, sendNotificationSync);
+		
 		sendSequenceUpdateMessage(sendNotificationAsync);
 
 		break;
@@ -1503,6 +1516,16 @@ void MidiPlayer::preprocessBuffer(HiseEventBuffer& buffer, int numSamples)
 
 				if (newEvent.isController())
 				{
+					if(newEvent.getControllerNumber() == 64)
+					{
+						sustainPedalStates[newEvent.getChannel() % 16] = (uint8)newEvent.getControllerValue();
+
+						sustainActive = false;
+
+						for(auto& s: sustainPedalStates)
+							sustainActive |= (s > 0);
+					}
+
 					bool consumed = false;
 
 					if (globalMidiHandlerConsumesCC)
@@ -2007,6 +2030,24 @@ bool MidiPlayer::stopInternal(int timestamp)
 			addNoteOffsToPendingNoteOns();
 		}
 
+		if(sustainActive)
+		{
+			auto midiChain = getOwnerSynth()->midiProcessorChain.get();
+		
+			for(int i = 0; i < 16; i++)
+			{
+				if(sustainPedalStates[i] > 0)
+				{
+					HiseEvent c(HiseEvent::Type::Controller, 64, 0, i);
+					midiChain->addArtificialEvent(c);
+				}
+			}
+
+			memset(sustainPedalStates.data(), 0, sustainPedalStates.size());
+			sustainActive = false;
+		}
+		
+
 		seq->resetPlayback();
 		playState = PlayState::Stop;
 
@@ -2432,7 +2473,7 @@ void MidiPlayer::addNoteOffsToPendingNoteOns()
 	bool sortAfterOp = false;
 
 	LockHelpers::SafeLock sl(getMainController(), LockHelpers::Type::AudioLock);
-
+	
 	for (auto& futureEvent : midiChain->artificialEvents)
 	{
 		if (futureEvent.isNoteOff())

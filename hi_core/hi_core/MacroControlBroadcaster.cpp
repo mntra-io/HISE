@@ -210,8 +210,25 @@ namespace hise { using namespace juce;
 
 	void MacroControlBroadcaster::addMacroConnectionListener(MacroConnectionListener* l)
 	{
-        ScopedLock sl(listenerLock);
-		macroListeners.addIfNotAlreadyThere(l);
+		{
+			ScopedLock sl(listenerLock);
+			macroListeners.addIfNotAlreadyThere(l);
+		}
+        
+
+#if USE_BACKEND
+		for(int i = 0; i < HISE_NUM_MACROS; i++)
+		{
+			auto md = getMacroControlData(i);
+
+			for(int j = 0; j < md->getNumParameters(); j++)
+			{
+				auto pc = md->getParameter(j);
+
+				l->macroConnectionChanged(i, pc->getProcessor(), pc->getParameter(), true);
+			}
+		}
+#endif
 	}
 
 	void MacroControlBroadcaster::removeMacroConnectionListener(MacroConnectionListener* l)
@@ -717,7 +734,12 @@ void MacroControlBroadcaster::MacroControlData::restoreFromValueTree(const Value
 
     jassert(v.getType() == Identifier("macro"));
 
-    macroName = v.getProperty("name", "Macro " + String(macroIndex+1)).toString();
+
+	auto& mm = dynamic_cast<ModulatorSynthChain*>(&parent)->getMainController()->getMacroManager();
+
+	// Do not overwrite the macro names set by `setFrontendMacros()` ever...
+	if(!mm.isMacroEnabledOnFrontend())
+		macroName = v.getProperty("name", "Macro " + String(macroIndex+1)).toString();
 
     setValue((float)v.getProperty("value", 0.0));
 

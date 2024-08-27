@@ -280,48 +280,6 @@ hiseSpecialData(this)
 #endif
 
 
-
-
-
-void HiseJavascriptEngine::RootObject::ArraySubscript::cacheIndex(AssignableObject *instance, const Scope &s) const
-{
-	if (cachedIndex == -1)
-	{
-		if (dynamic_cast<LiteralValue*>(index.get()) != nullptr ||
-			dynamic_cast<ConstReference*>(index.get()) != nullptr ||
-			dynamic_cast<DotOperator*>(index.get()) ||
-			dynamic_cast<ApiConstant*>(index.get()))
-		{
-			if (DotOperator* dot = dynamic_cast<DotOperator*>(index.get()))
-			{
-				if (dynamic_cast<ConstReference*>(dot->parent.get()) != nullptr)
-				{
-					if (ConstScriptingObject* cso = dynamic_cast<ConstScriptingObject*>(dot->parent->getResult(s).getObject()))
-					{
-						int constantIndex = cso->getConstantIndex(dot->child);
-						var possibleIndex = cso->getConstantValue(constantIndex);
-						if (possibleIndex.isInt() || possibleIndex.isInt64())
-						{
-							cachedIndex = (int)possibleIndex;
-						}
-						else location.throwError("[]- access only possible with int values");
-					}
-					else location.throwError("[]-access using dot operator only valid with const objects as parent");
-				}
-				else location.throwError("[]-access using dot operator only valid with const objects as parent");
-			}
-			else
-			{
-				const var i = index->getResult(s);
-				cachedIndex = instance->getCachedIndex(i);
-
-				if (cachedIndex == -1) location.throwError("Property " + i.toString() + " not found");
-			}
-		}
-	}
-}
-
-
 var HiseJavascriptEngine::RootObject::FunctionCall::getResult(const Scope& s) const
 {
 	try
@@ -340,7 +298,10 @@ var HiseJavascriptEngine::RootObject::FunctionCall::getResult(const Scope& s) co
 
 					if (constObject != nullptr)
 					{
+						auto numExpectedArgs = arguments.size();
+
 						constObject->getIndexAndNumArgsForFunction(dot->child, functionIndex, numArgs);
+						
 						isConstObjectApiFunction = true;
                         
 #if ENABLE_SCRIPTING_SAFE_CHECKS
@@ -348,7 +309,7 @@ var HiseJavascriptEngine::RootObject::FunctionCall::getResult(const Scope& s) co
 #endif
 
 						CHECK_CONDITION_WITH_LOCATION(functionIndex != -1, "function not found");
-						CHECK_CONDITION_WITH_LOCATION(numArgs == arguments.size(), "argument amount mismatch: " + String(arguments.size()) + ", Expected: " + String(numArgs));
+						CHECK_CONDITION_WITH_LOCATION(numArgs == numExpectedArgs, "argument amount mismatch: " + String(arguments.size()) + ", Expected: " + String(numArgs));
 					}
 				}
 			}
@@ -381,6 +342,8 @@ var HiseJavascriptEngine::RootObject::FunctionCall::getResult(const Scope& s) co
 
 			if (ConstScriptingObject* c = dynamic_cast<ConstScriptingObject*>(thisObject.getObject()))
 			{
+				auto numExpectedArgs = arguments.size();
+
 				c->getIndexAndNumArgsForFunction(dot->child, functionIndex, numArgs);
                 
 #if ENABLE_SCRIPTING_SAFE_CHECKS

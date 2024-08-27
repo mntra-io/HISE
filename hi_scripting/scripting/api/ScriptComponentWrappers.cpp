@@ -453,11 +453,16 @@ void ScriptCreatedComponentWrapper::initAllProperties()
 
 		updateComponent(i, v);
 	}
-
-	if (auto l = sc->createLocalLookAndFeel())
+	
+	if (auto l = sc->createLocalLookAndFeel(contentComponent, component.get()))
 	{
 		localLookAndFeel = l;
 		component->setLookAndFeel(l);
+
+		if(auto ps = sc->getStyleSheetPseudoState())
+		{
+			simple_css::FlexboxComponent::Helpers::writeManualPseudoState(*component, ps);
+		}
 	}
 	else
 	{
@@ -588,7 +593,14 @@ void ScriptCreatedComponentWrappers::SliderWrapper::updateSliderRange(ScriptingA
 
 	const String suffix = sc->getScriptObjectProperty(ScriptingApi::Content::ScriptSlider::suffix);
 
-	if (min >= max || stepsize <= 0.0 || min < -100000.0 || max > 100000.0)
+	static constexpr double MaxValue = 10000000.0;
+
+	if(std::abs(min) > MaxValue || std::abs(max) > MaxValue)
+	{
+		debugError(dynamic_cast<Processor*>(sc->getScriptProcessor()), "Slider min/max value exceeds upper limit!");
+	}
+
+	if (min >= max || stepsize <= 0.0 || min < -MaxValue || max > MaxValue)
 	{
 		s->setMode(HiSlider::Mode::Linear, 0.0, 1.0);
 		s->setSkewFactor(1.0);
@@ -631,18 +643,21 @@ void ScriptCreatedComponentWrappers::SliderWrapper::updateSliderStyle(ScriptingA
 		s->setTextBoxStyle(Slider::NoTextBox, false, 0, 0);
 	}
 
+	auto isLinearSlider = sc->styleId == Slider::LinearBar || sc->styleId == Slider::LinearBarVertical;
+
+	simple_css::FlexboxComponent::Helpers::writeClassSelectors(*s, { simple_css::Selector(".linear-slider")}, isLinearSlider);
+
     auto showTextBox = (bool)sc->getScriptObjectProperty(ScriptingApi::Content::ScriptSlider::showTextBox);
     
-    s->enableShiftTextInput = showTextBox;
+    s->enableShiftTextInput = true;
     
-	if (sc->styleId == Slider::LinearBar || sc->styleId == Slider::LinearBarVertical)
-	{
-		if (!showTextBox)
-			s->setColour(Slider::textBoxOutlineColourId, Colours::transparentBlack);
+	if (!showTextBox)
+		s->setColour(Slider::textBoxOutlineColourId, Colours::transparentBlack);
 
-		s->setTextBoxStyle(showTextBox ? Slider::TextBoxAbove : Slider::NoTextBox, !showTextBox, s->getWidth(), s->getHeight());
-	}
+	s->setTextBoxStyle(showTextBox ? Slider::TextBoxAbove : Slider::NoTextBox, !showTextBox, s->getWidth(), s->getHeight());
 
+	if(isLinearSlider)
+		s->enableShiftTextInput = !showTextBox;
 }
 
 void ScriptCreatedComponentWrappers::SliderWrapper::updateComponent()
@@ -765,7 +780,7 @@ void ScriptCreatedComponentWrapper::showValuePopup()
 {
 	auto c = getComponent();
 
-	auto parentTile = c->findParentComponentOfClass<FloatingTile>(); // always in a tile...
+	auto parentTile = c->findParentComponentOfClass<ScriptContentComponent>(); 
 
 	if (parentTile == nullptr)
 	{
@@ -775,10 +790,8 @@ void ScriptCreatedComponentWrapper::showValuePopup()
 	}
 
 	parentTile->addAndMakeVisible(currentPopup = new ValuePopup(*this));
-
 	
-
-	currentPopup->setFont(parentTile->getMainController()->getFontFromString("Default", 14.0f));
+	currentPopup->setFont(dynamic_cast<const Processor*>(parentTile->getScriptProcessor())->getMainController()->getFontFromString("Default", 14.0f));
 
 	
 
@@ -793,7 +806,7 @@ void ScriptCreatedComponentWrapper::updatePopupPosition()
 	{
 		auto c = getComponent();
 
-		auto parentTile = c->findParentComponentOfClass<FloatingTile>(); // always in a tile...
+		auto parentTile = c->findParentComponentOfClass<ScriptContentComponent>();
 
 		if (parentTile == nullptr)
 		{
@@ -803,7 +816,12 @@ void ScriptCreatedComponentWrapper::updatePopupPosition()
 		}
 
 		auto l = parentTile->getLocalArea(c, c->getLocalBounds());
-		currentPopup->setTopLeftPosition(getValuePopupPosition(l));
+
+		auto p = getValuePopupPosition(l);
+
+		p.applyTransform(currentPopup->getTransform().inverted());
+
+		currentPopup->setTopLeftPosition(p);
 	}
 }
 
@@ -1100,6 +1118,7 @@ void ScriptCreatedComponentWrappers::ComboBoxWrapper::updateComponent(int proper
 		PROPERTY_CASE::ScriptComboBox::FontName:
 		PROPERTY_CASE::ScriptComboBox::FontSize :
 		PROPERTY_CASE::ScriptComboBox::FontStyle : updateFont(getScriptComponent()); break;
+        PROPERTY_CASE::ScriptComboBox::useCustomPopup: cb->setUseCustomPopup((bool)newValue); break;
         PROPERTY_CASE::ScriptComboBox::popupAlignment: cb->getProperties().set("popupAlignment", newValue); break;
 		PROPERTY_CASE::ScriptSlider::numProperties :
 	default:
@@ -1149,7 +1168,8 @@ void ScriptCreatedComponentWrappers::ComboBoxWrapper::updateFont(ScriptComponent
 void ScriptCreatedComponentWrappers::ComboBoxWrapper::updateItems(HiComboBox * cb)
 {
 	cb->clear(dontSendNotification);
-
+    cb->rebuildPopupMenu();
+    
 	cb->addItemList(dynamic_cast<ScriptingApi::Content::ScriptComboBox*>(getScriptComponent())->getItemList(), 1);
     
     auto currentValue = (int)getScriptComponent()->getValue();
@@ -1598,6 +1618,12 @@ void ScriptCreatedComponentWrappers::TableWrapper::pointDragStarted(Point<int> p
 	popupText = getTextForTablePopup(pointIndex, value);
 	//popupText = String(pointIndex) + " | " + String(roundToInt(value*100.0f)) + "%";
 
+	if(auto te = dynamic_cast<TableEditor*>(getComponent()))
+	{
+		if(te->shouldDrawTableValueLabel())
+			return;
+	}
+
 	if (auto st = dynamic_cast<ScriptingApi::Content::ScriptTable*>(getScriptComponent()))
 	{
 		//auto xName = st->getTable()->getXValueText(pointIndex);
@@ -1611,11 +1637,23 @@ void ScriptCreatedComponentWrappers::TableWrapper::pointDragStarted(Point<int> p
 
 void ScriptCreatedComponentWrappers::TableWrapper::pointDragEnded()
 {
+	if(auto te = dynamic_cast<TableEditor*>(getComponent()))
+	{
+		if(te->shouldDrawTableValueLabel())
+			return;
+	}
+
 	closeValuePopupAfterDelay();
 }
 
 void ScriptCreatedComponentWrappers::TableWrapper::pointDragged(Point<int> position, float pointIndex, float value)
 {
+	if(auto te = dynamic_cast<TableEditor*>(getComponent()))
+	{
+		if(te->shouldDrawTableValueLabel())
+			return;
+	}
+
 	if (auto st = dynamic_cast<ScriptingApi::Content::ScriptTable*>(getScriptComponent()))
 	{
 		popupText = getTextForTablePopup(pointIndex, value);
@@ -1733,6 +1771,7 @@ ScriptCreatedComponentWrappers::ViewportWrapper::ViewportWrapper(ScriptContentCo
 	}, true);
 
 	initAllProperties();
+
 	updateValue(viewport->value);
 
 	if (mode == Mode::Table && localLookAndFeel != nullptr)
@@ -1741,6 +1780,10 @@ ScriptCreatedComponentWrappers::ViewportWrapper::ViewportWrapper(ScriptContentCo
 		{
 			tableModel->setExternalLookAndFeel(typed);
 		}
+	}
+	if(mode == Mode::List && model != nullptr)
+	{
+		model->initLookAndFeel();
 	}
 }
 
@@ -2017,6 +2060,11 @@ ScriptCreatedComponentWrapper(content, index)
 
 	initAllProperties();
 
+	if(auto slaf = dynamic_cast<simple_css::StyleSheetLookAndFeel*>(&component->getLookAndFeel()))
+	{
+		component->setInterceptsMouseClicks(true, true);
+		component->setRepaintsOnMouseActivity(true);
+	}
 }
 
 void ScriptCreatedComponentWrappers::ImageWrapper::updateComponent()
@@ -2454,6 +2502,7 @@ void ScriptCreatedComponentWrappers::SliderPackWrapper::updateComponent(int prop
 		PROPERTY_CASE::ScriptComponent::Properties::min :
 		PROPERTY_CASE::ScriptComponent::Properties::max : updateRange(dynamic_cast<SliderPackData*>(ssp->getCachedDataObject())); break;
 		PROPERTY_CASE::ScriptSliderPack::Properties::CallbackOnMouseUpOnly : sp->setCallbackOnMouseUp((bool)newValue); break;
+		PROPERTY_CASE::ScriptSliderPack::Properties::StepSequencerMode : sp->setStepSequencerMode((bool)newValue); break;
 	}
 }
 
@@ -2469,6 +2518,9 @@ void ScriptCreatedComponentWrappers::SliderPackWrapper::updateColours(SliderPack
 
 void ScriptCreatedComponentWrappers::SliderPackWrapper::updateRange(SliderPackData* data)
 {
+	if(data == nullptr)
+		return;
+
 	ScriptingApi::Content::ScriptSliderPack *ssp = dynamic_cast<ScriptingApi::Content::ScriptSliderPack*>(getScriptComponent());
 
 	double min = GET_SCRIPT_PROPERTY(min);
@@ -2684,6 +2736,15 @@ ScriptCreatedComponentWrappers::AudioWaveformWrapper::AudioWaveformWrapper(Scrip
 
 	if (auto adc = dynamic_cast<AudioDisplayComponent*>(component.get()))
 	{
+		if(auto slaf = dynamic_cast<ScriptingObjects::ScriptedLookAndFeel::CSSLaf*>(localLookAndFeel.get()))
+		{
+			Component::callRecursive<ResizableEdgeComponent>(adc, [slaf](ResizableEdgeComponent* edge)
+			{
+				edge->setLookAndFeel(slaf);
+				return false;
+			});
+		}
+
 		if (auto l = dynamic_cast<HiseAudioThumbnail::LookAndFeelMethods*>(localLookAndFeel.get()))
 			adc->getThumbnail()->setLookAndFeel(localLookAndFeel);
 		else if (auto s = dynamic_cast<HiseAudioThumbnail::LookAndFeelMethods*>(slaf))
@@ -2728,14 +2789,7 @@ void ScriptCreatedComponentWrappers::AudioWaveformWrapper::updateComponent(int p
             PROPERTY_CASE::ScriptComponent::tooltip :        adc->setTooltip(GET_SCRIPT_PROPERTY(tooltip)); break;
 
 			PROPERTY_CASE::ScriptAudioWaveform::Properties::showLines: adc->getThumbnail()->setDrawHorizontalLines((bool)newValue); break;
-			PROPERTY_CASE::ScriptAudioWaveform::Properties::enableRange:
-			{
-				if (auto w = dynamic_cast<AudioDisplayComponent*>(component.get()))
-				{
-					w->getSampleArea(0)->setAreaEnabled(newValue);
-				}
-				break;
-			}
+			PROPERTY_CASE::ScriptAudioWaveform::Properties::enableRange: adc->getSampleArea(0)->setAreaEnabled(newValue); break;
 		}
 
 		if (auto asb = dynamic_cast<MultiChannelAudioBufferDisplay*>(component.get()))
@@ -2745,6 +2799,7 @@ void ScriptCreatedComponentWrappers::AudioWaveformWrapper::updateComponent(int p
 			switch (propertyIndex)
 			{
 				PROPERTY_CASE::ScriptAudioWaveform::Properties::showFileName: asb->setShowFileName((bool)newValue); break;
+				PROPERTY_CASE::ScriptAudioWaveform::Properties::loadWithLeftClick: asb->setLoadWithLeftClick((bool)newValue); break;
 			}
 		}
 	}
@@ -2850,21 +2905,36 @@ void ScriptCreatedComponentWrappers::FloatingTileWrapper::updateLookAndFeel()
     {
         laf = &mc->getGlobalLookAndFeel();
 
-        if (auto l = floatingTile->createLocalLookAndFeel())
+        if (auto l = floatingTile->createLocalLookAndFeel(contentComponent, ft))
         {
             localLookAndFeel = l;
             laf = localLookAndFeel.get();
         }
     }
     
-    if (dynamic_cast<ScriptingObjects::ScriptedLookAndFeel::Laf*>(laf) != nullptr)
+    if (dynamic_cast<ScriptingObjects::ScriptedLookAndFeel::LafBase*>(laf) != nullptr)
     {
         Component::callRecursive<Component>(ft, [laf](Component* c)
         {
             c->setLookAndFeel(laf);
+            
+            if(auto ed = dynamic_cast<ComplexDataUIBase::EditorBase*>(c))
+            {
+                ed->setSpecialLookAndFeel(laf, false);
+            }
+            
             return false;
         });
     }
+}
+
+ScriptCreatedComponentWrappers::MultipageDialogWrapper::MultipageDialogWrapper(ScriptContentComponent* content,
+	ScriptDialog* mp, int index):
+	ScriptCreatedComponentWrapper(content, index)
+{
+	component = mp->createBackdrop();
+	initAllProperties();
+			
 }
 
 void ScriptCreatedComponentWrappers::FloatingTileWrapper::updateComponent()
@@ -3031,7 +3101,7 @@ void ScriptedControlAudioParameter::setValue(float newValue)
 			{
 				lastValue = snappedValue;
 				lastValueInitialised = true;
-				scriptProcessor->setAttribute(componentIndex, snappedValue, sendNotification);
+				scriptProcessor->setAttribute(componentIndex, snappedValue, sendNotificationAsync);
 			}
 		}
 	}
@@ -3164,7 +3234,9 @@ void ScriptedControlAudioParameter::setParameterNotifyingHost(int index, float n
 {
 	auto mc = dynamic_cast<MainController*>(parentProcessor);
 
-	if (mc->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::AudioThread)
+	auto defer = mc->getDeferNotifyHostFlag() || mc->getKillStateHandler().getCurrentThread() == MainController::KillStateHandler::TargetThread::AudioThread;
+
+	if (defer)
 	{
 		indexForHost = index;
 		valueForHost = newValue;
@@ -3200,9 +3272,7 @@ ScriptCreatedComponentWrappers::ViewportWrapper::ColumnListBoxModel::ColumnListB
 	parent(parent_),
 	font(GLOBAL_BOLD_FONT()),
 	justification(Justification::centredLeft)
-{
-
-}
+{}
 
 int ScriptCreatedComponentWrappers::ViewportWrapper::ColumnListBoxModel::getNumRows()
 {
@@ -3220,6 +3290,22 @@ void ScriptCreatedComponentWrappers::ViewportWrapper::ColumnListBoxModel::paintL
 	if (rowNumber < list.size())
 	{
 		auto text = list[rowNumber];
+
+		auto c = parent->getComponent();
+
+		if(auto laf = dynamic_cast<simple_css::StyleSheetLookAndFeel*>(&c->getLookAndFeel()))
+		{
+			auto lb = dynamic_cast<ListBox*>(c);
+
+			auto rc = lb->getComponentForRowNumber(rowNumber);
+
+			auto pos = lb->getMouseXYRelative();
+
+			auto rowIsHovered = currentHoverRow == rowNumber;
+			
+			if(laf->drawListBoxRow(rowNumber, g, text, rc, width, height, rowIsSelected, rowIsHovered))
+				return;
+		}
 
 		Rectangle<int> area(0, 1, width, height - 2);
 
@@ -3245,6 +3331,24 @@ void ScriptCreatedComponentWrapper::ValuePopup::updateText()
 {
 	auto thisText = parent.getTextForValuePopup();
 
+	auto sf = UnblurryGraphics::getScaleFactorForComponent(parent.getComponent(), false);
+
+	//setTransform(AffineTransform::scale(sf));
+
+	if(auto laf = dynamic_cast<ScriptingObjects::ScriptedLookAndFeel::CSSLaf*>(&parent.getComponent()->getLookAndFeel()))
+	{
+		auto area = laf->getValueLabelSize(*this, *parent.getComponent(), thisText);
+
+		if(!area.isEmpty())
+		{
+			shadow = nullptr;
+			currentText = thisText;
+			setSize(area.getWidth(), area.getHeight());
+			repaint();
+			return;
+		}
+	}
+
 	Properties::Ptr p = parent.contentComponent->getValuePopupProperties();
 
 	if (p != nullptr && thisText != currentText)
@@ -3264,6 +3368,12 @@ void ScriptCreatedComponentWrapper::ValuePopup::updateText()
 
 void ScriptCreatedComponentWrapper::ValuePopup::paint(Graphics& g)
 {
+	if(auto laf = dynamic_cast<ScriptingObjects::ScriptedLookAndFeel::CSSLaf*>(&parent.getComponent()->getLookAndFeel()))
+	{
+		laf->drawValueLabel(g, *this, *parent.getComponent(), currentText, false);
+		return;
+	}
+
 	Properties::Ptr p = parent.contentComponent->getValuePopupProperties();
 
 	

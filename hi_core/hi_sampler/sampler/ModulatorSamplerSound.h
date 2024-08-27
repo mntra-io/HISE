@@ -201,6 +201,38 @@ struct Helpers
 			id == LoopStart || id == LoopEnd || id == LoopXFade;
 	}
 
+	static Array<Identifier> getAllIds()
+	{
+		static const Array<Identifier> ids({
+			ID,
+			FileName,
+			Root,
+			HiKey,
+			LoKey,
+			LoVel,
+			HiVel,
+			RRGroup,
+			Volume,
+			Pan,
+			Normalized,
+			Pitch,
+			SampleStart,
+			SampleEnd,
+			SampleStartMod,
+			LoopStart,
+			LoopEnd,
+			LoopXFade,
+			LoopEnabled,
+			LowerVelocityXFade,
+			UpperVelocityXFade,
+			SampleState,
+			Reversed,
+		    NumQuarters
+		});
+		
+		return ids;
+	}
+
 };
 
 const int numProperties = 25;
@@ -733,6 +765,15 @@ class ModulatorSamplerSoundPool : public StreamingSamplerSoundPool,
 	public PoolBase
 {
 public:
+
+	enum ColumnId
+	{
+		FileName = 1,
+		Memory,
+		State,
+		References,
+		numColumns
+	};
 
 	// ================================================================================================================
 

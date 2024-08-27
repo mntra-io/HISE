@@ -313,6 +313,11 @@ public:
 
 	void setCallbackOnMouseUp(bool shouldFireOnMouseUp);
 
+    void setToggleMaxMode(bool shouldToggleMax)
+    {
+        toggleMaxMode = shouldToggleMax;
+    }
+    
     void repaintWithTextBox(Rectangle<int> dirtyArea)
     {
         repaint(dirtyArea);
@@ -320,9 +325,14 @@ public:
         if(!textArea.isEmpty())
             repaint(textArea);
     }
-    
+
+	void setStepSequencerMode(bool shouldUseStepSequencerMode);
+
+	int getHoverStateForSlider(Slider* s) const;
+
 private:
-    
+	
+    bool toggleMaxMode = false;
     Rectangle<int> textArea;
 
 	int lastDragIndex = -1;
@@ -330,7 +340,11 @@ private:
 
 	bool slidersNeedRebuild = false;
 
+    double currentStepSequencerInputValue = 0.0;
+
 	void rebuildSliders();
+
+	void updateSliderColours();
 
 	int currentDisplayIndex = -1;
 
@@ -346,6 +360,8 @@ private:
 	Line<float> rightClickLine;
 
 	bool currentlyDragged;
+
+	bool showOverlayOnMove = false;
 
 	bool callbackOnMouseUp = false;
 

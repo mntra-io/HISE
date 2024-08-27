@@ -224,6 +224,8 @@ public:
 
 		uint16 artificialNoteOnIds[128];
 
+		HiseEvent artificialNoteOnThatWasKilled;
+
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Message);
 		JUCE_DECLARE_WEAK_REFERENCEABLE(Message);
 	};
@@ -385,7 +387,10 @@ public:
 
         /** Creates a fix object factory using the data layout. */
         var createFixObjectFactory(var layoutDescription);
-        
+
+		/** Creates a thread safe storage container. */
+		var createThreadSafeStorage();
+
 		/** Creates a reference to the script license manager. */
 		var createLicenseUnlocker();
 
@@ -607,6 +612,9 @@ public:
 
 		/** Creates a storage object for Message events. */
 		ScriptingObjects::ScriptingMessageHolder* createMessageHolder();
+
+		/** Creates a neural network with the given ID. */
+		ScriptingObjects::ScriptNeuralNetwork* createNeuralNetwork(String id);
 
 		/** Creates an object that can listen to transport events. */
 		var createTransportHandler();
@@ -1027,7 +1035,7 @@ public:
 		// ============================================================================================================
 
 		struct Wrapper;
-
+		
 	private:
 
 		ValueTree convertJSONListToValueTree(var jsonSampleList);
@@ -1097,6 +1105,9 @@ public:
 
 		/** Plays a note and returns the event id with the given channel and start offset. */
 		int playNoteWithStartOffset(int channel, int number, int velocity, int offset);
+
+		/** Attaches an artificial note to be stopped when the original note is stopped. */
+		bool attachNote(int originalNoteId, int artificialNoteId);
 
 		/** Adds a few additional safe checks to prevent stuck notes from note offs being processed before their note-on message. */
 		void setFixNoteOnAfterNoteOff(bool shouldBeFixed);
@@ -1468,6 +1479,9 @@ private:
 		/** Registers a callback to changes in the grid. */
 		void setOnGridChange(var sync, var f);
 
+		/** Registers a callback that will be executed asynchronously when the plugin's bypass state changes. */
+		void setOnBypass(var f);
+
 		/** Enables a high precision grid timer. */
 		void setEnableGrid(bool shouldBeEnabled, int tempoFactor);
 
@@ -1489,7 +1503,12 @@ private:
 		/** If enabled, this will link the internal / external BPM to the sync mode. */
 		void setLinkBpmToSyncMode(bool shouldPrefer);
 
+		/** This will return true if the DAW is currently bouncing the audio to a file. You can use this in the transport change callback to modify your processing chain. */
+		bool isNonRealtime() const;
+
 	private:
+
+		static void onBypassUpdate(TransportHandler& handler, bool state);
 
 		void clearIf(ScopedPointer<Callback>& cb, const var& f)
 		{
@@ -1514,6 +1533,8 @@ private:
 		ScopedPointer<Callback> timeSignatureCallback;
 		ScopedPointer<Callback> beatCallback;
 		ScopedPointer<Callback> gridCallback;
+
+		ScopedPointer<Callback> bypassCallback;
 
 		ScopedPointer<Callback> tempoChangeCallbackAsync;
 		ScopedPointer<Callback> transportChangeCallbackAsync;
@@ -1712,7 +1733,10 @@ private:
         
         /** Decrypts the given string using a RSA public key. */
         String decryptWithRSA(const String& dataToDecrypt, const String& publicKey);
-        
+
+		/** Loads a bunch of dummy assets (audio files, MIDI files, filmstrips) for use in snippets & examples. */
+		void loadExampleAssets();
+
 		// ========================================================= End of API calls
 
 		ProcessorWithScriptingContent* p;

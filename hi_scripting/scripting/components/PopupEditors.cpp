@@ -104,17 +104,25 @@ PopupIncludeEditor::PopupIncludeEditor(JavascriptProcessor *s, const File &fileT
 	callback(Identifier()),
 	tokeniser(new JavascriptTokeniser())
 {
+	
+	if(fileToEdit.getFileExtension() == ".glsl")
+		t = FileTypes::GLSL;
+	else if (fileToEdit.getFileExtension() == ".css")
+		t = FileTypes::CSS;
+	else
+		t = FileTypes::Javascript;
+
 	tokeniser->setUseScopeStatements(true);
 	
 
 	Processor *p = dynamic_cast<Processor*>(jp.get());
-	externalFile = p->getMainController()->getExternalScriptFile(fileToEdit);
+	externalFile = p->getMainController()->getExternalScriptFile(fileToEdit, t == FileTypes::Javascript);
 
     p->getMainController()->addScriptListener(this);
     
     checkUnreferencedExternalFile();
     
-	auto isJavascript = !externalFile->getFile().hasFileExtension("glsl");
+	auto isJavascript = t == FileTypes::Javascript;
 
 	addEditor(externalFile->getFileDocument(), isJavascript);
 
@@ -180,8 +188,18 @@ struct JavascriptLanguageManager : public mcl::LanguageManager
     
     bool getInplaceDebugValues(Array<InplaceDebugValue>& values) const override
     {
-		values.addArray(jp->inplaceValues);
-        
+		auto sn = jp->getSnippet(callback);
+		
+		for(auto& ip: jp->inplaceValues)
+		{
+			ip.init();
+
+			if(ip.location.getOwner() == sn)
+			{
+				values.add(ip);
+			}
+		}
+
         return true;
     }
     
@@ -480,25 +498,80 @@ File PopupIncludeEditor::getFile() const
 
 void PopupIncludeEditor::compileInternal()
 {
-    
-    
 	if (externalFile != nullptr)
 	{
-		externalFile->getFile().replaceWithText(externalFile->getFileDocument().getAllContent());
-		externalFile->getFileDocument().setSavePoint();
+		if(externalFile->getResourceType() == ExternalScriptFile::ResourceType::EmbeddedInSnippet)
+		{
+			debugToConsole(dynamic_cast<Processor*>(getScriptProcessor()), "Skip writing embedded file " + externalFile->getFile().getFileName() + " to disk...");
+		}
+		else
+		{
+            externalFile->saveFile();
+		}
 	}
 
-    Component::SafePointer<PopupIncludeEditor> safeP(this);
+	if(t == FileTypes::CSS)
+	{
+		auto& ed = editor->editor;
+
+		simple_css::Parser p(ed.getTextDocument().getCodeDocument().getAllContent());
+
+		ed.clearWarningsAndErrors();
+
+		auto ok = p.parse();
+
+		for(auto w: p.getWarnings())
+			ed.addWarning(w, true);
+
+		bottomBar->setError(ok.getErrorMessage());
+
+		if(!ok.wasOk())
+		{
+			ed.setError(ok.getErrorMessage());
+		}
+		else
+		{
+			auto top = getTopLevelComponent();
+			auto css = p.getCSSValues();
+			auto scriptFolder = dynamic_cast<Processor*>(getScriptProcessor())->getMainController()->getActiveFileHandler()->getSubDirectory(FileHandlerBase::Scripts);
+			auto fileName = getFile().getRelativePathFrom(scriptFolder).replaceCharacter('\\', '/');
+
+			Component::callRecursive<ScriptContentComponent>(top, [&](ScriptContentComponent* c)
+			{
+				c->css.updateIsolatedCollection(fileName, css);
+
+				using BD = ScriptingApi::Content::ScriptMultipageDialog::Backdrop;
+
+				Component::callRecursive<BD>(c, [&](BD* mp)
+				{
+					mp->create(getEditor()->editor.getDocument().getAllContent());
+					return false;
+				});
+
+				c->repaint();
+
+				return false;
+			});
+		}
+		
+		return;
+	}
+	else
+	{
+		Component::SafePointer<PopupIncludeEditor> safeP(this);
     
-    auto f = [safeP](const JavascriptProcessor::SnippetResult& r)
-    {
-        if(safeP.getComponent() != nullptr)
-        {
-            safeP->refreshAfterCompilation(r);
-        }
-    };
+	    auto f = [safeP](const JavascriptProcessor::SnippetResult& r)
+	    {
+	        if(safeP.getComponent() != nullptr)
+	        {
+	            safeP->refreshAfterCompilation(r);
+	        }
+	    };
+	    
+		jp->compileScript(f);
+	}
+
     
-	jp->compileScript(f);
 
 	if (auto asmcl = dynamic_cast<mcl::TextEditor*>(editor.get()))
 	{
@@ -556,13 +629,20 @@ void PopupIncludeEditor::addEditor(CodeDocument& d, bool isJavascript)
 		ed.setLanguageManager(new JavascriptLanguageManager(jp, callback, ed));
 	else
 	{
-		ed.setLanguageManager(new GLSLLanguageManager());
+		if(t == FileTypes::GLSL)
+			ed.setLanguageManager(new GLSLLanguageManager());
+		else
+		{
+			ed.tokenCollection = new mcl::TokenCollection("CSS");
+			ed.tokenCollection->setUseBackgroundThread(false);
+			ed.setLanguageManager(new simple_css::LanguageManager(ed.getTextDocument()));
+			ed.tokenCollection->rebuild();
+		}
+			
 	}
 
 	ed.setPopupLookAndFeel(new PopupLookAndFeel());
-
-    
-    
+	
 	auto mc = dynamic_cast<Processor*>(jp.get())->getMainController();
 
     ed.getTextDocument().setExternalViewUndoManager(mc->getLocationUndoManager());

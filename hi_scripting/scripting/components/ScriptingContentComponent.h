@@ -91,7 +91,8 @@ class ScriptContentComponent: public ComponentWithMiddleMouseDrag,
 							  public Processor::DeleteListener,
 							  public ScriptingApi::Content::ScreenshotListener,
 							  public DragAndDropContainer,
-							  public DragAndDropTarget
+							  public DragAndDropTarget,
+							  public simple_css::CSSRootComponent
 {
 public:
 
@@ -128,6 +129,11 @@ public:
 	int getContentWidth() const
 	{
 		return contentData.get() != nullptr ? contentData->width : -1;
+	}
+
+	void suspendStateChanged(bool shouldBeSuspended) override
+	{
+		repaint();
 	}
 
 	/** returns the script name that was set with Content.setName(). */
