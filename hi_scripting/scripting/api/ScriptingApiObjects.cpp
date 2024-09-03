@@ -2067,7 +2067,7 @@ int ScriptingObjects::ScriptSliderPackData::getNumSliders() const
 void ScriptingObjects::ScriptSliderPackData::setUsePreallocatedLength(int numUsed)
 {
     if(auto data = getSliderPackData())
-        data->setUsePreallocatedLength(32);
+        data->setUsePreallocatedLength(numUsed);
 }
 
 void ScriptingObjects::ScriptSliderPackData::setAssignIsUndoable(bool shouldBeUndoable)
