@@ -1592,8 +1592,7 @@ void ScriptComponent::setConsumedKeyPresses(var listOfKeys)
 
 	if(listOfKeys.isArray())
 	{
-		catchAllKeys = false;
-				
+		catchAllKeys = AllCatchBehaviour::Inactive;
 		for(const auto& v: *listOfKeys.getArray())
 		{
 			auto k = ApiHelpers::getKeyPress(v, &r);
@@ -1608,15 +1607,19 @@ void ScriptComponent::setConsumedKeyPresses(var listOfKeys)
 	{
         if(listOfKeys.toString() == "all")
         {
-            catchAllKeys = true;
+            catchAllKeys = AllCatchBehaviour::Exclusive;
         }
+		else if(listOfKeys.toString() == "all_nonexclusive")
+		{
+			catchAllKeys = AllCatchBehaviour::NonExlusive;
+		}
         else
         {
             auto k = ApiHelpers::getKeyPress(listOfKeys, &r);
 
             if(r.wasOk())
             {
-                catchAllKeys = false;
+                catchAllKeys = AllCatchBehaviour::Inactive;
                 registeredKeys.add(k);
             }
             else
@@ -1633,18 +1636,16 @@ bool ScriptingApi::Content::ScriptComponent::handleKeyPress(const KeyPress& k)
 {
 	if (keyboardCallback)
 	{
-		if(catchAllKeys || registeredKeys.contains(k))
+		auto matchesKey = registeredKeys.contains(k);
+
+		if((catchAllKeys != AllCatchBehaviour::Inactive) || matchesKey)
 		{
 			auto args = Content::createKeyboardCallbackObject(k);
-
-			var rv;
-
 			keyboardCallback.call(&args, 1); 
 
-			return true;
+			bool consumed = matchesKey || catchAllKeys == AllCatchBehaviour::Exclusive;
+			return consumed;
 		}
-
-		
 	}
 
 	return false;
@@ -1748,9 +1749,12 @@ juce::LookAndFeel* ScriptingApi::Content::ScriptComponent::createLocalLookAndFee
             initProperty("textColour");
             
             removePropertyIfDefault = false;
-            
-            simple_css::Selector classType(simple_css::SelectorType::Class, propertyTree["type"].toString().toLowerCase());
-            styleSheetProperties.setProperty("class", classType.toString(), nullptr);
+
+			if(!styleSheetProperties.hasProperty("class"))
+			{
+				simple_css::Selector classType(simple_css::SelectorType::Class, propertyTree["type"].toString().toLowerCase());
+				styleSheetProperties.setProperty("class", classType.toString(), nullptr);
+			}
 			
 			return new ScriptingObjects::ScriptedLookAndFeel::CSSLaf(l, contentComponent, componentToRegister, this->propertyTree, this->styleSheetProperties);
 		}
@@ -7596,7 +7600,7 @@ struct TextInputData: public ScriptingApi::Content::TextInputDataBase,
         
         inputLabel->setText(prop["text"].toString(), dontSendNotification);
         inputLabel->selectAll();
-        inputLabel->grabKeyboardFocus();
+        inputLabel->grabKeyboardFocusAsync();
     }
     
     void dismissAndCall(bool ok)
@@ -7606,7 +7610,11 @@ struct TextInputData: public ScriptingApi::Content::TextInputDataBase,
 
         var args[2] = {var(ok), var(inputLabel->getText())};
         
-        inputLabel->getParentComponent()->removeChildComponent(inputLabel);
+        if(auto pc = inputLabel->getParentComponent())
+        {
+            pc->removeChildComponent(inputLabel);
+        }
+        
         inputLabel = nullptr;
         
         if(callback)

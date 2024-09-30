@@ -3187,6 +3187,7 @@ struct ScriptUnlocker::RefObject::Wrapper
 	API_METHOD_WRAPPER_1(RefObject, isValidKeyFile);
     API_METHOD_WRAPPER_0(RefObject, keyFileExists);
 	API_METHOD_WRAPPER_0(RefObject, getLicenseKeyFile);
+	API_METHOD_WRAPPER_1(RefObject, contains);
 };
 
 ScriptUnlocker::RefObject::RefObject(ProcessorWithScriptingContent* p) :
@@ -3214,6 +3215,7 @@ ScriptUnlocker::RefObject::RefObject(ProcessorWithScriptingContent* p) :
 	ADD_API_METHOD_1(checkExpirationData);
     ADD_API_METHOD_0(keyFileExists);
 	ADD_API_METHOD_0(getLicenseKeyFile);
+	ADD_API_METHOD_1(contains);
 }
 
 ScriptUnlocker::RefObject::~RefObject()

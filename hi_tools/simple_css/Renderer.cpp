@@ -296,8 +296,12 @@ void Renderer::drawBackground(Graphics& g, Rectangle<float> area, StyleSheet::Pt
 	{
 		auto hc = CSSRootComponent::find(*currentComponent);
 		ScopedPointer<StyleSheet::Collection::DataProvider> dp = hc->createDataProvider();
-		auto img = dp->loadImage(imageURL);
-		drawImage(g, img, area, ss, false);
+
+		if(dp != nullptr)
+		{
+			auto img = dp->loadImage(imageURL);
+			drawImage(g, img, area, ss, false);
+		}
 	}
 	else
 	{
@@ -474,7 +478,7 @@ void Renderer::drawImage(Graphics& g, const juce::Image& img, Rectangle<float> a
 	}
 }
 
-void Renderer::renderText(Graphics& g, Rectangle<float> area, const String& text, StyleSheet::Ptr ss, PseudoElementType type, Justification jToUse)
+void Renderer::renderText(Graphics& g, Rectangle<float> area, const String& text, StyleSheet::Ptr ss, PseudoElementType type, Justification jToUse, bool truncateBeforeAfter)
 {
 	auto currentState = PseudoState(getPseudoClassState()).withElement(type);
 
@@ -484,7 +488,7 @@ void Renderer::renderText(Graphics& g, Rectangle<float> area, const String& text
 	totalArea = ss->getArea(totalArea, { "padding", currentState });
 
 
-	if(type == PseudoElementType::None)
+	if(type == PseudoElementType::None && truncateBeforeAfter)
 		totalArea = ss->truncateBeforeAndAfter(totalArea, currentState.stateFlag);
 	
 	g.setFont(ss->getFont(currentState, totalArea));
