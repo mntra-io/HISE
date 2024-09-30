@@ -448,6 +448,12 @@ bool Dialog::PageBase::isEditModeAndNotInPopup() const
 
 void Dialog::PageBase::setModalHelp(const String& text)
 {
+	if(modalHelp != nullptr)
+	{
+		modalHelp = nullptr;
+		return;
+	}
+
 	auto popup = TopLevelWindowWithOptionalOpenGL::findRoot(this);
 
 	if(popup == nullptr)
@@ -477,7 +483,7 @@ void Dialog::PageBase::setModalHelp(const String& text)
 	auto thisBounds = popup->getLocalArea(this, getLocalBounds());
 
 	auto mb = thisBounds.withSizeKeepingCentre(jmax(500, modalHelp->getWidth()), modalHelp->getHeight());
-	mb.setY(thisBounds.getBottom() + 3);
+	mb.setY(thisBounds.getBottom() - 6);
 	
 	mb = mb.constrainedWithin(popup->getLocalBounds());
     
@@ -1840,6 +1846,26 @@ void Dialog::loadStyleFromPositionInfo()
 	auto css = getState().getStyleSheet(positionInfo.styleSheet, positionInfo.additionalStyle);
 	
 	update(css);
+}
+
+void Dialog::registerPlaceholder(const Identifier& typeId, const PlaceholderCreator& pc)
+{
+	placeholderFactory.add({typeId, pc});
+}
+
+PlaceholderContentBase* Dialog::createDynamicPlaceholder(const var& infoObject)
+{
+	auto classId = Identifier(infoObject[mpid::ContentType].toString());
+
+	for(const auto& pf: placeholderFactory)
+	{
+		if(pf.first == classId)
+		{
+			return pf.second(*this, infoObject);
+		}
+	}
+
+	return nullptr;
 }
 
 
