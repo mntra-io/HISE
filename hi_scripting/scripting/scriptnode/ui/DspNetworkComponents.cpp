@@ -508,23 +508,7 @@ void drawBlockrateForCable(Graphics& g, Point<float> midPoint, Colour cableColou
 void DspNetworkGraph::paintOverChildren(Graphics& g)
 {
 	float HoverAlpha = 0.5f;
-
-    auto printLabel = [&g](const String& sourceName, Rectangle<float> end, Colour colourToUse)
-    {
-        g.setFont(GLOBAL_BOLD_FONT());
-        
-        String text = "from " + sourceName;
-        
-        auto ta = end.translated(0.0f, 20.0f).withSizeKeepingCentre(GLOBAL_BOLD_FONT().getStringWidthFloat(text) + 20.0f, 20.0f);
-        
-        g.setColour(colourToUse);
-        g.fillRoundedRectangle(ta, 10.0f);
-        
-        g.setColour(Colours::black.withAlpha(0.8f));
-        g.drawRoundedRectangle(ta, 10.0f, 2.0f);
-        g.drawText(text, ta, Justification::centred);
-    };
-    
+	
 	if (Component::isMouseButtonDownAnywhere())
 		HoverAlpha += 0.1f;
 
@@ -718,21 +702,10 @@ void DspNetworkGraph::paintOverChildren(Graphics& g)
 						addDragSource(targetSlider);
 					}
                     
-                    bool shouldPrintLabel = false;
-                    
                     if(!showCables && targetSlider->isMouseOverOrDragging(true))
-                    {
                         thisAlpha = HoverAlpha;
-                        shouldPrintLabel = true;
-                    }
 					
 					GlobalHiseLookAndFeel::paintCable(g, start, end, colourToUse, thisAlpha, hc);
-                    
-                    if(shouldPrintLabel)
-                    {
-                        printLabel(sourceSlider->getTooltip(), end, colourToUse);
-                        
-                    }
 				}
 			}
 		}
@@ -770,11 +743,8 @@ void DspNetworkGraph::paintOverChildren(Graphics& g)
 				auto numOutputs = multiSource->getNumOutputs();
 				auto c = MultiOutputDragSource::getFadeColour(index, numOutputs).withAlpha(1.0f);
 
-                bool shouldPrintLabel = false;
-                
                 if(!showCables && s->isMouseOver(true))
                 {
-                    shouldPrintLabel = true;
                     thisAlpha = HoverAlpha;
                 }
                 
@@ -785,11 +755,6 @@ void DspNetworkGraph::paintOverChildren(Graphics& g)
 				{
 					drawBlockrateForCable(g, midPoint, c, thisAlpha, multiSource->getNode(), s->node);
 				}
-                
-                if(shouldPrintLabel)
-                {
-                    printLabel(multiSource->getNode()->getId() + "[" + String(index) + "]", end, c);
-                }
 			}
 		}
 	}
@@ -839,11 +804,8 @@ void DspNetworkGraph::paintOverChildren(Graphics& g)
 
 						auto end = getCircle(s);
 
-                        bool shouldPrintLabel = false;
-                        
                         if(!showCables && s->isMouseOver(true))
                         {
-                            shouldPrintLabel = true;
                             thisAlpha = HoverAlpha;
                         }
                         
@@ -851,11 +813,6 @@ void DspNetworkGraph::paintOverChildren(Graphics& g)
 
 						auto midPoint = GlobalHiseLookAndFeel::paintCable(g, start, end, cableColour, thisAlpha, hc, network->getCpuProfileFlag());
 
-                        if(shouldPrintLabel)
-                        {
-                            printLabel(sourceNode->getId(), end, cableColour);
-                        }
-                        
 						if (!midPoint.isOrigin())
 						{
 							auto thisSource = ConnectionBase::Helpers::findRealSource(sourceNode);
@@ -998,50 +955,64 @@ void DspNetworkGraph::paintOverChildren(Graphics& g)
 
 			if(auto sn = network->getNodeForValueTree(nt))
 			{
-				for(auto b: bypassList)
+				NodeComponent* nb = nullptr;
+
+				while(nb == nullptr)
 				{
-					if(b->parent.node == sn)
+					for(auto b: bypassList)
 					{
-						NodeComponent* nb = &b->parent;
-
-						auto notFolded = true;
-
-						while(notFolded)
+						if(b->parent.node.get() == sn)
 						{
-							auto nt = nb->node->getValueTree().getParent();
-
-							valuetree::Helpers::forEachParent(nt, [&](const ValueTree& p)
-							{
-								if(p.getType() == PropertyIds::Node)
-								{
-									notFolded &= !(bool)p[PropertyIds::Folded];
-								}
-
-								return false;
-							});
-
-							if(notFolded)
-								break;
-
-							nb = nb->findParentComponentOfClass<NodeComponent>();
-
-							if(nb == nullptr)
-								break;
+							nb = &b->parent;
+							break;
 						}
-
-						if(nb != nullptr)
-						{
-							auto h = &nb->header;
-
-							auto sourceRect = getLocalArea(h, h->getLocalBounds());
-
-							g.setColour(Colours::red.withAlpha(0.2f));
-							g.fillRect(sourceRect);
-							
-						}
-
-						break;
 					}
+
+					sn = sn->getParentNode();
+
+					if(sn == nullptr)
+						break;
+				}
+
+				if(nb != nullptr)
+				{
+					auto notFolded = true;
+
+					while(notFolded)
+					{
+						auto nt = nb->node->getValueTree().getParent();
+
+						valuetree::Helpers::forEachParent(nt, [&](const ValueTree& p)
+						{
+							if(p.getType() == PropertyIds::Node)
+							{
+								notFolded &= !(bool)p[PropertyIds::Folded];
+							}
+
+							return false;
+						});
+
+						if(notFolded)
+							break;
+
+						nb = nb->findParentComponentOfClass<NodeComponent>();
+
+						if(nb == nullptr)
+							break;
+					}
+
+					if(nb != nullptr)
+					{
+						auto h = &nb->header;
+
+						auto sourceRect = getLocalArea(h, h->getLocalBounds());
+
+						g.setColour(Colours::red.withAlpha(0.2f));
+						g.fillRect(sourceRect);
+						
+					}
+
+					break;
 				}
 			}
 		}
@@ -1761,15 +1732,23 @@ bool DspNetworkGraph::Actions::foldUnselectedNodes(DspNetworkGraph& g)
         return true;
     }
     
-    
 	auto parent = g.findParentComponentOfClass<ZoomableViewport>();
 
-	parent->makeSwapSnapshot(JUCE_LIVE_CONSTANT_OFF(1.005f));
+	int counter = 0;
+
+	auto skipAnimation = valuetree::Helpers::forEach(g.network->getValueTree(), [&](const ValueTree& v)
+	{
+		if(v.getType() == PropertyIds::Node)
+			counter++;
+
+		return counter > 30;
+	});
+
+	if(!skipAnimation)
+		parent->makeSwapSnapshot(JUCE_LIVE_CONSTANT_OFF(1.005f));
 
 	auto l = g.network->getListOfNodesWithType<NodeBase>(false);
-
 	
-
 	auto isParentNode = [](NodeBase*n, NodeBase* possibleParent)
 	{
 		if (n == possibleParent)
@@ -1842,9 +1821,10 @@ bool DspNetworkGraph::Actions::foldUnselectedNodes(DspNetworkGraph& g)
 		g.grabKeyboardFocus();
 	};
 
-	
-
-	Timer::callAfterDelay(JUCE_LIVE_CONSTANT_OFF(300), f);
+	if(skipAnimation)
+		f();
+	else
+		Timer::callAfterDelay(JUCE_LIVE_CONSTANT_OFF(300), f);
 
 	return true;
 }
@@ -2026,9 +2006,58 @@ bool DspNetworkGraph::Actions::showKeyboardPopup(DspNetworkGraph& g, KeyboardPop
 
 			auto r = sp->getLocalArea(nc, midPoint.toNearestInt());
 
+			auto popupBounds = newPopup->getLocalBounds();
 
+			if(sp->getLocalBounds().reduced(-3).contains(popupBounds))
+			{
+				sp->setCurrentModalWindow(newPopup, r);
+			}
+			else
+			{
+#if USE_BACKEND
+				auto bpe = g.findParentComponentOfClass<BackendRootWindow>();
 
-			sp->setCurrentModalWindow(newPopup, r);
+				struct PopupWrapper: public Component,
+									 public ModalBaseWindow
+				{
+					PopupWrapper(KeyboardPopup* p):
+					  content(p)
+					{
+						p->parentIsViewport = false;
+						addAndMakeVisible(p);
+						setSize(p->getWidth(), p->getHeight());
+						setName("Add node");
+					}
+
+					void paint(Graphics& g) override
+					{
+						g.fillAll(Colour(0xFF222222));
+
+						auto b = getLocalBounds().toFloat();
+						b = b.removeFromTop(24);
+						g.setColour(Colours::white.withAlpha(0.8f));
+
+						g.setFont(GLOBAL_BOLD_FONT());
+						g.drawText(getName(), b, Justification::centred);
+					}
+
+					void resized() override
+					{
+						auto b = getLocalBounds();
+						b.removeFromTop(24);
+						content->setBounds(b);
+					}
+
+					ScopedPointer<KeyboardPopup> content;
+				};
+
+				auto w = new PopupWrapper(newPopup);
+
+				bpe->setModalComponent(w);
+#endif
+			}
+
+			
 		}
 	}
 
@@ -2519,17 +2548,27 @@ void NetworkPanel::fillIndexList(StringArray& sa)
 
 void KeyboardPopup::addNodeAndClose(String path)
 {
-	auto sp = findParentComponentOfClass<ZoomableViewport>();
+	bool pc = parentIsViewport;
+
+	std::function<void(Component*)> cleanup = [pc](Component* c)
+	{
+#if USE_BACKEND
+		if(pc)
+			c->findParentComponentOfClass<ZoomableViewport>()->setCurrentModalWindow(nullptr, {});
+		else
+			c->findParentComponentOfClass<BackendRootWindow>()->clearModalComponent();
+#endif
+	};
 
 	auto container = node.get();
 	auto ap = addPosition;
 
+	Component::SafePointer<Component> safeThis(this);
+
 	if (path.startsWith("ScriptNode"))
 	{
-		auto f = [sp, container, ap]()
+		auto f = [container, ap, cleanup, safeThis]()
 		{
-			sp->setCurrentModalWindow(nullptr, {});
-
 			auto clipboard = SystemClipboard::getTextFromClipboard();
 			auto data = clipboard.fromFirstOccurrenceOf("ScriptNode", false, false);
 			auto newTree = ValueTreeConverters::convertBase64ToValueTree(data, true);
@@ -2555,14 +2594,16 @@ void KeyboardPopup::addNodeAndClose(String path)
 				network->runPostInitFunctions();
 			}
 
-			sp->setCurrentModalWindow(nullptr, {});
+			if(safeThis != nullptr)
+				cleanup(safeThis.getComponent());
 		};
 
 		MessageManager::callAsync(f);
 	}
 	else
 	{
-		auto f = [sp, path, container, ap]()
+		
+		auto f = [path, container, ap, cleanup, safeThis]()
 		{
 			if (path.isNotEmpty())
 			{
@@ -2583,7 +2624,8 @@ void KeyboardPopup::addNodeAndClose(String path)
 				network->addToSelection(dynamic_cast<NodeBase*>(newNode.getObject()), ModifierKeys());
 			}
 
-			sp->setCurrentModalWindow(nullptr, {});
+			if(safeThis != nullptr)
+				cleanup(safeThis.getComponent());;
 		};
 
 		MessageManager::callAsync(f);
