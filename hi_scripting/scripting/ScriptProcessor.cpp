@@ -2675,7 +2675,7 @@ Result JavascriptThreadPool::executeQueue(const Task::Type& t, PendingCompilatio
             // We're trying to leave this unlocked here as the
             // localised inline function scope might resolve all
             // multithreading issues (???)
-			SimpleReadWriteLock::ScopedWriteLock sl(getLookAndFeelRenderLock());
+			//SimpleReadWriteLock::ScopedWriteLock sl(getLookAndFeelRenderLock());
 
 			jassert(!lpt.getFunction().isHiPriority());
 
